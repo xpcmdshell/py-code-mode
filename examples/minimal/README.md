@@ -126,7 +126,7 @@ cli_tools:
 ```
 
 ```python
-from py_code_mode.container.config import SessionConfig
+from py_code_mode.backends.container.config import SessionConfig
 
 config = SessionConfig.from_yaml("tools.yaml")
 # config.cli_tools contains the parsed specs
@@ -141,20 +141,22 @@ Skills are reusable code snippets the agent can invoke:
 def run(url: str) -> dict:
     """Fetch JSON from a URL and parse it."""
     import json
-    response = tools.call("cli.curl", {"url": url})
+    response = tools.curl(url=url)
     return json.loads(response)
 ```
 
 ```python
-from py_code_mode import SkillRegistry
+from py_code_mode import CodeExecutor
+from py_code_mode.semantic import create_skill_library
+from py_code_mode.skill_store import FileSkillStore
 
-skills = SkillRegistry()
-skills.load_directory("skills/")
+store = FileSkillStore("skills/")
+skill_library = create_skill_library(store=store)
 
-executor = CodeExecutor(registry=registry, skill_registry=skills)
+executor = CodeExecutor(registry=registry, skill_library=skill_library)
 ```
 
-Agent can then use: `skills.invoke("fetch_json", url="https://api.example.com")`
+Agent can then use: `skills.fetch_json(url="https://api.example.com")`
 
 ## Next Steps
 

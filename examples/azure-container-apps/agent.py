@@ -29,12 +29,11 @@ import asyncio
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.ui import Console
+from dotenv import load_dotenv
 
-from py_code_mode import CodeExecutor, ToolRegistry, SkillRegistry
+from py_code_mode import CodeExecutor, ToolRegistry
 from py_code_mode.integrations.autogen import create_run_code_tool
 
 # Load .env file for local development
@@ -51,8 +50,8 @@ def get_model_client():
 
     if azure_endpoint:
         # Running in Azure - use Azure AI Foundry with managed identity
-        from azure.identity import DefaultAzureCredential
         from autogen_ext.models.azure import AzureAIChatCompletionClient
+        from azure.identity import DefaultAzureCredential
 
         return AzureAIChatCompletionClient(
             model="claude-sonnet-4-20250514",
@@ -82,14 +81,17 @@ async def create_executor():
     if redis_url:
         # Redis mode: connect to existing stores (provisioned separately)
         import redis as redis_lib
-        from py_code_mode import RedisArtifactStore, RedisSkillIndex
+
+        from py_code_mode import RedisArtifactStore
+        from py_code_mode.semantic import create_skill_library
+        from py_code_mode.skill_store import RedisSkillStore
 
         r = redis_lib.from_url(redis_url)
 
         # Connect to existing Redis skill store
         # Skills provisioned via: python -m py_code_mode.store bootstrap
-        skill_index = RedisSkillIndex(r, prefix="agent-skills")
-        skill_registry = SkillRegistry(index=skill_index)
+        skill_store = RedisSkillStore(r, prefix="agent-skills")
+        skill_library = create_skill_library(store=skill_store)
 
         # Redis artifact store for persistence
         artifact_store = RedisArtifactStore(r, prefix="agent-artifacts")
@@ -99,7 +101,7 @@ async def create_executor():
 
         return CodeExecutor(
             registry=registry,
-            skill_registry=skill_registry,
+            skill_library=skill_library,
             artifact_store=artifact_store,
         )
     else:
@@ -155,6 +157,7 @@ Always wrap your code in ```python blocks."""
 
         # Check for command line argument
         import sys
+
         if len(sys.argv) > 1:
             query = " ".join(sys.argv[1:])
             await Console(agent.run_stream(task=query))
