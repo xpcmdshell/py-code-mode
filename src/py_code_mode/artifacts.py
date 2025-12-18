@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -19,7 +19,7 @@ class Artifact:
     path: str  # Location identifier (file path, redis key, s3 key, etc.)
     description: str
     metadata: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @runtime_checkable
@@ -135,7 +135,7 @@ class FileArtifactStore:
             file_path.write_text(str(data))
 
         # Update index
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self._index[name] = {
             "description": description,
             "created_at": now.isoformat(),
@@ -267,7 +267,7 @@ class FileArtifactStore:
         if not file_path.exists():
             raise ArtifactNotFoundError(f"File not found: {name}")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self._index[name] = {
             "description": description,
             "created_at": now.isoformat(),

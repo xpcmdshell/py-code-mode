@@ -1,10 +1,11 @@
 """Tests for skills system - Python skills only."""
 
-import pytest
 from pathlib import Path
 from textwrap import dedent
 
-from py_code_mode.skills import SkillParameter, PythonSkill
+import pytest
+
+from py_code_mode.skills import PythonSkill, SkillParameter
 
 
 class TestSkillParameter:
@@ -44,7 +45,8 @@ class TestPythonSkill:
     def skill_file(self, tmp_path: Path) -> Path:
         """Create a sample .py skill file."""
         skill_path = tmp_path / "greet.py"
-        skill_path.write_text(dedent('''
+        skill_path.write_text(
+            dedent('''
             """Greet someone by name.
 
             A friendly greeting skill.
@@ -61,7 +63,8 @@ class TestPythonSkill:
                     A greeting string
                 """
                 return f"Hello, {target_name}!" + "!" * (enthusiasm - 1)
-        ''').strip())
+        ''').strip()
+        )
         return skill_path
 
     def test_load_from_file(self, skill_file: Path) -> None:
@@ -122,7 +125,8 @@ class TestPythonSkill:
     def test_skill_with_tools_access(self, tmp_path: Path) -> None:
         """Skill can reference tools in its code."""
         skill_path = tmp_path / "scan.py"
-        skill_path.write_text(dedent('''
+        skill_path.write_text(
+            dedent('''
             """Scan a network target."""
 
             def run(target: str, tools) -> str:
@@ -134,7 +138,8 @@ class TestPythonSkill:
                 """
                 # In real use, would call tools.call(...)
                 return f"Scanning {target}"
-        ''').strip())
+        ''').strip()
+        )
 
         skill = PythonSkill.from_file(skill_path)
 
@@ -196,7 +201,7 @@ class TestPythonSkillFromSource:
 
     def test_from_source_validates_name(self) -> None:
         """Name must be valid Python identifier."""
-        source = 'def run(): pass'
+        source = "def run(): pass"
 
         with pytest.raises(ValueError, match="identifier"):
             PythonSkill.from_source(name="invalid-name", source=source)

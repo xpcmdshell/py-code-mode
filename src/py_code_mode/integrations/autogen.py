@@ -22,16 +22,15 @@ Usage (remote session server):
 
 from __future__ import annotations
 
-import asyncio
-from typing import TYPE_CHECKING, Callable, Coroutine, Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from py_code_mode.executor import CodeExecutor
-    from py_code_mode.container import SessionClient
 
 
 def create_run_code_tool(
-    executor: "CodeExecutor | None" = None,
+    executor: CodeExecutor | None = None,
     session_url: str | None = None,
     timeout: float = 30.0,
     session_id: str | None = None,
@@ -67,7 +66,7 @@ def create_run_code_tool(
 
 
 def _create_local_tool(
-    executor: "CodeExecutor",
+    executor: CodeExecutor,
     timeout: float,
 ) -> Callable[[str], str]:
     """Create tool using local CodeExecutor."""
@@ -112,8 +111,9 @@ def _create_remote_tool(
     """Create tool using remote session server."""
 
     # Lazy import to avoid requiring httpx for local-only usage
-    import httpx
     import uuid
+
+    import httpx
 
     # Each tool instance gets its own session
     _session_id = session_id or str(uuid.uuid4())
@@ -160,7 +160,9 @@ def _create_remote_tool(
     return run_code
 
 
-def get_tools_description(session_url: str | None = None, executor: "CodeExecutor | None" = None) -> str:
+def get_tools_description(
+    session_url: str | None = None, executor: CodeExecutor | None = None
+) -> str:
     """Get a description of available tools for the system prompt.
 
     Args:
@@ -172,6 +174,7 @@ def get_tools_description(session_url: str | None = None, executor: "CodeExecuto
     """
     if session_url:
         import httpx
+
         try:
             with httpx.Client(timeout=10) as client:
                 response = client.get(f"{session_url.rstrip('/')}/info")
@@ -188,7 +191,7 @@ def get_tools_description(session_url: str | None = None, executor: "CodeExecuto
     else:
         return "Tools available via tools.call()"
 
-    lines = ["Available tools (use via tools.call(\"name\", {args})):"]
+    lines = ['Available tools (use via tools.call("name", {args})):']
     for t in tools:
         lines.append(f"  - {t['name']}: {t['description']}")
     return "\n".join(lines)

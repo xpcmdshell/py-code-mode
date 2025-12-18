@@ -1,8 +1,9 @@
 """Tests for ContainerExecutor."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from py_code_mode.container.config import ContainerConfig
 from py_code_mode.container.executor import ContainerExecutor
@@ -47,11 +48,7 @@ class TestContainerExecutor:
         mock_container.id = "abc123"
         mock_container.status = "running"
         mock_container.attrs = {
-            "NetworkSettings": {
-                "Ports": {
-                    "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}]
-                }
-            }
+            "NetworkSettings": {"Ports": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}]}}
         }
         mock_container.reload = MagicMock()
         return mock_container
@@ -103,9 +100,7 @@ class TestContainerExecutor:
 
                     assert result.value == 42
                     assert result.is_ok
-                    executor._client.execute.assert_called_once_with(
-                        "21 * 2", timeout=None
-                    )
+                    executor._client.execute.assert_called_once_with("21 * 2", timeout=None)
 
     @pytest.mark.asyncio
     async def test_run_with_timeout(self, config) -> None:
@@ -204,11 +199,7 @@ def _make_mock_container() -> MagicMock:
     mock_container.id = "abc123"
     mock_container.status = "running"
     mock_container.attrs = {
-        "NetworkSettings": {
-            "Ports": {
-                "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}]
-            }
-        }
+        "NetworkSettings": {"Ports": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}]}}
     }
     mock_container.reload = MagicMock()
     return mock_container

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -179,9 +179,9 @@ class SkillLibrary:
     """
 
     embedder: EmbeddingProvider
-    store: "SkillStore | None" = None
+    store: SkillStore | None = None
     ranking: RankingConfig = field(default_factory=RankingConfig)
-    _skills: dict[str, "PythonSkill"] = field(default_factory=dict)
+    _skills: dict[str, PythonSkill] = field(default_factory=dict)
     _description_vectors: dict[str, list[float]] = field(default_factory=dict)
     _code_vectors: dict[str, list[float]] = field(default_factory=dict)
 
@@ -215,7 +215,7 @@ class SkillLibrary:
         for skill in self.store.list_all():
             self._index_skill(skill)
 
-    def _index_skill(self, skill: "PythonSkill") -> None:
+    def _index_skill(self, skill: PythonSkill) -> None:
         """Add skill to local embedding index without touching store."""
         self._skills[skill.name] = skill
 
@@ -227,7 +227,7 @@ class SkillLibrary:
         code_vec = self.embedder.embed([skill.source])[0]
         self._code_vectors[skill.name] = code_vec
 
-    def add(self, skill: "PythonSkill") -> None:
+    def add(self, skill: PythonSkill) -> None:
         """Add a skill to the library.
 
         Stores in store (if configured) and indexes embeddings for search.
@@ -243,7 +243,7 @@ class SkillLibrary:
         """Check if skill has code indexed."""
         return name in self._code_vectors
 
-    def list(self) -> list["PythonSkill"]:
+    def list(self) -> list[PythonSkill]:
         """List all skills."""
         return list(self._skills.values())
 
@@ -272,7 +272,7 @@ class SkillLibrary:
         self,
         query: str,
         limit: int = 10,
-    ) -> list["PythonSkill"]:
+    ) -> list[PythonSkill]:
         """Search for skills by semantic similarity.
 
         Args:
@@ -292,16 +292,13 @@ class SkillLibrary:
         scored: list[tuple[float, str]] = []
         for name, skill in self._skills.items():
             # Cosine similarity with description
-            desc_sim = self._cosine_similarity(
-                query_vec, self._description_vectors[name]
-            )
+            desc_sim = self._cosine_similarity(query_vec, self._description_vectors[name])
 
             # Cosine similarity with code (if code is substantial enough)
             if len(skill.source) >= self.ranking.code_min_length and self.ranking.code_weight > 0:
                 code_sim = self._cosine_similarity(query_vec, self._code_vectors[name])
                 score = (
-                    self.ranking.description_weight * desc_sim
-                    + self.ranking.code_weight * code_sim
+                    self.ranking.description_weight * desc_sim + self.ranking.code_weight * code_sim
                 )
             else:
                 # Description only
@@ -317,7 +314,7 @@ class SkillLibrary:
         # Return top skills
         return [self._skills[name] for _, name in scored[:limit]]
 
-    def get(self, name: str) -> "PythonSkill | None":
+    def get(self, name: str) -> PythonSkill | None:
         """Get skill by exact name."""
         return self._skills.get(name)
 
@@ -333,7 +330,7 @@ class SkillLibrary:
 
 
 def create_skill_library(
-    store: "SkillStore | None" = None,
+    store: SkillStore | None = None,
     embedder: EmbeddingProvider | None = None,
     embedding_model: str | None = None,
 ) -> SkillLibrary:

@@ -1,8 +1,9 @@
 """Tests for MCP adapter - written first to define interface."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 from dataclasses import dataclass
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from py_code_mode.types import ToolDefinition
 
@@ -11,14 +12,16 @@ from py_code_mode.types import ToolDefinition
 @dataclass
 class MockMCPTool:
     """Mock of MCP's Tool type."""
+
     name: str
     description: str
-    inputSchema: dict
+    inputSchema: dict  # noqa: N815 - matches MCP's actual schema
 
 
 @dataclass
 class MockListToolsResult:
     """Mock of MCP's list_tools response."""
+
     tools: list
 
 
@@ -55,36 +58,39 @@ class TestMCPAdapterListTools:
     def mock_session(self):
         """Create a mock MCP ClientSession."""
         session = AsyncMock()
-        session.list_tools = AsyncMock(return_value=MockListToolsResult(tools=[
-            MockMCPTool(
-                name="read_file",
-                description="Read contents of a file",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "path": {"type": "string", "description": "File path"}
-                    },
-                    "required": ["path"]
-                }
-            ),
-            MockMCPTool(
-                name="write_file",
-                description="Write content to a file",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "path": {"type": "string"},
-                        "content": {"type": "string"}
-                    },
-                    "required": ["path", "content"]
-                }
-            ),
-        ]))
+        session.list_tools = AsyncMock(
+            return_value=MockListToolsResult(
+                tools=[
+                    MockMCPTool(
+                        name="read_file",
+                        description="Read contents of a file",
+                        inputSchema={
+                            "type": "object",
+                            "properties": {"path": {"type": "string", "description": "File path"}},
+                            "required": ["path"],
+                        },
+                    ),
+                    MockMCPTool(
+                        name="write_file",
+                        description="Write content to a file",
+                        inputSchema={
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string"},
+                                "content": {"type": "string"},
+                            },
+                            "required": ["path", "content"],
+                        },
+                    ),
+                ]
+            )
+        )
         return session
 
     @pytest.fixture
     def adapter(self, mock_session):
         from py_code_mode.mcp_adapter import MCPAdapter
+
         return MCPAdapter(session=mock_session)
 
     @pytest.mark.asyncio
@@ -128,13 +134,17 @@ class TestMCPAdapterCallTool:
     def mock_session(self):
         """Create a mock MCP ClientSession."""
         session = AsyncMock()
-        session.list_tools = AsyncMock(return_value=MockListToolsResult(tools=[
-            MockMCPTool(
-                name="echo",
-                description="Echo back input",
-                inputSchema={"type": "object", "properties": {"text": {"type": "string"}}}
-            ),
-        ]))
+        session.list_tools = AsyncMock(
+            return_value=MockListToolsResult(
+                tools=[
+                    MockMCPTool(
+                        name="echo",
+                        description="Echo back input",
+                        inputSchema={"type": "object", "properties": {"text": {"type": "string"}}},
+                    ),
+                ]
+            )
+        )
 
         # Mock call_tool response
         mock_result = MagicMock()
@@ -147,6 +157,7 @@ class TestMCPAdapterCallTool:
     @pytest.fixture
     def adapter(self, mock_session):
         from py_code_mode.mcp_adapter import MCPAdapter
+
         return MCPAdapter(session=mock_session)
 
     @pytest.mark.asyncio
@@ -229,9 +240,10 @@ class TestMCPAdapterSSETransport:
         from py_code_mode.mcp_adapter import MCPAdapter
 
         # Mock the MCP imports at their source
-        with patch("mcp.client.sse.sse_client") as mock_sse_client, \
-             patch("mcp.ClientSession") as mock_session_class:
-
+        with (
+            patch("mcp.client.sse.sse_client") as mock_sse_client,
+            patch("mcp.ClientSession") as mock_session_class,
+        ):
             # Setup mock SSE client context manager
             mock_read = AsyncMock()
             mock_write = AsyncMock()
@@ -248,7 +260,7 @@ class TestMCPAdapterSSETransport:
             mock_session_cm.__aexit__.return_value = None
             mock_session_class.return_value = mock_session_cm
 
-            adapter = await MCPAdapter.connect_sse("http://localhost:8080/sse")
+            await MCPAdapter.connect_sse("http://localhost:8080/sse")
 
             # Verify SSE client was called with URL
             mock_sse_client.assert_called_once()
@@ -260,9 +272,10 @@ class TestMCPAdapterSSETransport:
         """connect_sse forwards headers to sse_client."""
         from py_code_mode.mcp_adapter import MCPAdapter
 
-        with patch("mcp.client.sse.sse_client") as mock_sse_client, \
-             patch("mcp.ClientSession") as mock_session_class:
-
+        with (
+            patch("mcp.client.sse.sse_client") as mock_sse_client,
+            patch("mcp.ClientSession") as mock_session_class,
+        ):
             mock_read = AsyncMock()
             mock_write = AsyncMock()
             mock_sse_cm = AsyncMock()
@@ -278,10 +291,7 @@ class TestMCPAdapterSSETransport:
             mock_session_class.return_value = mock_session_cm
 
             headers = {"Authorization": "Bearer token123"}
-            await MCPAdapter.connect_sse(
-                "http://localhost:8080/sse",
-                headers=headers
-            )
+            await MCPAdapter.connect_sse("http://localhost:8080/sse", headers=headers)
 
             call_kwargs = mock_sse_client.call_args[1]
             assert call_kwargs.get("headers") == headers
@@ -291,9 +301,10 @@ class TestMCPAdapterSSETransport:
         """connect_sse calls session.initialize()."""
         from py_code_mode.mcp_adapter import MCPAdapter
 
-        with patch("mcp.client.sse.sse_client") as mock_sse_client, \
-             patch("mcp.ClientSession") as mock_session_class:
-
+        with (
+            patch("mcp.client.sse.sse_client") as mock_sse_client,
+            patch("mcp.ClientSession") as mock_session_class,
+        ):
             mock_read = AsyncMock()
             mock_write = AsyncMock()
             mock_sse_cm = AsyncMock()
@@ -332,9 +343,15 @@ class TestMCPAdapterWithRegistry:
 
         # Create adapter with mock session
         mock_session = AsyncMock()
-        mock_session.list_tools = AsyncMock(return_value=MockListToolsResult(tools=[
-            MockMCPTool(name="test", description="Test tool", inputSchema={"type": "object"})
-        ]))
+        mock_session.list_tools = AsyncMock(
+            return_value=MockListToolsResult(
+                tools=[
+                    MockMCPTool(
+                        name="test", description="Test tool", inputSchema={"type": "object"}
+                    )
+                ]
+            )
+        )
 
         adapter = MCPAdapter(session=mock_session)
         registry = ToolRegistry()
@@ -351,9 +368,13 @@ class TestMCPAdapterWithRegistry:
         from py_code_mode.mcp_adapter import MCPAdapter
 
         mock_session = AsyncMock()
-        mock_session.list_tools = AsyncMock(return_value=MockListToolsResult(tools=[
-            MockMCPTool(name="greet", description="Greet", inputSchema={"type": "object"})
-        ]))
+        mock_session.list_tools = AsyncMock(
+            return_value=MockListToolsResult(
+                tools=[
+                    MockMCPTool(name="greet", description="Greet", inputSchema={"type": "object"})
+                ]
+            )
+        )
 
         mock_result = MagicMock()
         mock_result.content = [MagicMock(type="text", text="Hello!")]

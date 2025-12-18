@@ -1,7 +1,6 @@
 """Tests for session server."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from py_code_mode.container.config import CLIToolConfig, SessionConfig
 
@@ -195,8 +194,9 @@ class TestSessionServerWithTools:
 
     def test_session_creates_isolated_artifact_store(self, config_with_tools) -> None:
         """Sessions have isolated artifact directories."""
-        from py_code_mode.container.server import create_app, _state, initialize_server
         import asyncio
+
+        from py_code_mode.container.server import initialize_server
 
         # Initialize server
         asyncio.run(initialize_server(config_with_tools))

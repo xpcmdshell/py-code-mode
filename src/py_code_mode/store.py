@@ -7,11 +7,11 @@ Commands:
     list - List items in store
 
 Usage:
-    python -m py_code_mode.store bootstrap --source ./skills --target redis://localhost:6379
-    python -m py_code_mode.store bootstrap --source ./tools --target redis://localhost:6379 --type tools
-    python -m py_code_mode.store pull --target redis://localhost:6379 --dest ./skills-from-redis
-    python -m py_code_mode.store diff --source ./skills --target redis://localhost:6379
-    python -m py_code_mode.store list --target redis://localhost:6379 --prefix agent-skills
+    python -m py_code_mode.store bootstrap --source ./skills --target redis://...
+    python -m py_code_mode.store bootstrap --source ./tools --target redis://... --type tools
+    python -m py_code_mode.store pull --target redis://... --dest ./skills-from-redis
+    python -m py_code_mode.store diff --source ./skills --target redis://...
+    python -m py_code_mode.store list --target redis://... --prefix agent-skills
 """
 
 from __future__ import annotations
@@ -25,8 +25,8 @@ from urllib.parse import urlparse
 import redis as redis_lib
 import yaml
 
-from py_code_mode.skill_store import FileSkillStore, RedisSkillStore
 from py_code_mode.redis_tools import RedisToolStore
+from py_code_mode.skill_store import FileSkillStore, RedisSkillStore
 from py_code_mode.skills import PythonSkill
 
 logger = logging.getLogger(__name__)
@@ -63,8 +63,7 @@ def _get_store(target: str, prefix: str) -> RedisSkillStore:
 
     else:
         raise ValueError(
-            f"Unknown scheme: {parsed.scheme}. "
-            "Supported: redis://, rediss://, s3://, cosmos://"
+            f"Unknown scheme: {parsed.scheme}. Supported: redis://, rediss://, s3://, cosmos://"
         )
 
 

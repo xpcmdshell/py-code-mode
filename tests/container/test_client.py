@@ -1,7 +1,8 @@
 """Tests for session server HTTP client."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from py_code_mode.container.client import SessionClient
 
@@ -42,12 +43,14 @@ class TestSessionClientExecute:
         """Execute returns result from server."""
         client = SessionClient()
 
-        mock_response = make_mock_response({
-            "value": 42,
-            "stdout": "",
-            "error": None,
-            "execution_time_ms": 5.0,
-        })
+        mock_response = make_mock_response(
+            {
+                "value": 42,
+                "stdout": "",
+                "error": None,
+                "execution_time_ms": 5.0,
+            }
+        )
 
         # Mock the internal client's post method
         mock_http_client = AsyncMock()
@@ -70,12 +73,14 @@ class TestSessionClientExecute:
         """Execute passes timeout to server."""
         client = SessionClient()
 
-        mock_response = make_mock_response({
-            "value": None,
-            "stdout": "",
-            "error": None,
-            "execution_time_ms": 100.0,
-        })
+        mock_response = make_mock_response(
+            {
+                "value": None,
+                "stdout": "",
+                "error": None,
+                "execution_time_ms": 100.0,
+            }
+        )
 
         mock_http_client = AsyncMock()
         mock_http_client.post = AsyncMock(return_value=mock_response)
@@ -91,12 +96,14 @@ class TestSessionClientExecute:
         """Execute returns error from server."""
         client = SessionClient()
 
-        mock_response = make_mock_response({
-            "value": None,
-            "stdout": "",
-            "error": "ZeroDivisionError: division by zero",
-            "execution_time_ms": 1.0,
-        })
+        mock_response = make_mock_response(
+            {
+                "value": None,
+                "stdout": "",
+                "error": "ZeroDivisionError: division by zero",
+                "execution_time_ms": 1.0,
+            }
+        )
 
         mock_http_client = AsyncMock()
         mock_http_client.post = AsyncMock(return_value=mock_response)
@@ -116,11 +123,13 @@ class TestSessionClientHealth:
         """Health check returns server status."""
         client = SessionClient()
 
-        mock_response = make_mock_response({
-            "status": "healthy",
-            "uptime_seconds": 123.4,
-            "active_sessions": 5,
-        })
+        mock_response = make_mock_response(
+            {
+                "status": "healthy",
+                "uptime_seconds": 123.4,
+                "active_sessions": 5,
+            }
+        )
 
         mock_http_client = AsyncMock()
         mock_http_client.get = AsyncMock(return_value=mock_response)
@@ -141,11 +150,13 @@ class TestSessionClientInfo:
         """Info returns available tools and skills."""
         client = SessionClient()
 
-        mock_response = make_mock_response({
-            "tools": [{"name": "cli.nmap", "description": "Network scanner"}],
-            "skills": [{"name": "scan", "description": "Port scanner"}],
-            "artifacts_path": "/workspace/artifacts",
-        })
+        mock_response = make_mock_response(
+            {
+                "tools": [{"name": "cli.nmap", "description": "Network scanner"}],
+                "skills": [{"name": "scan", "description": "Port scanner"}],
+                "artifacts_path": "/workspace/artifacts",
+            }
+        )
 
         mock_http_client = AsyncMock()
         mock_http_client.get = AsyncMock(return_value=mock_response)
@@ -167,10 +178,12 @@ class TestSessionClientReset:
         """Reset returns status."""
         client = SessionClient()
 
-        mock_response = make_mock_response({
-            "status": "reset",
-            "session_id": client.session_id,
-        })
+        mock_response = make_mock_response(
+            {
+                "status": "reset",
+                "session_id": client.session_id,
+            }
+        )
 
         mock_http_client = AsyncMock()
         mock_http_client.post = AsyncMock(return_value=mock_response)

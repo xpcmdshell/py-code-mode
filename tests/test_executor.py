@@ -242,9 +242,9 @@ class TestExecutorArtifacts:
     @pytest.mark.asyncio
     async def test_artifacts_save(self, executor_with_artifacts, tmp_path) -> None:
         """Can save artifacts from executed code."""
-        result = await executor_with_artifacts.execute('''
+        result = await executor_with_artifacts.execute("""
 artifacts.save("test.json", {"key": "value"}, description="Test data")
-''')
+""")
 
         assert result.is_ok
         assert (tmp_path / "test.json").exists()
@@ -253,25 +253,25 @@ artifacts.save("test.json", {"key": "value"}, description="Test data")
     async def test_artifacts_load(self, executor_with_artifacts) -> None:
         """Can load artifacts from executed code."""
         # First save
-        await executor_with_artifacts.execute('''
+        await executor_with_artifacts.execute("""
 artifacts.save("data.json", {"x": 42}, description="Data")
-''')
+""")
 
         # Then load
-        result = await executor_with_artifacts.execute('''
+        result = await executor_with_artifacts.execute("""
 data = artifacts.load("data.json")
 data["x"]
-''')
+""")
 
         assert result.value == 42
 
     @pytest.mark.asyncio
     async def test_artifacts_list(self, executor_with_artifacts) -> None:
         """Can list artifacts from executed code."""
-        await executor_with_artifacts.execute('''
+        await executor_with_artifacts.execute("""
 artifacts.save("a.json", {}, description="First")
 artifacts.save("b.json", {}, description="Second")
-''')
+""")
 
         result = await executor_with_artifacts.execute("len(artifacts.list())")
 
@@ -280,22 +280,22 @@ artifacts.save("b.json", {}, description="Second")
     @pytest.mark.asyncio
     async def test_artifacts_path_for_raw_access(self, executor_with_artifacts) -> None:
         """artifacts.path available as string for raw file I/O."""
-        result = await executor_with_artifacts.execute('''
+        result = await executor_with_artifacts.execute("""
 isinstance(artifacts.path, str)
-''')
+""")
 
         assert result.value is True
 
     @pytest.mark.asyncio
     async def test_artifacts_raw_file_io(self, executor_with_artifacts, tmp_path) -> None:
         """Can use standard file I/O with Path(artifacts.path)."""
-        result = await executor_with_artifacts.execute('''
+        result = await executor_with_artifacts.execute("""
 from pathlib import Path
 p = Path(artifacts.path)
 with open(p / "raw.txt", "w") as f:
     f.write("raw content")
 (p / "raw.txt").read_text()
-''')
+""")
 
         assert result.value == "raw content"
         assert (tmp_path / "raw.txt").exists()
@@ -321,7 +321,7 @@ description: Echo text
         executor = await CodeExecutor.create(tools=str(tools_dir))
 
         # Tool should be available
-        result = await executor.run('tools.list()')
+        result = await executor.run("tools.list()")
         assert result.value is not None
         assert any("echo" in str(t) for t in result.value)
 
@@ -341,7 +341,7 @@ def run(name: str = "World") -> str:
         executor = await CodeExecutor.create(skills=str(skills_dir))
 
         # Skill should be available
-        result = await executor.run('skills.list()')
+        result = await executor.run("skills.list()")
         assert result.value is not None
         assert any("greet" in str(s) for s in result.value)
 
@@ -352,10 +352,10 @@ def run(name: str = "World") -> str:
 
         executor = await CodeExecutor.create(artifacts=str(artifacts_dir))
 
-        result = await executor.run('''
+        result = await executor.run("""
 artifacts.save("test.txt", "hello", description="test")
 artifacts.load("test.txt")
-''')
+""")
         assert result.value == "hello"
         assert artifacts_dir.exists()
 
@@ -376,10 +376,10 @@ command: echo
 args: "{text}"
 """)
 
-        (skills_dir / "hello.py").write_text('''
+        (skills_dir / "hello.py").write_text("""
 def run() -> str:
     return "hello"
-''')
+""")
 
         executor = await CodeExecutor.create(
             tools=str(tools_dir),
@@ -462,12 +462,12 @@ class TestSkillsNamespaceCreate:
 
         executor = await CodeExecutor.create(skills=str(skills_dir))
 
-        result = await executor.run('''
+        result = await executor.run("""
 skills.create(
     name="my-skill",
     code="def run(): return 1"
 )
-''')
+""")
 
         assert result.error is not None
         assert "invalid" in result.error.lower() or "identifier" in result.error.lower()
@@ -480,12 +480,12 @@ skills.create(
 
         executor = await CodeExecutor.create(skills=str(skills_dir))
 
-        result = await executor.run('''
+        result = await executor.run("""
 skills.create(
     name="list",
     code="def run(): return 1"
 )
-''')
+""")
 
         assert result.error is not None
         assert "reserved" in result.error.lower()
@@ -498,12 +498,12 @@ skills.create(
 
         executor = await CodeExecutor.create(skills=str(skills_dir))
 
-        result = await executor.run('''
+        result = await executor.run("""
 skills.create(
     name="bad_syntax",
     code="def run( return 1"
 )
-''')
+""")
 
         assert result.error is not None
         assert "syntax" in result.error.lower()
@@ -516,12 +516,12 @@ skills.create(
 
         executor = await CodeExecutor.create(skills=str(skills_dir))
 
-        result = await executor.run('''
+        result = await executor.run("""
 skills.create(
     name="no_run",
     code="def helper(): return 1"
 )
-''')
+""")
 
         assert result.error is not None
         assert "run" in result.error.lower()
@@ -534,12 +534,12 @@ skills.create(
 
         executor = await CodeExecutor.create(skills=str(skills_dir))
 
-        result = await executor.run('''
+        result = await executor.run("""
 skills.create(
     name="not_callable",
     code="run = 'not a function'"
 )
-''')
+""")
 
         assert result.error is not None
         assert "callable" in result.error.lower() or "function" in result.error.lower()
@@ -580,13 +580,13 @@ def run(name: str = "World") -> str:
 
         executor = await CodeExecutor.create(skills=str(skills_dir))
 
-        result = await executor.run('''
+        result = await executor.run("""
 info = skills.create(
     name="with_meta",
     code="def run(): return 1"
 )
 info
-''')
+""")
 
         assert result.is_ok
         assert result.value is not None
@@ -602,12 +602,12 @@ info
 
         executor = await CodeExecutor.create(skills=str(skills_dir))
 
-        await executor.run('''
+        await executor.run("""
 skills.create(
     name="persisted",
     code="def run(): return 42"
 )
-''')
+""")
 
         # File should exist
         skill_file = skills_dir / "persisted.py"
@@ -630,16 +630,16 @@ class TestSkillsNamespaceDelete:
         executor = await CodeExecutor.create(skills=str(skills_dir))
 
         # Create then delete
-        await executor.run('''
+        await executor.run("""
 skills.create(name="to_delete", code="def run(): return 1")
-''')
+""")
         result = await executor.run('skills.delete("to_delete")')
 
         assert result.is_ok
         assert result.value is True
 
         # Should no longer be accessible
-        result = await executor.run('skills.to_delete()')
+        result = await executor.run("skills.to_delete()")
         assert result.error is not None
 
     @pytest.mark.asyncio
@@ -650,9 +650,9 @@ skills.create(name="to_delete", code="def run(): return 1")
 
         executor = await CodeExecutor.create(skills=str(skills_dir))
 
-        await executor.run('''
+        await executor.run("""
 skills.create(name="file_delete", code="def run(): return 1")
-''')
+""")
 
         skill_file = skills_dir / "file_delete.py"
         assert skill_file.exists()

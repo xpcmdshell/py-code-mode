@@ -186,7 +186,7 @@ class CLIAdapter:
 
             return result
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise ToolTimeoutError(name, spec.timeout_seconds)
         except Exception as e:
             if isinstance(e, (ToolCallError, ToolTimeoutError)):
@@ -246,7 +246,7 @@ class CLIAdapter:
 
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             process.kill()
             await process.wait()
             raise

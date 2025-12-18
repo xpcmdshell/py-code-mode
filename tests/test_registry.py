@@ -51,9 +51,7 @@ class TestToolRegistryBasics:
         assert "nonexistent" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_duplicate_tool_name_rejected(
-        self, network_adapter: MockAdapter
-    ) -> None:
+    async def test_duplicate_tool_name_rejected(self, network_adapter: MockAdapter) -> None:
         registry = ToolRegistry()
         await registry.register_adapter(network_adapter)
 
@@ -131,9 +129,7 @@ class TestToolRegistryScoping:
             await scoped.call_tool("curl", {"url": "http://example.com"})
 
     @pytest.mark.asyncio
-    async def test_empty_scope_blocks_all(
-        self, network_adapter: MockAdapter
-    ) -> None:
+    async def test_empty_scope_blocks_all(self, network_adapter: MockAdapter) -> None:
         registry = ToolRegistry()
         await registry.register_adapter(network_adapter)
 
@@ -149,9 +145,7 @@ class TestToolRegistryTagMerging:
         registry = ToolRegistry()
 
         # Register with additional tags
-        registered = await registry.register_adapter(
-            network_adapter, tags={"cli", "dangerous"}
-        )
+        registered = await registry.register_adapter(network_adapter, tags={"cli", "dangerous"})
 
         # Original tags + new tags
         nmap = next(t for t in registered if t.name == "nmap")
@@ -260,9 +254,7 @@ class TestToolRegistryCleanup:
     """Tests for cleanup operations."""
 
     @pytest.mark.asyncio
-    async def test_close_all(
-        self, network_adapter: MockAdapter, web_adapter: MockAdapter
-    ) -> None:
+    async def test_close_all(self, network_adapter: MockAdapter, web_adapter: MockAdapter) -> None:
         registry = ToolRegistry()
         await registry.register_adapter(network_adapter)
         await registry.register_adapter(web_adapter)
@@ -500,9 +492,6 @@ class TestToolRegistrySemanticIntegration:
         await registry.register_adapter(web_adapter)
         await registry.register_adapter(network_adapter)
 
-        # Scoped to web tools only
-        scoped = registry.scoped_view({"web"})
-
         # "HTTP client" would normally find curl (web) first
         # But if we search in network scope, curl shouldn't appear
         network_scoped = registry.scoped_view({"network"})
@@ -511,5 +500,3 @@ class TestToolRegistrySemanticIntegration:
         # curl has tags web/http, not network, so shouldn't be in results
         tool_names = [r.name for r in results]
         assert "curl" not in tool_names
-
-

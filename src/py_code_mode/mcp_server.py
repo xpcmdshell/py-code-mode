@@ -53,15 +53,11 @@ async def run_code(code: str) -> str:
     """
     result = await _executor.run(code)
     if result.error:
-        return f"Error: {result.error}" + (
-            f"\n\nStdout:\n{result.stdout}" if result.stdout else ""
-        )
+        return f"Error: {result.error}" + (f"\n\nStdout:\n{result.stdout}" if result.stdout else "")
 
     output = str(result.value) if result.value is not None else ""
     if result.stdout:
-        output = (
-            f"{output}\n\nStdout:\n{result.stdout}" if output else f"Stdout:\n{result.stdout}"
-        )
+        output = f"{output}\n\nStdout:\n{result.stdout}" if output else f"Stdout:\n{result.stdout}"
     return output or "(no output)"
 
 
@@ -85,7 +81,9 @@ async def search_tools(query: str, limit: int = 10) -> list[dict]:
     Returns matching tools with their descriptions and parameters.
     """
     tools = _executor._namespace["tools"].search(query, limit)
-    return [{"name": t.name, "description": t.description, "parameters": t.parameters} for t in tools]
+    return [
+        {"name": t.name, "description": t.description, "parameters": t.parameters} for t in tools
+    ]
 
 
 @mcp.tool
@@ -189,15 +187,11 @@ Examples:
     # File backend options
     parser.add_argument("--tools", help="Path to tools directory (YAML files)")
     parser.add_argument("--skills", help="Path to skills directory (.py files)")
-    parser.add_argument(
-        "--artifacts", help="Path to artifacts directory (default: ./artifacts)"
-    )
+    parser.add_argument("--artifacts", help="Path to artifacts directory (default: ./artifacts)")
 
     # Redis backend options
     parser.add_argument("--url", help="Redis URL (required for redis backend)")
-    parser.add_argument(
-        "--prefix", help="Redis key prefix (default: py-code-mode)"
-    )
+    parser.add_argument("--prefix", help="Redis key prefix (default: py-code-mode)")
 
     # Embedding model selection
     parser.add_argument(

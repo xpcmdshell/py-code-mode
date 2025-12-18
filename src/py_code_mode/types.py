@@ -15,12 +15,12 @@ class JsonSchema:
 
     type: str = "object"
     description: str | None = None
-    properties: dict[str, "JsonSchema"] = field(default_factory=dict)
+    properties: dict[str, JsonSchema] = field(default_factory=dict)
     required: list[str] = field(default_factory=list)
-    items: "JsonSchema | None" = None  # For array types
+    items: JsonSchema | None = None  # For array types
     enum: list[Any] = field(default_factory=list)  # For enum types
     default: Any = None
-    additional_properties: bool | "JsonSchema" = True
+    additional_properties: bool | JsonSchema = True
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON Schema dict representation."""
@@ -53,7 +53,7 @@ class JsonSchema:
         return result
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "JsonSchema":
+    def from_dict(cls, data: dict[str, Any]) -> JsonSchema:
         """Create JsonSchema from dict representation."""
         properties = {}
         if "properties" in data:

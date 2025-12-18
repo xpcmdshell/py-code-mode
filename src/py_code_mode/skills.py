@@ -7,10 +7,11 @@ import builtins
 import importlib.util
 import inspect
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, get_type_hints
+from typing import Any, get_type_hints
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +28,10 @@ class SkillMetadata:
     source: str  # "file", "redis", "runtime"
 
     @classmethod
-    def now(cls, created_by: str = "agent", source: str = "runtime") -> "SkillMetadata":
+    def now(cls, created_by: str = "agent", source: str = "runtime") -> SkillMetadata:
         """Create metadata with current timestamp."""
         return cls(
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             created_by=created_by,
             source=source,
         )
@@ -114,7 +115,7 @@ class PythonSkill:
         source: str,
         description: str = "",
         metadata: SkillMetadata | None = None,
-    ) -> "PythonSkill":
+    ) -> PythonSkill:
         """Create a PythonSkill from source code string.
 
         Args:
@@ -187,7 +188,7 @@ class PythonSkill:
         )
 
     @classmethod
-    def from_file(cls, path: Path) -> "PythonSkill":
+    def from_file(cls, path: Path) -> PythonSkill:
         """Load a Python skill from a .py file.
 
         The file must have a run() function as entrypoint.
@@ -224,7 +225,7 @@ class PythonSkill:
             source=source,
             _func=func,
             metadata=SkillMetadata(
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
                 created_by="human",
                 source="file",
             ),

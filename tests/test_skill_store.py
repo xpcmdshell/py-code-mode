@@ -12,7 +12,6 @@ from py_code_mode.skill_store import (
 )
 from py_code_mode.skills import PythonSkill
 
-
 # --- Fixtures ---
 
 
@@ -216,20 +215,16 @@ class TestFileSkillStore:
         assert len(skills) == 2
         assert names == {"greet", "farewell"}
 
-    def test_list_all_ignores_underscore_files(
-        self, file_store: FileSkillStore, tmp_path: Path
-    ):
+    def test_list_all_ignores_underscore_files(self, file_store: FileSkillStore, tmp_path: Path):
         """Should skip files starting with underscore."""
         # Create __init__.py
         (tmp_path / "__init__.py").write_text("")
-        (tmp_path / "_private.py").write_text('def run(): pass')
+        (tmp_path / "_private.py").write_text("def run(): pass")
 
         skills = file_store.list_all()
         assert len(skills) == 0
 
-    def test_exists_checks_file(
-        self, file_store: FileSkillStore, sample_python_skill: PythonSkill
-    ):
+    def test_exists_checks_file(self, file_store: FileSkillStore, sample_python_skill: PythonSkill):
         """Should check if .py file exists."""
         assert file_store.exists("greet") is False
 
@@ -246,6 +241,7 @@ class TestRedisSkillStore:
     @pytest.fixture
     def mock_redis(self):
         """Mock Redis client."""
+
         class MockRedis:
             def __init__(self):
                 self._data: dict[str, dict[str, str]] = {}
@@ -311,9 +307,7 @@ class TestRedisSkillStore:
         result = redis_store.delete("nonexistent")
         assert result is False
 
-    def test_list_all(
-        self, redis_store: RedisSkillStore, sample_python_skill: PythonSkill
-    ):
+    def test_list_all(self, redis_store: RedisSkillStore, sample_python_skill: PythonSkill):
         """Should list all skills from Redis."""
         redis_store.save(sample_python_skill)
 
@@ -330,9 +324,7 @@ class TestRedisSkillStore:
         assert len(skills) == 2
         assert names == {"greet", "farewell"}
 
-    def test_exists(
-        self, redis_store: RedisSkillStore, sample_python_skill: PythonSkill
-    ):
+    def test_exists(self, redis_store: RedisSkillStore, sample_python_skill: PythonSkill):
         """Should check if skill exists in Redis."""
         assert redis_store.exists("greet") is False
 

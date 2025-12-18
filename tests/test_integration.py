@@ -10,7 +10,7 @@ from textwrap import dedent
 import pytest
 
 from py_code_mode import CLIAdapter, CLIToolSpec, CodeExecutor, ToolRegistry
-from py_code_mode.semantic import SkillLibrary, MockEmbedder
+from py_code_mode.semantic import MockEmbedder, SkillLibrary
 from py_code_mode.skill_store import FileSkillStore
 
 
@@ -20,25 +20,27 @@ class TestCLIToExecutorFlow:
     @pytest.fixture
     async def registry_with_cli_tools(self) -> ToolRegistry:
         """Registry with real CLI tools."""
-        adapter = CLIAdapter([
-            CLIToolSpec(
-                name="echo",
-                description="Echo a message",
-                command="echo",
-                args_template="{message}",
-            ),
-            CLIToolSpec(
-                name="pwd",
-                description="Print working directory",
-                command="pwd",
-            ),
-            CLIToolSpec(
-                name="date_iso",
-                description="Get current date in ISO format",
-                command="date",
-                args_template="+%Y-%m-%d",
-            ),
-        ])
+        adapter = CLIAdapter(
+            [
+                CLIToolSpec(
+                    name="echo",
+                    description="Echo a message",
+                    command="echo",
+                    args_template="{message}",
+                ),
+                CLIToolSpec(
+                    name="pwd",
+                    description="Print working directory",
+                    command="pwd",
+                ),
+                CLIToolSpec(
+                    name="date_iso",
+                    description="Get current date in ISO format",
+                    command="date",
+                    args_template="+%Y-%m-%d",
+                ),
+            ]
+        )
 
         registry = ToolRegistry()
         await registry.register_adapter(adapter)
@@ -60,10 +62,10 @@ class TestCLIToExecutorFlow:
     @pytest.mark.asyncio
     async def test_tool_result_usable_in_code(self, executor: CodeExecutor) -> None:
         """Tool results can be used in subsequent code."""
-        result = await executor.run('''
+        result = await executor.run("""
 pwd = tools.call("pwd", {})
 pwd.strip()
-''')
+""")
 
         assert result.is_ok, f"Execution failed: {result.error}"
         assert "/" in result.value  # Unix path
@@ -75,7 +77,7 @@ pwd.strip()
         await executor.run('saved_pwd = tools.call("pwd", {})')
 
         # Second execution: use the saved result
-        result = await executor.run('saved_pwd.strip()')
+        result = await executor.run("saved_pwd.strip()")
 
         assert result.is_ok, f"Execution failed: {result.error}"
         assert "/" in result.value
@@ -83,7 +85,7 @@ pwd.strip()
     @pytest.mark.asyncio
     async def test_tools_list_shows_cli_tools(self, executor: CodeExecutor) -> None:
         """tools.list() returns registered CLI tools."""
-        result = await executor.run('len(tools.list())')
+        result = await executor.run("len(tools.list())")
 
         assert result.is_ok, f"Execution failed: {result.error}"
         assert result.value == 3  # echo, pwd, date_iso
@@ -91,10 +93,10 @@ pwd.strip()
     @pytest.mark.asyncio
     async def test_tools_search_finds_cli_tools(self, executor: CodeExecutor) -> None:
         """tools.search() can find CLI tools by description."""
-        result = await executor.run('''
+        result = await executor.run("""
 matches = tools.search("echo")
 [t["name"] for t in matches]
-''')
+""")
 
         assert result.is_ok, f"Execution failed: {result.error}"
         assert any("echo" in name for name in result.value)
@@ -115,13 +117,15 @@ class TestErrorPropagation:
     @pytest.fixture
     async def executor_with_failing_tool(self) -> CodeExecutor:
         """Executor with a tool that will fail."""
-        adapter = CLIAdapter([
-            CLIToolSpec(
-                name="fail",
-                description="A command that fails",
-                command="false",  # Unix command that always exits 1
-            ),
-        ])
+        adapter = CLIAdapter(
+            [
+                CLIToolSpec(
+                    name="fail",
+                    description="A command that fails",
+                    command="false",  # Unix command that always exits 1
+                ),
+            ]
+        )
 
         registry = ToolRegistry()
         await registry.register_adapter(adapter)
@@ -146,12 +150,20 @@ class TestMultipleAdapters:
     @pytest.mark.asyncio
     async def test_multiple_adapters_flat_namespace(self) -> None:
         """Tools from different adapters share flat namespace."""
-        adapter1 = CLIAdapter([
-            CLIToolSpec(name="echo1", description="Echo 1", command="echo", args_template="one"),
-        ])
-        adapter2 = CLIAdapter([
-            CLIToolSpec(name="echo2", description="Echo 2", command="echo", args_template="two"),
-        ])
+        adapter1 = CLIAdapter(
+            [
+                CLIToolSpec(
+                    name="echo1", description="Echo 1", command="echo", args_template="one"
+                ),
+            ]
+        )
+        adapter2 = CLIAdapter(
+            [
+                CLIToolSpec(
+                    name="echo2", description="Echo 2", command="echo", args_template="two"
+                ),
+            ]
+        )
 
         registry = ToolRegistry()
         await registry.register_adapter(adapter1)
@@ -169,12 +181,16 @@ class TestMultipleAdapters:
     @pytest.mark.asyncio
     async def test_duplicate_tool_name_rejected(self) -> None:
         """Duplicate tool names from different adapters are rejected."""
-        adapter1 = CLIAdapter([
-            CLIToolSpec(name="echo", description="Echo 1", command="echo"),
-        ])
-        adapter2 = CLIAdapter([
-            CLIToolSpec(name="echo", description="Echo 2", command="echo"),
-        ])
+        adapter1 = CLIAdapter(
+            [
+                CLIToolSpec(name="echo", description="Echo 1", command="echo"),
+            ]
+        )
+        adapter2 = CLIAdapter(
+            [
+                CLIToolSpec(name="echo", description="Echo 2", command="echo"),
+            ]
+        )
 
         registry = ToolRegistry()
         await registry.register_adapter(adapter1)
@@ -220,7 +236,7 @@ class TestScopedExecution:
         executor = CodeExecutor(registry=scoped)
 
         # Should see only 1 tool
-        result = await executor.run('len(tools.list())')
+        result = await executor.run("len(tools.list())")
         assert result.is_ok
         assert result.value == 1
 
@@ -240,7 +256,8 @@ class TestSkillsIntegration:
     def skills_dir(self, tmp_path: Path) -> Path:
         """Create a directory with sample Python skill files."""
         # Simple greeting skill
-        (tmp_path / "greet.py").write_text(dedent('''
+        (tmp_path / "greet.py").write_text(
+            dedent('''
             """Greet someone by name."""
 
             def run(target_name: str, enthusiasm: int = 1) -> str:
@@ -251,10 +268,12 @@ class TestSkillsIntegration:
                     enthusiasm: Exclamation marks
                 """
                 return f"Hello, {target_name}!" + "!" * (enthusiasm - 1)
-        ''').strip())
+        ''').strip()
+        )
 
         # Math skill
-        (tmp_path / "add_numbers.py").write_text(dedent('''
+        (tmp_path / "add_numbers.py").write_text(
+            dedent('''
             """Add two numbers together."""
 
             def run(a: int, b: int) -> int:
@@ -265,7 +284,8 @@ class TestSkillsIntegration:
                     b: Second number
                 """
                 return a + b
-        ''').strip())
+        ''').strip()
+        )
 
         return tmp_path
 
@@ -283,9 +303,7 @@ class TestSkillsIntegration:
         return CodeExecutor(skill_library=skill_library)
 
     @pytest.mark.asyncio
-    async def test_skills_namespace_available(
-        self, executor_with_skills: CodeExecutor
-    ) -> None:
+    async def test_skills_namespace_available(self, executor_with_skills: CodeExecutor) -> None:
         """skills.* namespace is available in executor."""
         result = await executor_with_skills.run("'skills' in dir()")
 
@@ -295,10 +313,10 @@ class TestSkillsIntegration:
     @pytest.mark.asyncio
     async def test_skills_search(self, executor_with_skills: CodeExecutor) -> None:
         """Can search for skills from code."""
-        result = await executor_with_skills.run('''
+        result = await executor_with_skills.run("""
 matches = skills.search("greet")
 [s["name"] for s in matches]
-''')
+""")
 
         assert result.is_ok, f"Execution failed: {result.error}"
         assert "greet" in result.value
@@ -306,10 +324,10 @@ matches = skills.search("greet")
     @pytest.mark.asyncio
     async def test_skills_get(self, executor_with_skills: CodeExecutor) -> None:
         """Can get skill by name from code."""
-        result = await executor_with_skills.run('''
+        result = await executor_with_skills.run("""
 skill = skills.get("greet")
 skill.name
-''')
+""")
 
         assert result.is_ok, f"Execution failed: {result.error}"
         assert result.value == "greet"
@@ -317,21 +335,19 @@ skill.name
     @pytest.mark.asyncio
     async def test_skills_invoke(self, executor_with_skills: CodeExecutor) -> None:
         """Can invoke a skill with parameters."""
-        result = await executor_with_skills.run('''
+        result = await executor_with_skills.run("""
 skills.invoke("greet", target_name="Alice")
-''')
+""")
 
         assert result.is_ok, f"Execution failed: {result.error}"
         assert "Hello, Alice!" in result.value
 
     @pytest.mark.asyncio
-    async def test_skills_invoke_with_defaults(
-        self, executor_with_skills: CodeExecutor
-    ) -> None:
+    async def test_skills_invoke_with_defaults(self, executor_with_skills: CodeExecutor) -> None:
         """Skill invoke uses default parameter values."""
-        result = await executor_with_skills.run('''
+        result = await executor_with_skills.run("""
 skills.invoke("greet", target_name="Bob", enthusiasm=3)
-''')
+""")
 
         assert result.is_ok, f"Execution failed: {result.error}"
         assert "Hello, Bob!!!" in result.value
@@ -339,9 +355,9 @@ skills.invoke("greet", target_name="Bob", enthusiasm=3)
     @pytest.mark.asyncio
     async def test_skills_invoke_math(self, executor_with_skills: CodeExecutor) -> None:
         """Skill that does computation."""
-        result = await executor_with_skills.run('''
+        result = await executor_with_skills.run("""
 skills.invoke("add_numbers", a=10, b=32)
-''')
+""")
 
         assert result.is_ok, f"Execution failed: {result.error}"
         assert result.value == 42

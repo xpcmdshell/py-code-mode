@@ -1,11 +1,10 @@
 """Tests for semantic search - written first to define interface."""
 
-import pytest
-from typing import Protocol
-from pathlib import Path
 from textwrap import dedent
 
-from py_code_mode.skills import SkillParameter, PythonSkill
+import pytest
+
+from py_code_mode.skills import PythonSkill
 
 
 def _make_skill(name: str, description: str, code: str) -> PythonSkill:
@@ -136,7 +135,7 @@ class TestSkillLibrary:
 
     def test_can_create_empty_library(self) -> None:
         """Library can be created without skills."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
         embedder = MockEmbedder(dimension=384)
         library = SkillLibrary(embedder)
@@ -145,7 +144,7 @@ class TestSkillLibrary:
 
     def test_add_skill_indexes_description(self, sample_skills: list[PythonSkill]) -> None:
         """Adding skill indexes its description for search."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
         embedder = MockEmbedder(dimension=384)
         library = SkillLibrary(embedder)
@@ -155,7 +154,7 @@ class TestSkillLibrary:
 
     def test_add_skill_indexes_code(self, sample_skills: list[PythonSkill]) -> None:
         """Adding skill indexes its source code for search."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
         embedder = MockEmbedder(dimension=384)
         library = SkillLibrary(embedder)
@@ -166,7 +165,7 @@ class TestSkillLibrary:
 
     def test_search_by_description(self, sample_skills: list[PythonSkill]) -> None:
         """Search finds skills by description similarity."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
         embedder = MockEmbedder(dimension=384)
         library = SkillLibrary(embedder)
@@ -181,7 +180,7 @@ class TestSkillLibrary:
 
     def test_search_by_code_intent(self, sample_skills: list[PythonSkill]) -> None:
         """Search finds skills by code content."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
         embedder = MockEmbedder(dimension=384)
         library = SkillLibrary(embedder)
@@ -193,11 +192,9 @@ class TestSkillLibrary:
 
         assert len(results) >= 1
 
-    def test_combined_description_and_code_search(
-        self, sample_skills: list[PythonSkill]
-    ) -> None:
+    def test_combined_description_and_code_search(self, sample_skills: list[PythonSkill]) -> None:
         """Search considers both description and code."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
         embedder = MockEmbedder(dimension=384)
         library = SkillLibrary(embedder)
@@ -213,7 +210,7 @@ class TestSkillLibrary:
         self, sample_skills: list[PythonSkill], python_skill: PythonSkill
     ) -> None:
         """Search works with Python skills that have full source."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
         embedder = MockEmbedder(dimension=384)
         library = SkillLibrary(embedder)
@@ -228,7 +225,7 @@ class TestSkillLibrary:
 
     def test_get_by_name(self, sample_skills: list[PythonSkill]) -> None:
         """Can retrieve skill by exact name."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
         embedder = MockEmbedder(dimension=384)
         library = SkillLibrary(embedder)
@@ -242,7 +239,7 @@ class TestSkillLibrary:
 
     def test_search_limit(self, sample_skills: list[PythonSkill]) -> None:
         """Search respects limit parameter."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
         embedder = MockEmbedder(dimension=384)
         library = SkillLibrary(embedder)
@@ -255,7 +252,7 @@ class TestSkillLibrary:
 
     def test_remove_skill(self) -> None:
         """Can remove skill from library."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
         embedder = MockEmbedder(dimension=384)
         library = SkillLibrary(embedder)
@@ -276,17 +273,14 @@ class TestRankingConfig:
 
     def test_default_ranking_weights(self) -> None:
         """Default weights favor description over code."""
-        from py_code_mode.semantic import RankingConfig, SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import RankingConfig
 
         config = RankingConfig()
-        embedder = MockEmbedder(dimension=384)
-        library = SkillLibrary(embedder, ranking=config)
-
         assert config.description_weight > config.code_weight
 
     def test_code_only_ranking(self) -> None:
         """Can configure to only use code embeddings."""
-        from py_code_mode.semantic import RankingConfig, SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, RankingConfig, SkillLibrary
 
         config = RankingConfig(description_weight=0.0, code_weight=1.0)
         embedder = MockEmbedder(dimension=384)
@@ -300,7 +294,7 @@ class TestRankingConfig:
 
     def test_threshold_filtering(self) -> None:
         """Can filter results below threshold."""
-        from py_code_mode.semantic import RankingConfig, SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, RankingConfig, SkillLibrary
 
         config = RankingConfig(min_score_threshold=0.99)  # Very high threshold
         embedder = MockEmbedder(dimension=384)
@@ -309,9 +303,9 @@ class TestRankingConfig:
         # Add skill with low similarity to any query
         library.add(_make_skill("obscure", "very specific thing", "pass"))
 
-        # Most queries won't meet high threshold
-        results = library.search("completely unrelated query")
-        # May or may not return results depending on mock embeddings
+        # Most queries won't meet high threshold - this test just verifies
+        # the threshold config is accepted, actual filtering depends on embeddings
+        library.search("completely unrelated query")
 
 
 class TestSkillLibraryWithStore:
@@ -341,7 +335,7 @@ class TestSkillLibraryWithStore:
         self, sample_skills: list[PythonSkill]
     ) -> None:
         """Skills in store should be searchable immediately after construction."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
         from py_code_mode.skill_store import MemorySkillStore
 
         # Populate store first
@@ -360,7 +354,7 @@ class TestSkillLibraryWithStore:
 
     def test_add_stores_in_store(self, sample_skills: list[PythonSkill]) -> None:
         """add() should store skill in store."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
         from py_code_mode.skill_store import MemorySkillStore
 
         store = MemorySkillStore()
@@ -375,7 +369,7 @@ class TestSkillLibraryWithStore:
 
     def test_add_makes_skill_searchable(self, sample_skills: list[PythonSkill]) -> None:
         """add() should make skill immediately searchable."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
         from py_code_mode.skill_store import MemorySkillStore
 
         store = MemorySkillStore()
@@ -391,7 +385,7 @@ class TestSkillLibraryWithStore:
 
     def test_remove_removes_from_store(self, sample_skills: list[PythonSkill]) -> None:
         """remove() should remove from store."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
         from py_code_mode.skill_store import MemorySkillStore
 
         store = MemorySkillStore()
@@ -409,7 +403,7 @@ class TestSkillLibraryWithStore:
 
     def test_remove_removes_from_search(self, sample_skills: list[PythonSkill]) -> None:
         """remove() should make skill no longer searchable."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
         from py_code_mode.skill_store import MemorySkillStore
 
         store = MemorySkillStore()
@@ -428,7 +422,7 @@ class TestSkillLibraryWithStore:
 
     def test_refresh_picks_up_store_changes(self, sample_skills: list[PythonSkill]) -> None:
         """refresh() should reload from store and rebuild embeddings."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
         from py_code_mode.skill_store import MemorySkillStore
 
         store = MemorySkillStore()
@@ -455,7 +449,7 @@ class TestSkillLibraryWithStore:
 
     def test_refresh_clears_stale_embeddings(self, sample_skills: list[PythonSkill]) -> None:
         """refresh() should remove embeddings for skills no longer in store."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
         from py_code_mode.skill_store import MemorySkillStore
 
         store = MemorySkillStore()
@@ -481,7 +475,7 @@ class TestSkillLibraryWithStore:
 
     def test_no_store_works_in_memory_only(self, sample_skills: list[PythonSkill]) -> None:
         """Without store, library works as in-memory only."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
         embedder = MockEmbedder(dimension=384)
         library = SkillLibrary(embedder=embedder)  # No store
@@ -496,7 +490,7 @@ class TestSkillLibraryWithStore:
 
     def test_refresh_with_no_store_is_noop(self) -> None:
         """refresh() with no store should do nothing, not crash."""
-        from py_code_mode.semantic import SkillLibrary, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
         embedder = MockEmbedder(dimension=384)
         library = SkillLibrary(embedder=embedder)  # No store
@@ -515,7 +509,7 @@ class TestCreateSkillLibraryFactory:
     def test_creates_with_default_embedder(self) -> None:
         """Factory creates library with Embedder (BGE-small) by default."""
         pytest.importorskip("sentence_transformers")
-        from py_code_mode.semantic import create_skill_library, Embedder
+        from py_code_mode.semantic import Embedder, create_skill_library
 
         library = create_skill_library()
 
@@ -523,7 +517,7 @@ class TestCreateSkillLibraryFactory:
 
     def test_creates_with_custom_embedder(self) -> None:
         """Factory accepts custom embedder."""
-        from py_code_mode.semantic import create_skill_library, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, create_skill_library
 
         embedder = MockEmbedder(dimension=128)
         library = create_skill_library(embedder=embedder)
@@ -532,7 +526,7 @@ class TestCreateSkillLibraryFactory:
 
     def test_creates_with_store(self) -> None:
         """Factory accepts store and loads skills."""
-        from py_code_mode.semantic import create_skill_library, MockEmbedder
+        from py_code_mode.semantic import MockEmbedder, create_skill_library
         from py_code_mode.skill_store import MemorySkillStore
 
         store = MemorySkillStore()
@@ -575,7 +569,7 @@ class TestSkillLibraryWithRealEmbedder:
             _make_skill(
                 name="dir_bruteforce",
                 description="Bruteforce web directories to find hidden paths",
-                code="tools.call('ffuf', {'url': url, 'wordlist': '/usr/share/wordlists/common.txt'})",
+                code="tools.call('ffuf', {'url': url, 'wordlist': wordlist})",
             ),
             _make_skill(
                 name="dns_enum",

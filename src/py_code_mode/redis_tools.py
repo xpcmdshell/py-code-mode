@@ -11,6 +11,8 @@ import yaml
 if TYPE_CHECKING:
     from redis import Redis
 
+    from py_code_mode.registry import ToolRegistry
+
 
 class RedisToolStore:
     """Redis-backed storage for tool configurations.
@@ -25,7 +27,7 @@ class RedisToolStore:
 
     INDEX_KEY = ":__tools__"
 
-    def __init__(self, redis: "Redis", prefix: str = "tools") -> None:
+    def __init__(self, redis: Redis, prefix: str = "tools") -> None:
         """Initialize Redis tool store.
 
         Args:
@@ -105,10 +107,10 @@ class RedisToolStore:
     @classmethod
     def from_directory(
         cls,
-        redis: "Redis",
+        redis: Redis,
         path: Path | str,
         prefix: str = "tools",
-    ) -> "RedisToolStore":
+    ) -> RedisToolStore:
         """Load tools from directory into Redis.
 
         Args:
@@ -137,9 +139,9 @@ class RedisToolStore:
 
 
 async def registry_from_redis(
-    store: "RedisToolStore",
+    store: RedisToolStore,
     embedder: Any | None = None,
-) -> "ToolRegistry":
+) -> ToolRegistry:
     """Create a ToolRegistry from tools stored in Redis.
 
     Args:

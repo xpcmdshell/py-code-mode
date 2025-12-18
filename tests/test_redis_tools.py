@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 if TYPE_CHECKING:
-    from redis import Redis
+    pass
 
 
 class TestRedisToolStore:
@@ -71,7 +71,7 @@ class TestRedisToolStore:
             prefix = f"{key}:"
             for k, v in stored_data.items():
                 if k.startswith(prefix):
-                    field = k[len(prefix):]
+                    field = k[len(prefix) :]
                     result[field.encode()] = v
             return result
 
@@ -157,7 +157,7 @@ description: Echo text
             prefix = f"{key}:"
             for k, v in stored_data.items():
                 if k.startswith(prefix):
-                    field = k[len(prefix):]
+                    field = k[len(prefix) :]
                     result[field.encode()] = v
             return result
 
@@ -184,18 +184,22 @@ class TestRegistryFromRedis:
 
         # Return CLI tool configs
         tool_configs = {
-            b"curl": json.dumps({
-                "name": "curl",
-                "type": "cli",
-                "args": "{url}",
-                "description": "HTTP client",
-            }).encode(),
-            b"jq": json.dumps({
-                "name": "jq",
-                "type": "cli",
-                "args": "{filter}",
-                "description": "JSON processor",
-            }).encode(),
+            b"curl": json.dumps(
+                {
+                    "name": "curl",
+                    "type": "cli",
+                    "args": "{url}",
+                    "description": "HTTP client",
+                }
+            ).encode(),
+            b"jq": json.dumps(
+                {
+                    "name": "jq",
+                    "type": "cli",
+                    "args": "{filter}",
+                    "description": "JSON processor",
+                }
+            ).encode(),
         }
         mock_redis.hgetall.return_value = tool_configs
         mock_redis.hlen.return_value = 2
@@ -232,19 +236,23 @@ class TestRegistryFromRedis:
 
         # Mix of CLI and MCP tools
         tool_configs = {
-            b"curl": json.dumps({
-                "name": "curl",
-                "type": "cli",
-                "args": "{url}",
-                "description": "HTTP client",
-            }).encode(),
-            b"fetch": json.dumps({
-                "name": "fetch",
-                "type": "mcp",
-                "transport": "stdio",
-                "command": "uvx",
-                "args": ["mcp-server-fetch"],
-            }).encode(),
+            b"curl": json.dumps(
+                {
+                    "name": "curl",
+                    "type": "cli",
+                    "args": "{url}",
+                    "description": "HTTP client",
+                }
+            ).encode(),
+            b"fetch": json.dumps(
+                {
+                    "name": "fetch",
+                    "type": "mcp",
+                    "transport": "stdio",
+                    "command": "uvx",
+                    "args": ["mcp-server-fetch"],
+                }
+            ).encode(),
         }
         mock_redis.hgetall.return_value = tool_configs
         mock_redis.hlen.return_value = 2
@@ -267,6 +275,7 @@ class TestRedisToolStoreIntegration:
         """Get Redis client, skip if unavailable."""
         try:
             import redis
+
             r = redis.Redis()
             r.ping()
             yield r
@@ -306,20 +315,26 @@ class TestRedisToolStoreIntegration:
 
         store = RedisToolStore(redis_client, prefix="test-tools")
 
-        store.add("echo", {
-            "name": "echo",
-            "type": "cli",
-            "command": "echo",
-            "args": "{text}",
-            "description": "Echo text",
-        })
-        store.add("cat", {
-            "name": "cat",
-            "type": "cli",
-            "command": "cat",
-            "args": "{file}",
-            "description": "Show file contents",
-        })
+        store.add(
+            "echo",
+            {
+                "name": "echo",
+                "type": "cli",
+                "command": "echo",
+                "args": "{text}",
+                "description": "Echo text",
+            },
+        )
+        store.add(
+            "cat",
+            {
+                "name": "cat",
+                "type": "cli",
+                "command": "cat",
+                "args": "{file}",
+                "description": "Show file contents",
+            },
+        )
 
         registry = await registry_from_redis(store)
         tools = registry.list_tools()

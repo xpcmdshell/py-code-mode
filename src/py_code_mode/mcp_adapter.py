@@ -44,7 +44,7 @@ class MCPAdapter:
     def __init__(
         self,
         session: MCPSession,
-        exit_stack: "AsyncExitStack | None" = None,
+        exit_stack: AsyncExitStack | None = None,
     ) -> None:
         """Initialize adapter with MCP session.
 
@@ -62,7 +62,7 @@ class MCPAdapter:
         command: str,
         args: list[str] | None = None,
         env: dict[str, str] | None = None,
-    ) -> "MCPAdapter":
+    ) -> MCPAdapter:
         """Connect to an MCP server via stdio transport.
 
         Args:
@@ -83,8 +83,7 @@ class MCPAdapter:
             from mcp.client.stdio import stdio_client
         except ImportError as e:
             raise ImportError(
-                "MCP package required for stdio connection. "
-                "Install with: pip install mcp"
+                "MCP package required for stdio connection. Install with: pip install mcp"
             ) from e
 
         exit_stack = AsyncExitStack()
@@ -95,14 +94,10 @@ class MCPAdapter:
             env=env,
         )
 
-        stdio_transport = await exit_stack.enter_async_context(
-            stdio_client(server_params)
-        )
+        stdio_transport = await exit_stack.enter_async_context(stdio_client(server_params))
         stdio, write = stdio_transport
 
-        session = await exit_stack.enter_async_context(
-            ClientSession(stdio, write)
-        )
+        session = await exit_stack.enter_async_context(ClientSession(stdio, write))
 
         await session.initialize()
 
@@ -115,7 +110,7 @@ class MCPAdapter:
         headers: dict[str, str] | None = None,
         timeout: float = 5.0,
         sse_read_timeout: float = 300.0,
-    ) -> "MCPAdapter":
+    ) -> MCPAdapter:
         """Connect to an MCP server via SSE transport.
 
         Args:
@@ -137,8 +132,7 @@ class MCPAdapter:
             from mcp.client.sse import sse_client
         except ImportError as e:
             raise ImportError(
-                "MCP package required for SSE connection. "
-                "Install with: pip install mcp"
+                "MCP package required for SSE connection. Install with: pip install mcp"
             ) from e
 
         exit_stack = AsyncExitStack()
@@ -148,9 +142,7 @@ class MCPAdapter:
         )
         read_stream, write_stream = sse_transport
 
-        session = await exit_stack.enter_async_context(
-            ClientSession(read_stream, write_stream)
-        )
+        session = await exit_stack.enter_async_context(ClientSession(read_stream, write_stream))
 
         await session.initialize()
 

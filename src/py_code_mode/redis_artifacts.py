@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from py_code_mode.artifacts import Artifact
@@ -24,7 +23,7 @@ class RedisArtifactStore:
 
     INDEX_SUFFIX = ":__index__"
 
-    def __init__(self, redis: "Redis", prefix: str = "artifacts") -> None:
+    def __init__(self, redis: Redis, prefix: str = "artifacts") -> None:
         """Initialize store with Redis client.
 
         Args:
@@ -76,7 +75,7 @@ class RedisArtifactStore:
             self._redis.set(data_key, str(data))
 
         # Update index
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         index_entry = {
             "description": description,
             "created_at": now.isoformat(),
