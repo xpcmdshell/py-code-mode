@@ -317,8 +317,49 @@ agent = AssistantAgent(name="analyst", model_client=model, tools=[run_code])
 See `examples/` for complete examples:
 
 - `examples/minimal/` - Simple agent in ~100 lines, no framework
-- `examples/autogen/` - AutoGen integration with file and Redis backends
+- `examples/autogen-direct/` - AutoGen with py-code-mode wired directly (more control)
+- `examples/autogen-mcp/` - AutoGen connecting via MCP protocol (simpler setup)
 - `examples/azure-container-apps/` - Production deployment on Azure
+
+### MCP Server
+
+py-code-mode can run as an MCP server, allowing any MCP-capable agent to use it:
+
+```bash
+# Add to Claude Code
+claude mcp add py-code-mode -- py-code-mode-mcp --tools ./tools --skills ./skills
+
+# Or with any MCP client
+py-code-mode-mcp --tools ./tools --skills ./skills --artifacts ./artifacts
+```
+
+This exposes `run_code`, `list_tools`, `search_tools`, `list_skills`, and `search_skills` as MCP tools.
+
+### Embedding Model
+
+Semantic search uses BGE-small by default. You can specify a different model:
+
+```bash
+# Use a built-in alias
+py-code-mode-mcp --tools ./tools --skills ./skills --embedding-model bge-base
+
+# Or any HuggingFace model
+py-code-mode-mcp --tools ./tools --skills ./skills --embedding-model intfloat/e5-large-v2
+```
+
+Built-in aliases:
+- `bge-small` (default) - BAAI/bge-small-en-v1.5, fast, good quality
+- `bge-base` - BAAI/bge-base-en-v1.5, slightly better quality, slower
+- `granite` - ibm-granite/granite-embedding-small-english-r2
+
+Python API:
+```python
+executor = await CodeExecutor.create(
+    tools="./tools",
+    skills="./skills",
+    embedding_model="bge-base",  # or full HuggingFace name
+)
+```
 
 ## License
 

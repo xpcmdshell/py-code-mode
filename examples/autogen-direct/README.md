@@ -1,11 +1,15 @@
-# AutoGen Example
+# AutoGen Direct Integration
 
-Local AutoGen agent with py-code-mode tools and skills.
+Local AutoGen agent with py-code-mode wired directly into the agent.
+
+**When to use:** Deep customization, lower latency, single-framework projects.
+
+See also: `../autogen-mcp/` for MCP-based integration (simpler setup, standard protocol).
 
 ## Setup
 
 ```bash
-cd examples/autogen
+cd examples/autogen-direct
 uv sync
 ```
 

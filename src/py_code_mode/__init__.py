@@ -29,22 +29,26 @@ from py_code_mode.skill_store import (
 # Semantic features require numpy/scikit-learn - optional import
 try:
     from py_code_mode.semantic import (
+        MODEL_ALIASES,
         EmbeddingProvider,
-        GraniteEmbedder,
+        Embedder,
         MockEmbedder,
         RankingConfig,
         SkillLibrary,
         create_skill_library,
+        resolve_model_name,
     )
     _SEMANTIC_AVAILABLE = True
 except ImportError:
     _SEMANTIC_AVAILABLE = False
+    MODEL_ALIASES = None  # type: ignore
     EmbeddingProvider = None  # type: ignore
-    GraniteEmbedder = None  # type: ignore
+    Embedder = None  # type: ignore
     MockEmbedder = None  # type: ignore
     RankingConfig = None  # type: ignore
     SkillLibrary = None  # type: ignore
     create_skill_library = None  # type: ignore
+    resolve_model_name = None  # type: ignore
 from py_code_mode.errors import (
     ArtifactNotFoundError,
     ArtifactWriteError,
@@ -108,10 +112,12 @@ __all__ = [
     "FileSkillStore",
     "RedisSkillStore",
     # Semantic
+    "MODEL_ALIASES",
     "EmbeddingProvider",
-    "GraniteEmbedder",
+    "Embedder",
     "MockEmbedder",
     "RankingConfig",
     "SkillLibrary",
+    "resolve_model_name",
     "create_skill_library",
 ]

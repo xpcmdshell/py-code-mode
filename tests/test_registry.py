@@ -3,7 +3,7 @@
 import pytest
 
 from py_code_mode import ToolNotFoundError, ToolRegistry
-from tests.conftest import MockAdapter
+from tests.conftest import ControllableEmbedder, MockAdapter
 
 
 class TestToolRegistryBasics:
@@ -343,5 +343,173 @@ args: "{x}"
         tools = registry.list_tools()
         assert len(tools) == 1
         assert tools[0].name == "valid"
+
+
+class TestToolRegistrySemanticSearch:
+    """Unit tests for semantic search mechanics."""
+
+    # --- Low-level: Vector storage ---
+
+    @pytest.mark.asyncio
+    async def test_vectors_populated_on_register(
+        self,
+        controllable_embedder: ControllableEmbedder,
+        web_adapter: MockAdapter,
+    ) -> None:
+        """_vectors dict populated when adapter registers tools."""
+        # Setup: curl embeds to known vector
+        controllable_embedder.set_response("curl: HTTP client", [1.0, 0.0, 0.0, 0.0])
+
+        registry = ToolRegistry(embedder=controllable_embedder)
+        await registry.register_adapter(web_adapter)
+
+        assert "curl" in registry._vectors
+        assert len(registry._vectors["curl"]) == 4
+
+    @pytest.mark.asyncio
+    async def test_vectors_cleared_on_refresh(
+        self,
+        controllable_embedder: ControllableEmbedder,
+        web_adapter: MockAdapter,
+    ) -> None:
+        """refresh() clears vectors before repopulating."""
+        controllable_embedder.set_response("curl: HTTP client", [1.0, 0.0, 0.0, 0.0])
+
+        registry = ToolRegistry(embedder=controllable_embedder)
+        await registry.register_adapter(web_adapter)
+
+        # Store reference to check it gets cleared
+        assert "curl" in registry._vectors
+        await registry.refresh()
+
+        # Without store, refresh clears but can't repopulate
+        assert len(registry._vectors) == 0
+
+    # --- Low-level: Search algorithm ---
+
+    @pytest.mark.asyncio
+    async def test_search_uses_cosine_similarity(
+        self,
+        controllable_embedder: ControllableEmbedder,
+        web_adapter: MockAdapter,
+        json_adapter: MockAdapter,
+    ) -> None:
+        """Search ranks by cosine similarity to query vector."""
+        # curl is similar to query, jq is orthogonal
+        controllable_embedder.set_response("curl: HTTP client", [1.0, 0.0, 0.0, 0.0])
+        controllable_embedder.set_response("ffuf: Web fuzzer", [0.8, 0.2, 0.0, 0.0])
+        controllable_embedder.set_response("jq: JSON processor", [0.0, 1.0, 0.0, 0.0])
+        controllable_embedder.set_response("HTTP requests", [0.9, 0.1, 0.0, 0.0])
+
+        registry = ToolRegistry(embedder=controllable_embedder)
+        await registry.register_adapter(web_adapter)
+        await registry.register_adapter(json_adapter)
+
+        results = registry.search("HTTP requests")
+
+        # curl vector [1,0,0,0] is most similar to query [0.9,0.1,0,0]
+        assert len(results) >= 2
+        assert results[0].name == "curl"
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_substring_no_embedder(
+        self,
+        web_adapter: MockAdapter,
+    ) -> None:
+        """Without embedder, falls back to substring search."""
+        registry = ToolRegistry(embedder=None)
+        await registry.register_adapter(web_adapter)
+
+        # Substring "curl" matches
+        results = registry.search("curl")
+        assert len(results) == 1
+        assert results[0].name == "curl"
+
+        # Semantic query doesn't match anything
+        results = registry.search("make HTTP requests")
+        assert len(results) == 0
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_substring_no_vectors(
+        self,
+        controllable_embedder: ControllableEmbedder,
+    ) -> None:
+        """With embedder but no tools, search returns empty."""
+        registry = ToolRegistry(embedder=controllable_embedder)
+
+        results = registry.search("anything")
+        assert len(results) == 0
+
+    # --- Low-level: Adapter lifecycle ---
+
+    @pytest.mark.asyncio
+    async def test_refresh_closes_existing_adapters(
+        self,
+        controllable_embedder: ControllableEmbedder,
+        web_adapter: MockAdapter,
+    ) -> None:
+        """refresh() closes adapters before recreating."""
+        registry = ToolRegistry(embedder=controllable_embedder)
+        await registry.register_adapter(web_adapter)
+
+        assert not web_adapter.closed
+        await registry.refresh()
+
+        assert web_adapter.closed
+
+
+class TestToolRegistrySemanticIntegration:
+    """Integration tests for end-to-end semantic search behavior."""
+
+    @pytest.mark.asyncio
+    async def test_semantic_search_end_to_end(
+        self,
+        web_adapter: MockAdapter,
+        json_adapter: MockAdapter,
+    ) -> None:
+        """End-to-end: semantic search finds tools by intent."""
+        # Use real embedder for integration test
+        from py_code_mode.semantic import Embedder
+
+        registry = ToolRegistry(embedder=Embedder())
+        await registry.register_adapter(web_adapter)
+        await registry.register_adapter(json_adapter)
+
+        # "process JSON data" should find jq
+        results = registry.search("process JSON data")
+        assert len(results) > 0
+        # jq should be in results (may not be first with real embeddings)
+        tool_names = [r.name for r in results]
+        assert "jq" in tool_names
+
+    @pytest.mark.asyncio
+    async def test_scoped_semantic_search(
+        self,
+        controllable_embedder: ControllableEmbedder,
+        web_adapter: MockAdapter,
+        network_adapter: MockAdapter,
+    ) -> None:
+        """Scoped view respects scope for semantic search."""
+        controllable_embedder.set_response("curl: HTTP client", [1.0, 0.0, 0.0, 0.0])
+        controllable_embedder.set_response("ffuf: Web fuzzer", [0.8, 0.2, 0.0, 0.0])
+        controllable_embedder.set_response("nmap: Network scanner", [0.0, 0.0, 1.0, 0.0])
+        controllable_embedder.set_response("ping: ICMP ping", [0.0, 0.0, 0.8, 0.2])
+        controllable_embedder.set_response("HTTP client", [0.95, 0.05, 0.0, 0.0])
+
+        registry = ToolRegistry(embedder=controllable_embedder)
+        await registry.register_adapter(web_adapter)
+        await registry.register_adapter(network_adapter)
+
+        # Scoped to web tools only
+        scoped = registry.scoped_view({"web"})
+
+        # "HTTP client" would normally find curl (web) first
+        # But if we search in network scope, curl shouldn't appear
+        network_scoped = registry.scoped_view({"network"})
+        results = network_scoped.search("HTTP client")
+
+        # curl has tags web/http, not network, so shouldn't be in results
+        tool_names = [r.name for r in results]
+        assert "curl" not in tool_names
 
 

@@ -398,6 +398,8 @@ class CodeExecutor:
         artifacts: str | None = None,
         allowed_tags: set[str] | None = None,
         default_timeout: float = 30.0,
+        semantic_search: bool = True,
+        embedding_model: str | None = None,
     ) -> "CodeExecutor":
         """Create executor by specifying where your tools and skills are.
 
@@ -407,6 +409,10 @@ class CodeExecutor:
             artifacts: Path to directory for artifact storage.
             allowed_tags: Optional set of tags to filter tools.
             default_timeout: Default execution timeout.
+            semantic_search: Enable semantic search for tools and skills.
+                Defaults to True.
+            embedding_model: Model alias ("bge-small", "bge-base", "granite") or
+                full HuggingFace model name. Default: "bge-small".
 
         Returns:
             Configured CodeExecutor.
@@ -417,11 +423,20 @@ class CodeExecutor:
                 skills="./my_skills/",
             )
         """
+        # Create embedder for semantic search
+        embedder = None
+        if semantic_search:
+            try:
+                from py_code_mode.semantic import Embedder
+                embedder = Embedder(model_name=embedding_model)
+            except ImportError:
+                pass  # Embedder not available, fall back to substring search
+
         # Load tools from directory (supports CLI and MCP tools)
         if tools:
-            registry = await ToolRegistry.from_dir(tools)
+            registry = await ToolRegistry.from_dir(tools, embedder=embedder)
         else:
-            registry = ToolRegistry()
+            registry = ToolRegistry(embedder=embedder)
 
         # Apply tag filtering if specified
         if allowed_tags:
@@ -433,7 +448,7 @@ class CodeExecutor:
             skills_path = Path(skills)
             if skills_path.exists():
                 store = FileSkillStore(skills_path)
-                skill_library = create_skill_library(store=store)
+                skill_library = create_skill_library(store=store, embedder=embedder)
 
         # Build artifact store
         artifact_store = None
