@@ -131,9 +131,14 @@ class TestBackendSkills:
         skills_path = tmp_path / "skills"
         skills_path.mkdir()
 
+        source = (
+            'def run(name: str = "World") -> str:\n'
+            '    """Greet someone."""\n'
+            '    return f"Hello, {name}!"'
+        )
         skill = PythonSkill.from_source(
             name="greet",
-            source='def run(name: str = "World") -> str:\n    """Greet someone."""\n    return f"Hello, {name}!"',
+            source=source,
             description="Greet someone",
         )
 

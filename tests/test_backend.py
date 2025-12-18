@@ -8,7 +8,6 @@ import pytest
 
 # These imports will fail initially - that's expected (TDD red phase)
 from py_code_mode.backend import Capability, Executor, create_executor
-
 from py_code_mode.types import ExecutionResult
 
 
@@ -336,4 +335,63 @@ class TestInProcessCapabilities:
         """supported_capabilities() does not include isolation capabilities."""
         caps = executor.supported_capabilities()
         assert Capability.PROCESS_ISOLATION not in caps
+        assert Capability.NETWORK_ISOLATION not in caps
+
+
+class TestContainerCapabilities:
+    """Tests for container executor capabilities (requires Docker)."""
+
+    @pytest.fixture
+    def container_executor_class(self):
+        """Get ContainerExecutor class, skip if docker not installed."""
+        try:
+            from py_code_mode.backends.container import ContainerExecutor
+
+            return ContainerExecutor
+        except ImportError:
+            pytest.skip("Docker not installed")
+
+    def test_supports_timeout(self, container_executor_class) -> None:
+        """Container executor supports timeout."""
+        from py_code_mode.backends.container import ContainerConfig
+
+        config = ContainerConfig()
+        executor = container_executor_class(config)
+        assert executor.supports(Capability.TIMEOUT)
+
+    def test_supports_process_isolation(self, container_executor_class) -> None:
+        """Container executor supports process isolation."""
+        from py_code_mode.backends.container import ContainerConfig
+
+        config = ContainerConfig()
+        executor = container_executor_class(config)
+        assert executor.supports(Capability.PROCESS_ISOLATION)
+
+    def test_supports_reset(self, container_executor_class) -> None:
+        """Container executor supports reset capability."""
+        from py_code_mode.backends.container import ContainerConfig
+
+        config = ContainerConfig()
+        executor = container_executor_class(config)
+        assert executor.supports(Capability.RESET)
+
+    def test_does_not_support_network_isolation(self, container_executor_class) -> None:
+        """Container executor does NOT support network isolation."""
+        from py_code_mode.backends.container import ContainerConfig
+
+        config = ContainerConfig()
+        executor = container_executor_class(config)
+        assert not executor.supports(Capability.NETWORK_ISOLATION)
+
+    def test_capabilities_set(self, container_executor_class) -> None:
+        """supported_capabilities() returns correct set."""
+        from py_code_mode.backends.container import ContainerConfig
+
+        config = ContainerConfig()
+        executor = container_executor_class(config)
+        caps = executor.supported_capabilities()
+
+        assert Capability.TIMEOUT in caps
+        assert Capability.PROCESS_ISOLATION in caps
+        assert Capability.RESET in caps
         assert Capability.NETWORK_ISOLATION not in caps
