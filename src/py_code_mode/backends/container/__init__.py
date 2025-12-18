@@ -3,7 +3,7 @@
 Provides Docker-based execution environment with pre-packaged tools and skills.
 
 Usage:
-    from py_code_mode.container import ContainerExecutor, ContainerConfig
+    from py_code_mode.backends.container import ContainerExecutor, ContainerConfig
 
     config = ContainerConfig(
         image="py-code-mode-tools:latest",
@@ -14,23 +14,21 @@ Usage:
         result = await executor.run('tools.call("cli.nmap", {"target": "10.0.0.1"})')
 """
 
-from py_code_mode.container.client import (
+from py_code_mode.backends.container.client import (
     ExecuteResult,
     HealthResult,
     InfoResult,
     ResetResult,
     SessionClient,
 )
-from py_code_mode.container.config import (
+from py_code_mode.backends.container.config import (
     CLIToolConfig,
     ContainerConfig,
     MCPServerConfig,
     SessionConfig,
 )
-from py_code_mode.container.executor import (
-    ContainerExecutor,
-    ExecutionResult,
-)
+from py_code_mode.backends.container.executor import ContainerExecutor
+from py_code_mode.types import ExecutionResult
 
 __all__ = [
     # Config

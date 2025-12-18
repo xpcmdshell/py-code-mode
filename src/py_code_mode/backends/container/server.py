@@ -7,7 +7,7 @@ Supports multiple isolated sessions - each session_id gets its own
 Python namespace and artifact directory.
 
 Usage:
-    uvicorn py_code_mode.container.server:app --host 0.0.0.0 --port 8080
+    uvicorn py_code_mode.backends.container.server:app --host 0.0.0.0 --port 8080
 """
 
 from __future__ import annotations
@@ -37,8 +37,8 @@ except ImportError:
 
 from py_code_mode.adapters import CLIAdapter, CLIToolSpec
 from py_code_mode.artifacts import ArtifactStoreProtocol, FileArtifactStore
+from py_code_mode.backends.container.config import SessionConfig
 from py_code_mode.backends.in_process import InProcessExecutor as CodeExecutor
-from py_code_mode.container.config import SessionConfig
 from py_code_mode.registry import ToolRegistry
 from py_code_mode.semantic import SkillLibrary, create_skill_library
 from py_code_mode.skill_store import FileSkillStore

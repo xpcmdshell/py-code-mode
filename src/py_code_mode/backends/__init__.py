@@ -6,10 +6,14 @@ Available backends:
 - microsandbox: microVM-based isolation (future)
 """
 
-from py_code_mode.backend import register_backend
-
 # Import backends to trigger registration
 from py_code_mode.backends.in_process import InProcessExecutor
 
+# Container backend is optional (requires docker)
+try:
+    from py_code_mode.backends.container import ContainerExecutor
+except ImportError:
+    ContainerExecutor = None  # type: ignore
+
 # Re-export for convenient imports
-__all__ = ["InProcessExecutor"]
+__all__ = ["InProcessExecutor", "ContainerExecutor"]

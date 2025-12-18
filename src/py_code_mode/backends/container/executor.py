@@ -1,7 +1,12 @@
 """Container-based code executor.
 
-ContainerExecutor provides the same interface as CodeExecutor but executes
-code inside a Docker container for isolation.
+ContainerExecutor provides the same interface as InProcessExecutor but executes
+code inside a Docker container for process isolation.
+
+Capabilities:
+- TIMEOUT: Yes (via session server)
+- PROCESS_ISOLATION: Yes (Docker container)
+- RESET: Yes (can reset session state)
 
 Usage:
     config = ContainerConfig(image="py-code-mode-tools:latest")
@@ -13,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
 from typing import Any
 
 try:
@@ -27,34 +31,33 @@ except ImportError:
     docker = None  # type: ignore
     Container = None  # type: ignore
 
-from py_code_mode.container.client import SessionClient
-from py_code_mode.container.config import ContainerConfig
-
-
-@dataclass
-class ExecutionResult:
-    """Result from code execution in container.
-
-    Compatible with py_code_mode.executor.ExecutionResult.
-    """
-
-    value: Any
-    stdout: str
-    error: str | None
-
-    @property
-    def is_ok(self) -> bool:
-        """Check if execution succeeded."""
-        return self.error is None
+from py_code_mode.backend import Capability, register_backend
+from py_code_mode.backends.container.client import SessionClient
+from py_code_mode.backends.container.config import ContainerConfig
+from py_code_mode.types import ExecutionResult
 
 
 class ContainerExecutor:
     """Execute code inside a Docker container.
 
-    This is a drop-in replacement for CodeExecutor that provides
+    This is a drop-in replacement for InProcessExecutor that provides
     isolation via Docker containers. The container runs a session
     server that maintains persistent state.
+
+    Capabilities:
+    - TIMEOUT: Yes
+    - PROCESS_ISOLATION: Yes
+    - RESET: Yes
     """
+
+    # Capabilities this backend supports
+    _CAPABILITIES = frozenset(
+        {
+            Capability.TIMEOUT,
+            Capability.PROCESS_ISOLATION,
+            Capability.RESET,
+        }
+    )
 
     def __init__(self, config: ContainerConfig) -> None:
         """Initialize container executor.
@@ -73,6 +76,14 @@ class ContainerExecutor:
         self._client: SessionClient | None = None
         self._port: int | None = None
 
+    def supports(self, capability: str) -> bool:
+        """Check if this backend supports a capability."""
+        return capability in self._CAPABILITIES
+
+    def supported_capabilities(self) -> set[str]:
+        """Return set of all capabilities this backend supports."""
+        return set(self._CAPABILITIES)
+
     async def __aenter__(self) -> ContainerExecutor:
         """Start container and connect."""
         await self.start()
@@ -80,7 +91,7 @@ class ContainerExecutor:
 
     async def __aexit__(self, *args: object) -> None:
         """Stop container and cleanup."""
-        await self.stop()
+        await self.close()
 
     async def start(self) -> None:
         """Start the container and wait for it to be healthy."""
@@ -126,6 +137,10 @@ class ContainerExecutor:
                 pass
             self._container = None
 
+    async def close(self) -> None:
+        """Release executor resources (protocol method, aliases stop())."""
+        await self.stop()
+
     async def run(
         self,
         code: str,
@@ -150,6 +165,12 @@ class ContainerExecutor:
             stdout=result.stdout,
             error=result.error,
         )
+
+    async def reset(self) -> None:
+        """Reset the session state inside the container."""
+        if self._client is None:
+            raise RuntimeError("Container not started")
+        await self._client.reset()
 
     def _get_container_port(self) -> int:
         """Get the host port mapped to container port 8080."""
@@ -203,3 +224,7 @@ class ContainerExecutor:
     def port(self) -> int | None:
         """Get the mapped host port."""
         return self._port
+
+
+# Register this backend
+register_backend("container", ContainerExecutor)

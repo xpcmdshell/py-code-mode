@@ -2,7 +2,7 @@
 
 import pytest
 
-from py_code_mode.container.config import CLIToolConfig, SessionConfig
+from py_code_mode.backends.container.config import CLIToolConfig, SessionConfig
 
 
 class TestSessionConfig:
@@ -64,7 +64,7 @@ class TestSessionServer:
         except ImportError:
             pytest.skip("FastAPI not installed")
 
-        from py_code_mode.container.server import create_app
+        from py_code_mode.backends.container.server import create_app
 
         # Use temp directory for artifacts
         config = SessionConfig(artifacts_path=tmp_path / "artifacts")
@@ -184,7 +184,7 @@ class TestSessionServerWithTools:
     @pytest.mark.asyncio
     async def test_build_tool_registry(self, config_with_tools) -> None:
         """Builds tool registry from config."""
-        from py_code_mode.container.server import build_tool_registry
+        from py_code_mode.backends.container.server import build_tool_registry
 
         registry = await build_tool_registry(config_with_tools)
         tools = registry.list_tools()
@@ -196,12 +196,12 @@ class TestSessionServerWithTools:
         """Sessions have isolated artifact directories."""
         import asyncio
 
-        from py_code_mode.container.server import initialize_server
+        from py_code_mode.backends.container.server import initialize_server
 
         # Initialize server
         asyncio.run(initialize_server(config_with_tools))
 
-        from py_code_mode.container.server import create_session
+        from py_code_mode.backends.container.server import create_session
 
         session = create_session("test-session")
 
