@@ -75,6 +75,66 @@ result = await executor.run('''
 print(result.value)
 ```
 
+## Architecture
+
+```
+Agent (LLM)
+    |
+    | writes Python code string
+    v
++---------------------------------------------------------------+
+|                        CodeExecutor                           |
+|                                                               |
+|   Namespaces available in executed code:                      |
+|                                                               |
+|   tools.*          skills.*             artifacts.*           |
+|       |                |                     |                |
+|       v                v                     v                |
+|   ToolRegistry    SkillsNamespace      ArtifactStore          |
+|       |                |                     |                |
+|       v                v                     v                |
+|   Adapters        SkillLibrary          File/Redis            |
+|   +-- CLI         (semantic search)                           |
+|   +-- MCP              |                                      |
+|   +-- HTTP        SkillStore                                  |
+|                   +-- Memory                                  |
+|                   +-- File                                    |
+|                   +-- Redis                                   |
++---------------------------------------------------------------+
+```
+
+## Concepts
+
+### Tools
+
+External commands wrapped as callable functions. Three adapter types:
+
+- **CLI** - Shell commands (nmap, curl, dig, etc.)
+- **MCP** - Model Context Protocol servers (stdio or SSE transport)
+- **HTTP** - REST API endpoints
+
+Agents call tools via `tools.nmap(target="10.0.0.1")` or `tools.call("nmap", {...})`.
+
+### Skills
+
+Reusable Python code recipes that can use tools. Skills are:
+
+- **Searchable** - Semantic search finds relevant skills by description
+- **Inspectable** - Agents can read skill source code to understand or adapt them
+- **Persistent** - Store in files (dev) or Redis (production)
+
+Agents invoke skills via `skills.invoke("scan_ports", target="10.0.0.1")` or `skills.scan_ports(target="10.0.0.1")`.
+
+### Artifacts
+
+Persistent storage for saving/loading data across sessions:
+
+```python
+artifacts.save("results.json", data, description="Scan results")
+data = artifacts.load("results.json")
+artifacts.list()  # See all saved artifacts
+```
+
 ## Tool Types
 
 All tools go in the same `tools/` directory. The `type` field determines how they're executed:
@@ -121,20 +181,63 @@ executor = await CodeExecutor.create(
 )
 ```
 
-### Explicit objects
+### Explicit Components
 
-For more control, use registries directly:
+For more control, construct components directly:
 
 ```python
-from py_code_mode import CodeExecutor, ToolRegistry, SkillRegistry
+from pathlib import Path
+from py_code_mode import (
+    CodeExecutor,
+    ToolRegistry,
+    FileSkillStore,
+    FileArtifactStore,
+    create_skill_library,
+)
 
+# Tools (loads CLI and MCP tools from YAML files)
+registry = await ToolRegistry.from_dir("./tools/")
+
+# Skills with semantic search
+store = FileSkillStore(Path("./skills"))
+skill_library = create_skill_library(store=store)
+
+# Artifacts
+artifacts = FileArtifactStore(Path("./data"))
+
+# Executor
 executor = CodeExecutor(
-    registry=await ToolRegistry.from_dir("./tools/"),
-    skill_registry=SkillRegistry.from_dir("./skills/"),
+    registry=registry,
+    skill_library=skill_library,
+    artifact_store=artifacts,
 )
 ```
 
-### Tool syntax
+### Redis Backend (Production)
+
+For distributed deployments, use Redis for skills and artifacts:
+
+```python
+from redis import Redis
+from py_code_mode import RedisSkillStore, RedisArtifactStore, create_skill_library
+
+redis = Redis.from_url("redis://localhost:6379")
+
+# Skills
+store = RedisSkillStore(redis, prefix="my-agent")
+skill_library = create_skill_library(store=store)
+
+# Artifacts
+artifacts = RedisArtifactStore(redis, prefix="my-agent")
+
+executor = CodeExecutor(
+    registry=registry,
+    skill_library=skill_library,
+    artifact_store=artifacts,
+)
+```
+
+### Tool Syntax
 
 Agents can call tools either way:
 
@@ -148,6 +251,31 @@ tools.call("nmap", {"target": "10.0.0.1", "flags": "-sV"})
 # Discovery
 tools.list()
 tools.search("network")
+```
+
+### Skill Operations
+
+```python
+# Invoke a skill
+skills.invoke("scan_ports", target="10.0.0.1")
+skills.scan_ports(target="10.0.0.1")  # Attribute syntax
+
+# Search for skills
+skills.search("port scanning", limit=5)
+
+# List all skills
+skills.list()
+
+# Get skill details (including source)
+skill = skills.get("scan_ports")
+print(skill.source)
+
+# Create new skill at runtime
+skills.create(
+    name="quick_scan",
+    code='def run(target: str): return tools.nmap(target=target, flags="-F")',
+    description="Fast port scan"
+)
 ```
 
 ## Container Isolation
@@ -187,6 +315,9 @@ agent = AssistantAgent(name="analyst", model_client=model, tools=[run_code])
 ## Examples
 
 See `examples/` for complete examples:
+
+- `examples/minimal/` - Simple agent in ~100 lines, no framework
+- `examples/autogen/` - AutoGen integration with file and Redis backends
 - `examples/azure-container-apps/` - Production deployment on Azure
 
 ## License
