@@ -1,0 +1,97 @@
+# Azure Container Apps deployment manifest for py-code-mode session server
+#
+# This deploys a session container with:
+# - Pre-installed tools (nmap, curl, dig, whois, etc.)
+# - Azure Files volume for artifact persistence
+# - Optional Redis connection for distributed artifact storage
+#
+# Usage:
+#   az containerapp create --resource-group <rg> --environment <env> \
+#     --name py-code-mode-session --yaml deploy/container-app.yaml
+
+properties:
+  configuration:
+    # Internal ingress - only accessible within the Container Apps environment
+    ingress:
+      external: false
+      targetPort: 8080
+      transport: http
+      # Allow traffic from other containers in the environment
+      allowInsecure: false
+
+    # Secrets (referenced by environment variables)
+    secrets:
+      - name: redis-connection
+        value: ""  # Set via: az containerapp secret set
+
+  template:
+    # Container configuration
+    containers:
+      - name: session
+        # Use the pre-built tools image from your registry
+        # Build with: docker build -f docker/Dockerfile.tools -t <registry>/py-code-mode-tools:latest .
+        image: ghcr.io/your-org/py-code-mode-tools:latest
+
+        resources:
+          cpu: 1.0
+          memory: 2Gi
+
+        env:
+          - name: PORT
+            value: "8080"
+          # Tools config location (mounted from Azure Files)
+          - name: TOOLS_CONFIG
+            value: /workspace/configs/tools.yaml
+          # Skills directory
+          - name: SKILLS_DIR
+            value: /workspace/configs/skills
+          # Artifact storage path
+          - name: ARTIFACTS_PATH
+            value: /workspace/artifacts
+          # Optional: Redis for distributed artifacts
+          # - name: REDIS_URL
+          #   secretRef: redis-connection
+
+        # Health probes
+        probes:
+          - type: liveness
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          - type: readiness
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+        # Volume mounts
+        volumeMounts:
+          - volumeName: artifacts
+            mountPath: /workspace/artifacts
+          - volumeName: configs
+            mountPath: /workspace/configs
+
+    # Scaling configuration
+    scale:
+      minReplicas: 1
+      maxReplicas: 10
+      rules:
+        - name: http-rule
+          http:
+            metadata:
+              concurrentRequests: "10"
+
+    # Volumes
+    volumes:
+      # Persistent artifact storage
+      - name: artifacts
+        storageType: AzureFile
+        storageName: artifacts-share  # Must be created first
+
+      # Configuration files (tools.yaml, skills/)
+      - name: configs
+        storageType: AzureFile
+        storageName: configs-share  # Must be created first

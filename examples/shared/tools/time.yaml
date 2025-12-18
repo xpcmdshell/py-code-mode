@@ -1,0 +1,7 @@
+name: time
+type: mcp
+transport: stdio
+command: uvx
+args: ["mcp-server-time"]
+description: Get current time in any timezone
+tags: [util, mcp]

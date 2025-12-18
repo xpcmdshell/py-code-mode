@@ -1,0 +1,74 @@
+# Tools configuration for py-code-mode container
+
+# Python dependencies (auto-installed at startup if not present)
+python_deps:
+  - impacket
+  - requests
+  - beautifulsoup4
+
+tools:
+  # Network scanning
+  - name: nmap
+    description: Network scanner for port discovery and service detection
+    args: "{flags} {target}"
+    timeout: 300
+    tags: [network, recon, scanning]
+
+  - name: ping
+    description: Test network connectivity to a host
+    args: "-c {count} {target}"
+    timeout: 30
+    tags: [network, connectivity]
+
+  # DNS
+  - name: dig
+    description: DNS lookup utility
+    args: "{type} {domain} +short"
+    timeout: 30
+    tags: [network, dns]
+
+  - name: whois
+    description: Domain/IP registration lookup
+    args: "{target}"
+    timeout: 30
+    tags: [network, recon]
+
+  # HTTP
+  - name: curl
+    description: HTTP client for fetching URLs
+    args: "-s {flags} {url}"
+    timeout: 60
+    tags: [http, web]
+
+  - name: httpie
+    description: User-friendly HTTP client (http command)
+    command: http  # command differs from name
+    args: "{method} {url} {params}"
+    timeout: 60
+    tags: [http, web]
+
+  # File analysis
+  - name: file
+    description: Determine file type
+    args: "{path}"
+    timeout: 10
+    tags: [file, analysis]
+
+  - name: xxd
+    description: Hexdump utility
+    args: "{flags} {path}"
+    timeout: 30
+    tags: [file, binary]
+
+  - name: strings
+    description: Extract printable strings from binary
+    args: "{path}"
+    timeout: 30
+    tags: [file, binary, analysis]
+
+  # JSON
+  - name: jq
+    description: JSON processor and query tool
+    args: "{filter}"
+    timeout: 30
+    tags: [json, data]

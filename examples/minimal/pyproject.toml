@@ -1,0 +1,16 @@
+[project]
+name = "py-code-mode-minimal-example"
+version = "0.1.0"
+description = "Minimal agent example using raw Anthropic API"
+requires-python = ">=3.12"
+dependencies = [
+    "py-code-mode",
+    "anthropic",
+    "python-dotenv",
+]
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.uv.sources]
+py-code-mode = { path = "../..", editable = true }

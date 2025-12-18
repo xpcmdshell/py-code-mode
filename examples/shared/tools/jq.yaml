@@ -1,0 +1,5 @@
+name: jq
+type: cli
+args: "{filter}"
+description: Process JSON data
+tags: [json]

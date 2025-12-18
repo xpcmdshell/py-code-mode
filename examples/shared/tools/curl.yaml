@@ -1,0 +1,5 @@
+name: curl
+type: cli
+args: "-sL {url}"
+description: Make HTTP requests
+tags: [http]

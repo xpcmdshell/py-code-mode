@@ -1,0 +1,39 @@
+# Tools image for py-code-mode
+# Extends base with security and network tools
+
+FROM py-code-mode:base
+
+# Install system tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Network tools
+    nmap \
+    curl \
+    wget \
+    dnsutils \
+    whois \
+    netcat-openbsd \
+    traceroute \
+    # HTTP tools
+    httpie \
+    jq \
+    # File tools
+    file \
+    xxd \
+    binutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy tools configuration
+COPY docker/configs/tools.yaml /app/tools.yaml
+ENV TOOLS_CONFIG=/app/tools.yaml
+
+# Copy skills if present
+COPY docker/configs/skills/ /app/skills/
+
+# Python dependencies are auto-installed from tools.yaml at startup
+# See python_deps section in docker/configs/tools.yaml
+
+# Verify CLI tools are available
+RUN nmap --version && \
+    curl --version && \
+    dig -v && \
+    whois --version

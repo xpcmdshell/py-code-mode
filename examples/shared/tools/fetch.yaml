@@ -1,0 +1,7 @@
+name: fetch
+type: mcp
+transport: stdio
+command: uvx
+args: ["mcp-server-fetch"]
+description: Fetch web pages with full content extraction
+tags: [http, mcp]

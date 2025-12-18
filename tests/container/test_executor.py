@@ -1,0 +1,265 @@
+"""Tests for ContainerExecutor."""
+
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+from pathlib import Path
+
+from py_code_mode.container.config import ContainerConfig
+from py_code_mode.container.executor import ContainerExecutor
+
+
+class TestContainerConfig:
+    """Tests for ContainerConfig."""
+
+    def test_default_values(self) -> None:
+        """ContainerConfig has sensible defaults."""
+        config = ContainerConfig()
+
+        assert config.image == "py-code-mode-tools:latest"
+        assert config.port == 0  # Auto-assign
+        assert config.timeout == 30.0
+
+    def test_custom_image(self) -> None:
+        """Can set custom image."""
+        config = ContainerConfig(image="my-tools:v1")
+        assert config.image == "my-tools:v1"
+
+    def test_with_artifacts_path(self) -> None:
+        """Can set artifacts path for volume mount."""
+        config = ContainerConfig(host_artifacts_path=Path("/data/artifacts"))
+        assert config.host_artifacts_path == Path("/data/artifacts")
+
+
+class TestContainerExecutor:
+    """Tests for ContainerExecutor."""
+
+    @pytest.fixture
+    def config(self, tmp_path) -> ContainerConfig:
+        """Create test config."""
+        return ContainerConfig(
+            image="py-code-mode-test:latest",
+            host_artifacts_path=tmp_path / "artifacts",
+        )
+
+    def _make_mock_container(self) -> MagicMock:
+        """Create a mock Docker container with proper port bindings."""
+        mock_container = MagicMock()
+        mock_container.id = "abc123"
+        mock_container.status = "running"
+        mock_container.attrs = {
+            "NetworkSettings": {
+                "Ports": {
+                    "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}]
+                }
+            }
+        }
+        mock_container.reload = MagicMock()
+        return mock_container
+
+    @pytest.mark.asyncio
+    async def test_context_manager_starts_and_stops(self, config) -> None:
+        """Executor starts container on enter, stops on exit."""
+        executor = ContainerExecutor(config)
+
+        mock_container = self._make_mock_container()
+        mock_docker = MagicMock()
+        mock_docker.containers.run.return_value = mock_container
+
+        with patch("docker.from_env", return_value=mock_docker):
+            with patch.object(executor, "_wait_for_healthy", new_callable=AsyncMock):
+                async with executor:
+                    assert executor._container is not None
+                    mock_docker.containers.run.assert_called_once()
+
+                # After exit, container should be stopped
+                mock_container.stop.assert_called_once()
+                mock_container.remove.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_delegates_to_client(self, config) -> None:
+        """Run delegates to session client."""
+        executor = ContainerExecutor(config)
+
+        mock_container = self._make_mock_container()
+        mock_docker = MagicMock()
+        mock_docker.containers.run.return_value = mock_container
+
+        from py_code_mode.container.client import ExecuteResult
+
+        mock_result = ExecuteResult(
+            value=42,
+            stdout="",
+            error=None,
+            execution_time_ms=5.0,
+            session_id="test-session",
+        )
+
+        with patch("docker.from_env", return_value=mock_docker):
+            with patch.object(executor, "_wait_for_healthy", new_callable=AsyncMock):
+                async with executor:
+                    executor._client.execute = AsyncMock(return_value=mock_result)
+
+                    result = await executor.run("21 * 2")
+
+                    assert result.value == 42
+                    assert result.is_ok
+                    executor._client.execute.assert_called_once_with(
+                        "21 * 2", timeout=None
+                    )
+
+    @pytest.mark.asyncio
+    async def test_run_with_timeout(self, config) -> None:
+        """Run passes timeout to client."""
+        executor = ContainerExecutor(config)
+
+        mock_container = self._make_mock_container()
+        mock_docker = MagicMock()
+        mock_docker.containers.run.return_value = mock_container
+
+        from py_code_mode.container.client import ExecuteResult
+
+        mock_result = ExecuteResult(
+            value=None,
+            stdout="",
+            error=None,
+            execution_time_ms=1000.0,
+            session_id="test-session",
+        )
+
+        with patch("docker.from_env", return_value=mock_docker):
+            with patch.object(executor, "_wait_for_healthy", new_callable=AsyncMock):
+                async with executor:
+                    executor._client.execute = AsyncMock(return_value=mock_result)
+
+                    await executor.run("long_operation()", timeout=120.0)
+
+                    executor._client.execute.assert_called_once_with(
+                        "long_operation()", timeout=120.0
+                    )
+
+    @pytest.mark.asyncio
+    async def test_run_converts_result_to_execution_result(self, config) -> None:
+        """Run returns ExecutionResult compatible type."""
+        executor = ContainerExecutor(config)
+
+        mock_container = self._make_mock_container()
+        mock_docker = MagicMock()
+        mock_docker.containers.run.return_value = mock_container
+
+        from py_code_mode.container.client import ExecuteResult
+
+        mock_result = ExecuteResult(
+            value={"key": "value"},
+            stdout="printed output",
+            error=None,
+            execution_time_ms=10.0,
+            session_id="test-session",
+        )
+
+        with patch("docker.from_env", return_value=mock_docker):
+            with patch.object(executor, "_wait_for_healthy", new_callable=AsyncMock):
+                async with executor:
+                    executor._client.execute = AsyncMock(return_value=mock_result)
+
+                    result = await executor.run("code")
+
+                    assert result.value == {"key": "value"}
+                    assert result.stdout == "printed output"
+                    assert result.error is None
+                    assert result.is_ok
+
+    @pytest.mark.asyncio
+    async def test_run_with_error(self, config) -> None:
+        """Run returns error from container."""
+        executor = ContainerExecutor(config)
+
+        mock_container = self._make_mock_container()
+        mock_docker = MagicMock()
+        mock_docker.containers.run.return_value = mock_container
+
+        from py_code_mode.container.client import ExecuteResult
+
+        mock_result = ExecuteResult(
+            value=None,
+            stdout="",
+            error="NameError: name 'x' is not defined",
+            execution_time_ms=1.0,
+            session_id="test-session",
+        )
+
+        with patch("docker.from_env", return_value=mock_docker):
+            with patch.object(executor, "_wait_for_healthy", new_callable=AsyncMock):
+                async with executor:
+                    executor._client.execute = AsyncMock(return_value=mock_result)
+
+                    result = await executor.run("x")
+
+                    assert not result.is_ok
+                    assert "NameError" in result.error
+
+
+def _make_mock_container() -> MagicMock:
+    """Create a mock Docker container with proper port bindings."""
+    mock_container = MagicMock()
+    mock_container.id = "abc123"
+    mock_container.status = "running"
+    mock_container.attrs = {
+        "NetworkSettings": {
+            "Ports": {
+                "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}]
+            }
+        }
+    }
+    mock_container.reload = MagicMock()
+    return mock_container
+
+
+class TestContainerExecutorVolumes:
+    """Tests for volume mounting."""
+
+    @pytest.mark.asyncio
+    async def test_mounts_artifacts_volume(self, tmp_path) -> None:
+        """Mounts host artifacts path to container."""
+        artifacts_path = tmp_path / "artifacts"
+        config = ContainerConfig(
+            image="py-code-mode:latest",
+            host_artifacts_path=artifacts_path,
+        )
+        executor = ContainerExecutor(config)
+
+        mock_container = _make_mock_container()
+        mock_docker = MagicMock()
+        mock_docker.containers.run.return_value = mock_container
+
+        with patch("docker.from_env", return_value=mock_docker):
+            with patch.object(executor, "_wait_for_healthy", new_callable=AsyncMock):
+                async with executor:
+                    # Check that volumes were passed
+                    call_args = mock_docker.containers.run.call_args
+                    volumes = call_args[1].get("volumes", {})
+                    assert str(artifacts_path) in volumes
+
+
+class TestContainerExecutorEnvironment:
+    """Tests for environment configuration."""
+
+    @pytest.mark.asyncio
+    async def test_passes_environment_variables(self, tmp_path) -> None:
+        """Passes environment variables to container."""
+        config = ContainerConfig(
+            image="py-code-mode:latest",
+            environment={"API_KEY": "secret123"},
+        )
+        executor = ContainerExecutor(config)
+
+        mock_container = _make_mock_container()
+        mock_docker = MagicMock()
+        mock_docker.containers.run.return_value = mock_container
+
+        with patch("docker.from_env", return_value=mock_docker):
+            with patch.object(executor, "_wait_for_healthy", new_callable=AsyncMock):
+                async with executor:
+                    call_args = mock_docker.containers.run.call_args
+                    env = call_args[1].get("environment", {})
+                    assert "API_KEY" in env
+                    assert env["API_KEY"] == "secret123"
