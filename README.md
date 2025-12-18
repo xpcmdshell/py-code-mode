@@ -317,8 +317,23 @@ agent = AssistantAgent(name="analyst", model_client=model, tools=[run_code])
 See `examples/` for complete examples:
 
 - `examples/minimal/` - Simple agent in ~100 lines, no framework
-- `examples/autogen/` - AutoGen integration with file and Redis backends
+- `examples/autogen-direct/` - AutoGen with py-code-mode wired directly (more control)
+- `examples/autogen-mcp/` - AutoGen connecting via MCP protocol (simpler setup)
 - `examples/azure-container-apps/` - Production deployment on Azure
+
+### MCP Server
+
+py-code-mode can run as an MCP server, allowing any MCP-capable agent to use it:
+
+```bash
+# Add to Claude Code
+claude mcp add py-code-mode -- py-code-mode-mcp --tools ./tools --skills ./skills
+
+# Or with any MCP client
+py-code-mode-mcp --tools ./tools --skills ./skills --artifacts ./artifacts
+```
+
+This exposes `run_code`, `list_tools`, `list_skills`, and `search_skills` as MCP tools.
 
 ## License
 
