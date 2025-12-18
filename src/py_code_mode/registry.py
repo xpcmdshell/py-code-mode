@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from py_code_mode.adapters.base import ToolAdapter
 from py_code_mode.errors import ToolCallError, ToolNotFoundError
@@ -10,6 +10,18 @@ from py_code_mode.types import ToolDefinition
 
 if TYPE_CHECKING:
     from py_code_mode.adapters import CLIAdapter
+
+
+class EmbeddingProvider(Protocol):
+    """Protocol for embedding providers."""
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Embed a list of texts (documents) into vectors."""
+        ...
+
+    def embed_query(self, query: str) -> list[float]:
+        """Embed a query text into a vector (may use instruction prefix)."""
+        ...
 
 
 class ToolRegistry:
@@ -29,13 +41,22 @@ class ToolRegistry:
         recon_tools = registry.scoped_view({"recon"})
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        embedder: EmbeddingProvider | None = None,
+    ) -> None:
+        self._embedder = embedder
         self._adapters: list[ToolAdapter] = []
         self._tools: dict[str, ToolDefinition] = {}  # name -> definition
         self._tool_to_adapter: dict[str, ToolAdapter] = {}  # name -> adapter
+        self._vectors: dict[str, list[float]] = {}  # name -> embedding vector
 
     @classmethod
-    async def from_dir(cls, path: str) -> "ToolRegistry":
+    async def from_dir(
+        cls,
+        path: str,
+        embedder: EmbeddingProvider | None = None,
+    ) -> "ToolRegistry":
         """Create registry from a directory of tool YAML files.
 
         Supports both CLI and MCP tools:
@@ -60,6 +81,7 @@ class ToolRegistry:
 
         Args:
             path: Path to directory containing tool YAML files.
+            embedder: Optional embedding provider for semantic search.
 
         Returns:
             ToolRegistry with tools loaded.
@@ -74,7 +96,7 @@ class ToolRegistry:
         from py_code_mode.adapters import CLIAdapter
         from py_code_mode.mcp_adapter import MCPAdapter
 
-        registry = cls()
+        registry = cls(embedder=embedder)
         tools_path = PathLib(path)
 
         if not tools_path.exists():
@@ -174,7 +196,22 @@ class ToolRegistry:
             self._tool_to_adapter[tool.name] = adapter
             registered.append(registered_tool)
 
+        # Embed tools if embedder is available
+        if self._embedder and registered:
+            self._embed_tools(registered)
+
         return registered
+
+    def _embed_tools(self, tools: list[ToolDefinition]) -> None:
+        """Embed tools and store their vectors."""
+        if not self._embedder:
+            return
+
+        texts = [f"{t.name}: {t.description or ''}" for t in tools]
+        vectors = self._embedder.embed(texts)
+
+        for tool, vector in zip(tools, vectors, strict=True):
+            self._vectors[tool.name] = vector
 
     def list_tools(self, scope: set[str] | None = None) -> list[ToolDefinition]:
         """List all tools, optionally filtered by scope.
@@ -242,17 +279,47 @@ class ToolRegistry:
         return ScopedToolRegistry(self, scope)
 
     def search(self, query: str, limit: int = 10) -> list[ToolDefinition]:
-        """Search tools by name or description.
+        """Search tools by name, description, or semantic similarity.
 
-        Simple substring search. For semantic search, use SkillLibrary.
+        Uses semantic search when embedder is available, otherwise falls back
+        to substring search.
 
         Args:
-            query: Search query (case-insensitive).
+            query: Search query.
             limit: Maximum results to return.
 
         Returns:
             Matching tool definitions, sorted by relevance.
         """
+        # Use semantic search if embedder and vectors available
+        if self._embedder and self._vectors:
+            return self._semantic_search(query, limit)
+
+        # Fallback to substring search
+        return self._substring_search(query, limit)
+
+    def _semantic_search(self, query: str, limit: int) -> list[ToolDefinition]:
+        """Search using cosine similarity with embeddings."""
+        if not self._embedder or not self._vectors:
+            return []
+
+        # Embed the query (uses instruction prefix for retrieval models)
+        query_vec = self._embedder.embed_query(query)
+
+        # Compute cosine similarity with each tool
+        scores: list[tuple[float, ToolDefinition]] = []
+        for name, tool_vec in self._vectors.items():
+            similarity = self._cosine_similarity(query_vec, tool_vec)
+            tool = self._tools.get(name)
+            if tool:
+                scores.append((similarity, tool))
+
+        # Sort by similarity descending
+        scores.sort(key=lambda x: x[0], reverse=True)
+        return [tool for _, tool in scores[:limit]]
+
+    def _substring_search(self, query: str, limit: int) -> list[ToolDefinition]:
+        """Search using substring matching (fallback)."""
         query_lower = query.lower()
         matches = []
 
@@ -276,6 +343,29 @@ class ToolRegistry:
         matches.sort(key=lambda x: x[0], reverse=True)
         return [tool for _, tool in matches[:limit]]
 
+    @staticmethod
+    def _cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
+        """Compute cosine similarity between two vectors."""
+        dot_product = sum(a * b for a, b in zip(vec1, vec2, strict=True))
+        norm1 = sum(a * a for a in vec1) ** 0.5
+        norm2 = sum(b * b for b in vec2) ** 0.5
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+        return dot_product / (norm1 * norm2)
+
+    async def refresh(self) -> None:
+        """Refresh by closing adapters and clearing state.
+
+        Closes all adapters and clears tools, vectors, and mappings.
+        Without a backing store, tools must be re-registered manually.
+        """
+        for adapter in reversed(self._adapters):
+            await adapter.close()
+        self._adapters.clear()
+        self._tools.clear()
+        self._tool_to_adapter.clear()
+        self._vectors.clear()
+
     async def close(self) -> None:
         """Close all adapters in reverse order (LIFO).
 
@@ -288,6 +378,7 @@ class ToolRegistry:
         self._adapters.clear()
         self._tools.clear()
         self._tool_to_adapter.clear()
+        self._vectors.clear()
 
 
 class ScopedToolRegistry:

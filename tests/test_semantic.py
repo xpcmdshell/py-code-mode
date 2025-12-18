@@ -51,29 +51,29 @@ class TestEmbeddingProviderProtocol:
         assert len(vectors) == 1
 
 
-class TestGraniteEmbedder:
-    """Tests for the Granite embedding provider."""
+class TestEmbedder:
+    """Tests for the Embedder (BGE-small by default)."""
 
     @pytest.fixture
     def embedder(self):
         """Create embedder - skip if model not available."""
         pytest.importorskip("sentence_transformers")
-        from py_code_mode.semantic import GraniteEmbedder
+        from py_code_mode.semantic import Embedder
 
-        return GraniteEmbedder()
+        return Embedder()
 
-    def test_granite_dimension_is_384(self, embedder) -> None:
-        """Granite small produces 384-dim embeddings."""
+    def test_default_dimension_is_384(self, embedder) -> None:
+        """BGE-small produces 384-dim embeddings."""
         assert embedder.dimension == 384
 
-    def test_granite_embeds_text(self, embedder) -> None:
+    def test_embeds_text(self, embedder) -> None:
         """Can embed natural language descriptions."""
         vectors = embedder.embed(["scan network ports"])
 
         assert len(vectors) == 1
         assert len(vectors[0]) == 384
 
-    def test_granite_embeds_code(self, embedder) -> None:
+    def test_embeds_code(self, embedder) -> None:
         """Can embed Python code."""
         code = "def scan(target): return subprocess.run(['nmap', target])"
         vectors = embedder.embed([code])
@@ -81,7 +81,7 @@ class TestGraniteEmbedder:
         assert len(vectors) == 1
         assert len(vectors[0]) == 384
 
-    def test_granite_batch_embedding(self, embedder) -> None:
+    def test_batch_embedding(self, embedder) -> None:
         """Efficiently embeds multiple texts at once."""
         texts = [
             "scan network ports",
@@ -92,7 +92,7 @@ class TestGraniteEmbedder:
 
         assert len(vectors) == 3
 
-    def test_granite_detects_device(self, embedder) -> None:
+    def test_detects_device(self, embedder) -> None:
         """Uses MPS on Apple Silicon, CUDA if available, else CPU."""
         # Just verify it has a device attribute
         assert hasattr(embedder, "device")
@@ -513,13 +513,13 @@ class TestCreateSkillLibraryFactory:
     """Tests for the create_skill_library factory function."""
 
     def test_creates_with_default_embedder(self) -> None:
-        """Factory creates library with GraniteEmbedder by default."""
+        """Factory creates library with Embedder (BGE-small) by default."""
         pytest.importorskip("sentence_transformers")
-        from py_code_mode.semantic import create_skill_library, GraniteEmbedder
+        from py_code_mode.semantic import create_skill_library, Embedder
 
         library = create_skill_library()
 
-        assert isinstance(library.embedder, GraniteEmbedder)
+        assert isinstance(library.embedder, Embedder)
 
     def test_creates_with_custom_embedder(self) -> None:
         """Factory accepts custom embedder."""
@@ -547,16 +547,16 @@ class TestCreateSkillLibraryFactory:
         assert len(results) == 1
 
 
-class TestSkillLibraryWithGranite:
-    """Integration tests with real Granite embeddings."""
+class TestSkillLibraryWithRealEmbedder:
+    """Integration tests with real embeddings (BGE-small)."""
 
     @pytest.fixture
     def embedder(self):
-        """Create Granite embedder - skip if not available."""
+        """Create embedder - skip if not available."""
         pytest.importorskip("sentence_transformers")
-        from py_code_mode.semantic import GraniteEmbedder
+        from py_code_mode.semantic import Embedder
 
-        return GraniteEmbedder()
+        return Embedder()
 
     @pytest.fixture
     def sample_skills(self) -> list[PythonSkill]:

@@ -136,11 +136,15 @@ class RedisToolStore:
         return store
 
 
-async def registry_from_redis(store: "RedisToolStore") -> "ToolRegistry":
+async def registry_from_redis(
+    store: "RedisToolStore",
+    embedder: Any | None = None,
+) -> "ToolRegistry":
     """Create a ToolRegistry from tools stored in Redis.
 
     Args:
         store: RedisToolStore containing tool configurations.
+        embedder: Optional embedding provider for semantic search.
 
     Returns:
         ToolRegistry with tools from Redis.
@@ -149,7 +153,7 @@ async def registry_from_redis(store: "RedisToolStore") -> "ToolRegistry":
     from py_code_mode.mcp_adapter import MCPAdapter
     from py_code_mode.registry import ToolRegistry
 
-    registry = ToolRegistry()
+    registry = ToolRegistry(embedder=embedder)
     tools = store.list()
 
     if not tools:

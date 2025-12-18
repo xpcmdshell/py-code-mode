@@ -28,7 +28,11 @@ class EmbeddingProvider(Protocol):
         ...
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        """Embed texts into vectors."""
+        """Embed texts (documents) into vectors."""
+        ...
+
+    def embed_query(self, query: str) -> list[float]:
+        """Embed a query text into a vector (may use instruction prefix)."""
         ...
 
 
@@ -52,33 +56,55 @@ class MockEmbedder:
             vectors.append(vec)
         return vectors
 
+    def embed_query(self, query: str) -> list[float]:
+        """Return deterministic mock embedding for query."""
+        return self.embed([query])[0]
 
-class GraniteEmbedder:
-    """Granite embedding provider using sentence-transformers.
 
-    Uses IBM's granite-embedding-small-english-r2 model (47M params, 384-dim).
+MODEL_ALIASES = {
+    "bge-small": "BAAI/bge-small-en-v1.5",
+    "bge-base": "BAAI/bge-base-en-v1.5",
+    "granite": "ibm-granite/granite-embedding-small-english-r2",
+}
+
+
+def resolve_model_name(model: str) -> str:
+    """Resolve alias or pass through full model name."""
+    return MODEL_ALIASES.get(model, model)
+
+
+class Embedder:
+    """Embedding provider using sentence-transformers.
+
+    Default: BGE-small (33M params, 384-dim) with instruction prefix for queries.
     Automatically uses MPS on Apple Silicon, CUDA if available, else CPU.
+
+    Supports model aliases:
+        - "bge-small": BAAI/bge-small-en-v1.5 (default)
+        - "bge-base": BAAI/bge-base-en-v1.5
+        - "granite": ibm-granite/granite-embedding-small-english-r2
+
+    Or pass full HuggingFace model name directly.
     """
 
-    MODEL_NAME = "ibm-granite/granite-embedding-small-english-r2"
+    DEFAULT_MODEL = "bge-small"
+    QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
 
     def __init__(self, model_name: str | None = None) -> None:
         """Initialize embedder.
 
         Args:
-            model_name: Override default model. Uses Granite small by default.
+            model_name: Model alias or full HuggingFace name. Default: bge-small.
         """
-        # Import here to make sentence-transformers optional
         from sentence_transformers import SentenceTransformer
 
-        # Enable MPS fallback for unsupported ops
         os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
-        # Detect best device
         self.device = self._detect_device()
 
-        model_name = model_name or self.MODEL_NAME
-        self._model = SentenceTransformer(model_name, device=self.device)
+        model_name = model_name or self.DEFAULT_MODEL
+        resolved = resolve_model_name(model_name)
+        self._model = SentenceTransformer(resolved, device=self.device)
         self._dimension = self._model.get_sentence_embedding_dimension()
 
     def _detect_device(self) -> str:
@@ -93,20 +119,35 @@ class GraniteEmbedder:
 
     @property
     def dimension(self) -> int:
-        """Embedding vector dimension (384 for Granite small)."""
+        """Embedding vector dimension."""
         return self._dimension  # type: ignore[return-value]
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        """Embed texts into vectors.
+        """Embed document texts into vectors (no prefix).
 
         Args:
             texts: List of text strings to embed.
 
         Returns:
-            List of embedding vectors (384-dim floats).
+            List of embedding vectors.
         """
-        embeddings = self._model.encode(texts, convert_to_numpy=True)
+        embeddings = self._model.encode(texts, normalize_embeddings=True)
         return embeddings.tolist()  # type: ignore[return-value]
+
+    def embed_query(self, query: str) -> list[float]:
+        """Embed query text into vector (with instruction prefix).
+
+        BGE models use instruction prefix for better retrieval performance.
+
+        Args:
+            query: Search query text.
+
+        Returns:
+            Embedding vector.
+        """
+        text = self.QUERY_INSTRUCTION + query
+        embedding = self._model.encode([text], normalize_embeddings=True)[0]
+        return embedding.tolist()  # type: ignore[return-value]
 
 
 @dataclass
@@ -244,8 +285,8 @@ class SkillLibrary:
         if not self._skills:
             return []
 
-        # Embed query
-        query_vec = self.embedder.embed([query])[0]
+        # Embed query (uses instruction prefix for retrieval models)
+        query_vec = self.embedder.embed_query(query)
 
         # Score each skill
         scored: list[tuple[float, str]] = []
@@ -294,6 +335,7 @@ class SkillLibrary:
 def create_skill_library(
     store: "SkillStore | None" = None,
     embedder: EmbeddingProvider | None = None,
+    embedding_model: str | None = None,
 ) -> SkillLibrary:
     """Create a skill library, optionally backed by storage.
 
@@ -302,13 +344,16 @@ def create_skill_library(
     Args:
         store: Optional storage (MemorySkillStore, FileSkillStore, RedisSkillStore, etc.).
                If provided, skills are loaded and indexed at creation time.
-        embedder: Optional embedding provider. Defaults to GraniteEmbedder.
+        embedder: Optional embedding provider. If not provided, creates Embedder
+                  with the specified embedding_model.
+        embedding_model: Model alias ("bge-small", "bge-base", "granite") or full
+                        HuggingFace model name. Default: "bge-small".
 
     Returns:
         SkillLibrary configured with the provided store and embedder.
 
     Example:
-        # In-memory only
+        # In-memory only (default BGE-small model)
         library = create_skill_library()
 
         # With file-based store
@@ -316,11 +361,9 @@ def create_skill_library(
         store = FileSkillStore(Path("./skills"))
         library = create_skill_library(store=store)
 
-        # With Redis store
-        from py_code_mode.skill_store import RedisSkillStore
-        store = RedisSkillStore(redis_client, prefix="skills")
-        library = create_skill_library(store=store)
+        # With custom model
+        library = create_skill_library(embedding_model="bge-base")
     """
     if embedder is None:
-        embedder = GraniteEmbedder()
+        embedder = Embedder(model_name=embedding_model)
     return SkillLibrary(embedder=embedder, store=store)

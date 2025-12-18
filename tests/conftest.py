@@ -45,7 +45,12 @@ class MockAdapter:
         return {"status": "ok", "tool": name, "args": args}
 
     async def close(self) -> None:
-        pass
+        self._closed = True
+
+    @property
+    def closed(self) -> bool:
+        """Whether the adapter has been closed."""
+        return getattr(self, "_closed", False)
 
     @property
     def call_log(self) -> list[tuple[str, dict[str, Any]]]:
@@ -153,3 +158,65 @@ def network_adapter(network_tools: list[ToolDefinition]) -> MockAdapter:
 def web_adapter(web_tools: list[ToolDefinition]) -> MockAdapter:
     """Create a mock adapter with web tools."""
     return MockAdapter(web_tools)
+
+
+@pytest.fixture
+def json_tools() -> list[ToolDefinition]:
+    """Create JSON-related tool definitions."""
+    return [
+        ToolDefinition(
+            name="jq",
+            description="JSON processor",
+            input_schema=JsonSchema(
+                type="object",
+                properties={"filter": JsonSchema(type="string")},
+                required=["filter"],
+            ),
+            tags=frozenset({"json", "data"}),
+        ),
+    ]
+
+
+@pytest.fixture
+def json_adapter(json_tools: list[ToolDefinition]) -> MockAdapter:
+    """Create a mock adapter with JSON tools."""
+    return MockAdapter(json_tools)
+
+
+class ControllableEmbedder:
+    """Embedder that returns controlled vectors for deterministic tests.
+
+    Use set_response() to map input text to specific vectors.
+    Unknown inputs get zero vectors.
+    """
+
+    def __init__(self, dimension: int = 4) -> None:
+        self.dimension = dimension
+        self._responses: dict[str, list[float]] = {}
+
+    def set_response(self, text: str, vector: list[float]) -> None:
+        """Set the vector to return for a given text."""
+        self._responses[text] = vector
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Return controlled vectors for the given texts."""
+        vectors = []
+        for text in texts:
+            if text in self._responses:
+                vectors.append(self._responses[text])
+            else:
+                # Return zero vector for unknown inputs
+                vectors.append([0.0] * self.dimension)
+        return vectors
+
+    def embed_query(self, query: str) -> list[float]:
+        """Return controlled vector for a query text."""
+        if query in self._responses:
+            return self._responses[query]
+        return [0.0] * self.dimension
+
+
+@pytest.fixture
+def controllable_embedder() -> ControllableEmbedder:
+    """Create a controllable embedder for deterministic tests."""
+    return ControllableEmbedder(dimension=4)

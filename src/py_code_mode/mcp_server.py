@@ -73,10 +73,13 @@ async def list_tools() -> list[dict]:
 
 @mcp.tool
 async def search_tools(query: str, limit: int = 10) -> list[dict]:
-    """Search tools by name or description.
+    """Search tools by intent using semantic search.
+
+    Use natural language to describe what you want to accomplish.
+    Example queries: "make HTTP requests", "process JSON data", "scan ports"
 
     Args:
-        query: Search query (case-insensitive substring match)
+        query: Natural language description of what you're trying to accomplish
         limit: Maximum number of results to return (default: 10)
 
     Returns matching tools with their descriptions and parameters.
@@ -124,17 +127,21 @@ async def create_executor(args: argparse.Namespace):
             create_skill_library,
             registry_from_redis,
         )
+        from py_code_mode.semantic import Embedder
 
         redis = Redis.from_url(args.url)
         prefix = args.prefix or "py-code-mode"
 
+        # Embedder for semantic search
+        embedder = Embedder(model_name=args.embedding_model)
+
         # Tools from Redis
         tool_store = RedisToolStore(redis, prefix=f"{prefix}:tools")
-        registry = await registry_from_redis(tool_store)
+        registry = await registry_from_redis(tool_store, embedder=embedder)
 
         # Skills from Redis
         skill_store = RedisSkillStore(redis, prefix=f"{prefix}:skills")
-        skill_library = create_skill_library(store=skill_store)
+        skill_library = create_skill_library(store=skill_store, embedder=embedder)
 
         # Artifacts from Redis
         artifacts = RedisArtifactStore(redis, prefix=f"{prefix}:artifacts")
@@ -150,6 +157,7 @@ async def create_executor(args: argparse.Namespace):
             tools=args.tools,
             skills=args.skills,
             artifacts=args.artifacts or "./artifacts",
+            embedding_model=args.embedding_model,
         )
 
 
@@ -189,6 +197,13 @@ Examples:
     parser.add_argument("--url", help="Redis URL (required for redis backend)")
     parser.add_argument(
         "--prefix", help="Redis key prefix (default: py-code-mode)"
+    )
+
+    # Embedding model selection
+    parser.add_argument(
+        "--embedding-model",
+        dest="embedding_model",
+        help="Embedding model: bge-small (default), bge-base, granite, or full HuggingFace name",
     )
 
     args = parser.parse_args()
