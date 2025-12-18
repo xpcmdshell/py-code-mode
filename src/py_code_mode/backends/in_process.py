@@ -1,4 +1,8 @@
-"""Code executor with persistent state."""
+"""In-process execution backend.
+
+Runs Python code directly in the same process.
+Fast but provides no isolation.
+"""
 
 from __future__ import annotations
 
@@ -9,18 +13,21 @@ import io
 import re
 import traceback
 from contextlib import redirect_stdout
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from py_code_mode.adapters import CLIAdapter, CLIToolSpec
 from py_code_mode.artifacts import ArtifactStore, FileArtifactStore
+from py_code_mode.backend import Capability, register_backend
 from py_code_mode.registry import ToolRegistry
 from py_code_mode.semantic import SkillLibrary, create_skill_library
 from py_code_mode.skill_store import FileSkillStore
-from py_code_mode.types import JsonSchema
+from py_code_mode.types import ExecutionResult, JsonSchema
+
+if TYPE_CHECKING:
+    pass
 
 # Use builtins to avoid security hook false positive on Python's code execution
 _run_code = getattr(builtins, "exec")
@@ -37,20 +44,6 @@ def _extract_template_params(args_template: str) -> list[str]:
         List of parameter names like ["flags", "target"]
     """
     return re.findall(r"\{(\w+)\}", args_template)
-
-
-@dataclass
-class ExecutionResult:
-    """Result from code execution."""
-
-    value: Any
-    stdout: str
-    error: str | None
-
-    @property
-    def is_ok(self) -> bool:
-        """True if execution succeeded without error."""
-        return self.error is None
 
 
 class ToolsNamespace:
@@ -140,7 +133,7 @@ class SkillsNamespace:
     Wraps a SkillLibrary and provides agent-facing methods plus skill execution.
     """
 
-    def __init__(self, library: SkillLibrary, executor: CodeExecutor) -> None:
+    def __init__(self, library: SkillLibrary, executor: InProcessExecutor) -> None:
         self._library = library
         self._executor = executor
 
@@ -245,20 +238,28 @@ class SkillsNamespace:
         return namespace["run"](**kwargs)
 
 
-class CodeExecutor:
-    """Runs Python code with persistent state.
+class InProcessExecutor:
+    """Runs Python code with persistent state in the same process.
 
     Variables, functions, and imports persist across runs.
     Optionally injects tools.*, skills.*, and artifacts.* namespaces.
 
-    Usage:
-        # From YAML config
-        executor = await CodeExecutor.from_yaml("tools.yaml")
-        result = await executor.run('tools.nmap(target="scanme.nmap.org")')
+    Capabilities:
+    - TIMEOUT: Yes (via asyncio.wait_for)
+    - PROCESS_ISOLATION: No
+    - NETWORK_ISOLATION: No
+    - FILESYSTEM_ISOLATION: No
 
-        # Manual setup
-        executor = CodeExecutor(registry=registry)
+    Usage:
+        executor = await InProcessExecutor.create(
+            tools="./tools/",
+            skills="./skills/",
+        )
+        result = await executor.run('tools.nmap(target="scanme.nmap.org")')
     """
+
+    # Capabilities this backend supports
+    _CAPABILITIES = frozenset({Capability.TIMEOUT})
 
     def __init__(
         self,
@@ -286,6 +287,14 @@ class CodeExecutor:
         if artifact_store is not None:
             self._namespace["artifacts"] = artifact_store
 
+    def supports(self, capability: str) -> bool:
+        """Check if this backend supports a capability."""
+        return capability in self._CAPABILITIES
+
+    def supported_capabilities(self) -> set[str]:
+        """Return set of all capabilities this backend supports."""
+        return set(self._CAPABILITIES)
+
     @classmethod
     async def from_yaml(
         cls,
@@ -294,7 +303,7 @@ class CodeExecutor:
         artifacts_path: str | None = None,
         allowed_tags: set[str] | None = None,
         default_timeout: float = 30.0,
-    ) -> CodeExecutor:
+    ) -> InProcessExecutor:
         """Create executor from YAML tools config.
 
         Args:
@@ -305,7 +314,7 @@ class CodeExecutor:
             default_timeout: Default execution timeout.
 
         Returns:
-            Configured CodeExecutor.
+            Configured InProcessExecutor.
 
         Example tools.yaml:
             tools:
@@ -313,16 +322,6 @@ class CodeExecutor:
                 description: Network scanner
                 args: "{flags} {target}"
                 tags: [recon, network]
-
-              - name: curl
-                args: "-s {url}"
-                description: HTTP client
-
-            # Future: MCP servers
-            # mcp_servers:
-            #   brave-search:
-            #     command: npx
-            #     args: ["-y", "@anthropic/mcp-brave-search"]
         """
         config_path = Path(path)
         with open(config_path) as f:
@@ -334,14 +333,13 @@ class CodeExecutor:
             tool_type = tool.get("type", "cli")
 
             if tool_type == "cli":
-                # Extract parameters from args_template
                 args_template = tool.get("args", "")
                 params = _extract_template_params(args_template)
 
                 spec = CLIToolSpec(
                     name=tool["name"],
                     description=tool.get("description", ""),
-                    command=tool.get("command"),  # Defaults to name
+                    command=tool.get("command"),
                     args_template=args_template,
                     input_schema=JsonSchema(
                         type="object",
@@ -352,10 +350,8 @@ class CodeExecutor:
                 )
                 cli_specs.append(spec)
             elif tool_type == "mcp":
-                # TODO: MCP adapter support
                 raise NotImplementedError(f"MCP tools not yet supported: {tool['name']}")
             elif tool_type == "http":
-                # TODO: HTTP adapter support
                 raise NotImplementedError(f"HTTP tools not yet supported: {tool['name']}")
             else:
                 raise ValueError(f"Unknown tool type: {tool_type}")
@@ -399,7 +395,8 @@ class CodeExecutor:
         default_timeout: float = 30.0,
         semantic_search: bool = True,
         embedding_model: str | None = None,
-    ) -> CodeExecutor:
+        **kwargs: Any,  # Accept extra config for backend-agnostic factory
+    ) -> InProcessExecutor:
         """Create executor by specifying where your tools and skills are.
 
         Args:
@@ -409,15 +406,14 @@ class CodeExecutor:
             allowed_tags: Optional set of tags to filter tools.
             default_timeout: Default execution timeout.
             semantic_search: Enable semantic search for tools and skills.
-                Defaults to True.
-            embedding_model: Model alias ("bge-small", "bge-base", "granite") or
-                full HuggingFace model name. Default: "bge-small".
+            embedding_model: Model alias or full HuggingFace model name.
+            **kwargs: Additional options (ignored for compatibility).
 
         Returns:
-            Configured CodeExecutor.
+            Configured InProcessExecutor.
 
         Example:
-            executor = await CodeExecutor.create(
+            executor = await InProcessExecutor.create(
                 tools="./my_tools/",
                 skills="./my_skills/",
             )
@@ -471,7 +467,7 @@ class CodeExecutor:
         skills: str | None = None,
         artifacts: str | None = None,
         default_timeout: float = 30.0,
-    ) -> CodeExecutor:
+    ) -> InProcessExecutor:
         """Create executor with inline tool definitions for quick prototyping.
 
         Args:
@@ -483,10 +479,10 @@ class CodeExecutor:
             default_timeout: Default execution timeout.
 
         Returns:
-            Configured CodeExecutor.
+            Configured InProcessExecutor.
 
         Example:
-            executor = await CodeExecutor.quick(
+            executor = await InProcessExecutor.quick(
                 tools={
                     "curl": "-s {url}",
                     "nmap": ("{flags} {target}", "Network scanner"),
@@ -633,8 +629,15 @@ class CodeExecutor:
             await self._registry.close()
         self._namespace.clear()
 
-    async def __aenter__(self) -> CodeExecutor:
+    async def __aenter__(self) -> InProcessExecutor:
         return self
 
     async def __aexit__(self, *args: Any) -> None:
         await self.close()
+
+
+# Register this backend
+register_backend("in-process", InProcessExecutor)
+
+# Backward compatibility alias
+CodeExecutor = InProcessExecutor

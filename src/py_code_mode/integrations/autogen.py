@@ -26,7 +26,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from py_code_mode.executor import CodeExecutor
+    from py_code_mode import CodeExecutor
 
 
 def create_run_code_tool(

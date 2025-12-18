@@ -37,8 +37,8 @@ except ImportError:
 
 from py_code_mode.adapters import CLIAdapter, CLIToolSpec
 from py_code_mode.artifacts import ArtifactStoreProtocol, FileArtifactStore
+from py_code_mode.backends.in_process import InProcessExecutor as CodeExecutor
 from py_code_mode.container.config import SessionConfig
-from py_code_mode.executor import CodeExecutor
 from py_code_mode.registry import ToolRegistry
 from py_code_mode.semantic import SkillLibrary, create_skill_library
 from py_code_mode.skill_store import FileSkillStore

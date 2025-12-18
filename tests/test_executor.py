@@ -2,8 +2,7 @@
 
 import pytest
 
-from py_code_mode import ToolRegistry
-from py_code_mode.executor import CodeExecutor, ExecutionResult
+from py_code_mode import CodeExecutor, ExecutionResult, ToolRegistry
 
 
 class TestExecutorInterface:
