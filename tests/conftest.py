@@ -5,7 +5,6 @@ from typing import Any
 import pytest
 
 from py_code_mode import JsonSchema, ToolDefinition
-from py_code_mode.adapters.base import ToolAdapter
 
 
 class MockAdapter:

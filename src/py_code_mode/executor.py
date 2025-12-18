@@ -7,7 +7,6 @@ import asyncio
 import builtins
 import io
 import re
-import sys
 import traceback
 from contextlib import redirect_stdout
 from dataclasses import dataclass
@@ -70,7 +69,7 @@ class ToolsNamespace:
         """Set the event loop to use for async tool calls."""
         self._loop = loop
 
-    def __getattr__(self, name: str) -> "ToolCaller":
+    def __getattr__(self, name: str) -> ToolCaller:
         """Enable tools.nmap(...) syntax."""
         # Don't intercept private attributes or special methods
         if name.startswith("_"):
@@ -295,7 +294,7 @@ class CodeExecutor:
         artifacts_path: str | None = None,
         allowed_tags: set[str] | None = None,
         default_timeout: float = 30.0,
-    ) -> "CodeExecutor":
+    ) -> CodeExecutor:
         """Create executor from YAML tools config.
 
         Args:
@@ -400,7 +399,7 @@ class CodeExecutor:
         default_timeout: float = 30.0,
         semantic_search: bool = True,
         embedding_model: str | None = None,
-    ) -> "CodeExecutor":
+    ) -> CodeExecutor:
         """Create executor by specifying where your tools and skills are.
 
         Args:
@@ -428,6 +427,7 @@ class CodeExecutor:
         if semantic_search:
             try:
                 from py_code_mode.semantic import Embedder
+
                 embedder = Embedder(model_name=embedding_model)
             except ImportError:
                 pass  # Embedder not available, fall back to substring search
@@ -471,7 +471,7 @@ class CodeExecutor:
         skills: str | None = None,
         artifacts: str | None = None,
         default_timeout: float = 30.0,
-    ) -> "CodeExecutor":
+    ) -> CodeExecutor:
         """Create executor with inline tool definitions for quick prototyping.
 
         Args:
@@ -571,7 +571,7 @@ class CodeExecutor:
                 asyncio.to_thread(self._run_sync, code),
                 timeout=timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return ExecutionResult(
                 value=None,
                 stdout="",
@@ -633,7 +633,7 @@ class CodeExecutor:
             await self._registry.close()
         self._namespace.clear()
 
-    async def __aenter__(self) -> "CodeExecutor":
+    async def __aenter__(self) -> CodeExecutor:
         return self
 
     async def __aexit__(self, *args: Any) -> None:

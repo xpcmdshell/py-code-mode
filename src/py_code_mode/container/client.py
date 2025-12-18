@@ -94,10 +94,7 @@ class SessionClient:
                        unique session is created on first request.
         """
         if not HTTPX_AVAILABLE:
-            raise ImportError(
-                "httpx required for SessionClient. "
-                "Install with: pip install httpx"
-            )
+            raise ImportError("httpx required for SessionClient. Install with: pip install httpx")
 
         # Strip trailing slash
         self.base_url = base_url.rstrip("/")
@@ -105,7 +102,7 @@ class SessionClient:
         self.session_id = session_id or str(uuid.uuid4())
         self._client: httpx.AsyncClient | None = None
 
-    async def _get_client(self) -> "httpx.AsyncClient":
+    async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=self.timeout)
@@ -215,7 +212,7 @@ class SessionClient:
             await self._client.aclose()
             self._client = None
 
-    async def __aenter__(self) -> "SessionClient":
+    async def __aenter__(self) -> SessionClient:
         """Async context manager entry."""
         return self
 

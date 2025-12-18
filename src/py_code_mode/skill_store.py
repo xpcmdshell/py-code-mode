@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from py_code_mode.skills import PythonSkill, SkillMetadata, SkillParameter
+from py_code_mode.skills import PythonSkill, SkillMetadata
 
 if TYPE_CHECKING:
     from redis import Redis
@@ -136,7 +136,7 @@ class RedisSkillStore:
     # Suffix appended to prefix for Redis hash key: {prefix}:__skills__
     HASH_KEY = ":__skills__"
 
-    def __init__(self, redis: "Redis", prefix: str = "skills") -> None:
+    def __init__(self, redis: Redis, prefix: str = "skills") -> None:
         """Initialize Redis store.
 
         Args:
@@ -187,7 +187,7 @@ class RedisSkillStore:
             source=data["source"],
             description=data["description"],
             metadata=SkillMetadata(
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
                 created_by="unknown",
                 source="redis",
             ),

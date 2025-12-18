@@ -1,8 +1,9 @@
 """Tests for Redis artifact store - written first to define interface."""
 
 import json
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
 
 from py_code_mode.artifacts import Artifact, ArtifactStoreProtocol
 from py_code_mode.errors import ArtifactNotFoundError
@@ -171,8 +172,20 @@ class TestRedisArtifactStoreList:
         """list() returns Artifact objects."""
         # Mock index with two entries
         store._redis.hgetall.return_value = {
-            "a.json": json.dumps({"description": "First", "created_at": "2024-01-01T00:00:00+00:00", "metadata": {}}),
-            "b.json": json.dumps({"description": "Second", "created_at": "2024-01-01T00:00:00+00:00", "metadata": {}}),
+            "a.json": json.dumps(
+                {
+                    "description": "First",
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                    "metadata": {},
+                }
+            ),
+            "b.json": json.dumps(
+                {
+                    "description": "Second",
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                    "metadata": {},
+                }
+            ),
         }
 
         artifacts = store.list()
@@ -184,7 +197,13 @@ class TestRedisArtifactStoreList:
     def test_list_includes_descriptions(self, store) -> None:
         """list() includes descriptions from index."""
         store._redis.hgetall.return_value = {
-            "scan.json": json.dumps({"description": "Network scan results", "created_at": "2024-01-01T00:00:00+00:00", "metadata": {}}),
+            "scan.json": json.dumps(
+                {
+                    "description": "Network scan results",
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                    "metadata": {},
+                }
+            ),
         }
 
         artifacts = store.list()
@@ -210,11 +229,13 @@ class TestRedisArtifactStoreGet:
 
     def test_get_returns_artifact(self, store) -> None:
         """get() returns single Artifact by name."""
-        store._redis.hget.return_value = json.dumps({
-            "description": "Target info",
-            "created_at": "2024-01-01T00:00:00+00:00",
-            "metadata": {},
-        })
+        store._redis.hget.return_value = json.dumps(
+            {
+                "description": "Target info",
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {},
+            }
+        )
 
         artifact = store.get("target.json")
 
@@ -307,6 +328,7 @@ class TestRedisArtifactStoreIntegration:
         """Get real Redis client or skip."""
         try:
             import redis
+
             client = redis.Redis(host="localhost", port=6379, decode_responses=True)
             client.ping()  # Test connection
             yield client

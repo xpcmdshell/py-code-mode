@@ -1,10 +1,10 @@
 """Tests for HTTP adapter - wraps REST APIs as tools."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from dataclasses import dataclass
+from unittest.mock import AsyncMock, patch
 
-from py_code_mode.types import ToolDefinition, JsonSchema
+import pytest
+
+from py_code_mode.types import JsonSchema, ToolDefinition
 
 
 class TestHTTPAdapterInterface:
@@ -44,26 +44,23 @@ class TestHTTPAdapterConfiguration:
         from py_code_mode.http_adapter import HTTPAdapter
 
         headers = {"Authorization": "Bearer token123"}
-        adapter = HTTPAdapter(
-            base_url="http://api.example.com",
-            headers=headers
-        )
+        adapter = HTTPAdapter(base_url="http://api.example.com", headers=headers)
         assert adapter.headers == headers
 
     def test_registers_endpoint(self) -> None:
         """HTTPAdapter can register API endpoints as tools."""
-        from py_code_mode.http_adapter import HTTPAdapter, Endpoint
+        from py_code_mode.http_adapter import Endpoint, HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
-        adapter.add_endpoint(Endpoint(
-            name="get_user",
-            method="GET",
-            path="/users/{user_id}",
-            description="Get user by ID",
-            parameters={
-                "user_id": JsonSchema(type="integer", description="User ID")
-            }
-        ))
+        adapter.add_endpoint(
+            Endpoint(
+                name="get_user",
+                method="GET",
+                path="/users/{user_id}",
+                description="Get user by ID",
+                parameters={"user_id": JsonSchema(type="integer", description="User ID")},
+            )
+        )
 
         assert len(adapter.endpoints) == 1
 
@@ -76,10 +73,7 @@ class TestEndpointDefinition:
         from py_code_mode.http_adapter import Endpoint
 
         endpoint = Endpoint(
-            name="get_users",
-            method="GET",
-            path="/users",
-            description="List all users"
+            name="get_users", method="GET", path="/users", description="List all users"
         )
 
         assert endpoint.name == "get_users"
@@ -99,7 +93,7 @@ class TestEndpointDefinition:
             parameters={
                 "name": JsonSchema(type="string", description="User name"),
                 "email": JsonSchema(type="string", description="Email address"),
-            }
+            },
         )
 
         assert "name" in endpoint.parameters
@@ -114,9 +108,7 @@ class TestEndpointDefinition:
             method="GET",
             path="/users/{user_id}",
             description="Get user by ID",
-            parameters={
-                "user_id": JsonSchema(type="integer", description="User ID")
-            }
+            parameters={"user_id": JsonSchema(type="integer", description="User ID")},
         )
 
         assert "{user_id}" in endpoint.path
@@ -128,21 +120,15 @@ class TestHTTPAdapterListTools:
     @pytest.mark.asyncio
     async def test_list_tools_returns_tool_definitions(self) -> None:
         """list_tools() returns ToolDefinition for each endpoint."""
-        from py_code_mode.http_adapter import HTTPAdapter, Endpoint
+        from py_code_mode.http_adapter import Endpoint, HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
-        adapter.add_endpoint(Endpoint(
-            name="get_users",
-            method="GET",
-            path="/users",
-            description="List users"
-        ))
-        adapter.add_endpoint(Endpoint(
-            name="create_user",
-            method="POST",
-            path="/users",
-            description="Create user"
-        ))
+        adapter.add_endpoint(
+            Endpoint(name="get_users", method="GET", path="/users", description="List users")
+        )
+        adapter.add_endpoint(
+            Endpoint(name="create_user", method="POST", path="/users", description="Create user")
+        )
 
         tools = await adapter.list_tools()
 
@@ -152,15 +138,12 @@ class TestHTTPAdapterListTools:
     @pytest.mark.asyncio
     async def test_list_tools_maps_names(self) -> None:
         """Tool names come from endpoint names."""
-        from py_code_mode.http_adapter import HTTPAdapter, Endpoint
+        from py_code_mode.http_adapter import Endpoint, HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
-        adapter.add_endpoint(Endpoint(
-            name="get_user",
-            method="GET",
-            path="/users/{id}",
-            description="Get user"
-        ))
+        adapter.add_endpoint(
+            Endpoint(name="get_user", method="GET", path="/users/{id}", description="Get user")
+        )
 
         tools = await adapter.list_tools()
         assert tools[0].name == "get_user"
@@ -168,15 +151,17 @@ class TestHTTPAdapterListTools:
     @pytest.mark.asyncio
     async def test_list_tools_maps_descriptions(self) -> None:
         """Tool descriptions come from endpoints."""
-        from py_code_mode.http_adapter import HTTPAdapter, Endpoint
+        from py_code_mode.http_adapter import Endpoint, HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
-        adapter.add_endpoint(Endpoint(
-            name="list_users",
-            method="GET",
-            path="/users",
-            description="List all users in the system"
-        ))
+        adapter.add_endpoint(
+            Endpoint(
+                name="list_users",
+                method="GET",
+                path="/users",
+                description="List all users in the system",
+            )
+        )
 
         tools = await adapter.list_tools()
         assert tools[0].description == "List all users in the system"
@@ -188,28 +173,30 @@ class TestHTTPAdapterCallTool:
     @pytest.fixture
     def adapter(self):
         """Create adapter with test endpoints."""
-        from py_code_mode.http_adapter import HTTPAdapter, Endpoint
+        from py_code_mode.http_adapter import Endpoint, HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
-        adapter.add_endpoint(Endpoint(
-            name="get_user",
-            method="GET",
-            path="/users/{user_id}",
-            description="Get user by ID",
-            parameters={
-                "user_id": JsonSchema(type="integer", description="User ID")
-            }
-        ))
-        adapter.add_endpoint(Endpoint(
-            name="create_user",
-            method="POST",
-            path="/users",
-            description="Create a user",
-            parameters={
-                "name": JsonSchema(type="string", description="Name"),
-                "email": JsonSchema(type="string", description="Email"),
-            }
-        ))
+        adapter.add_endpoint(
+            Endpoint(
+                name="get_user",
+                method="GET",
+                path="/users/{user_id}",
+                description="Get user by ID",
+                parameters={"user_id": JsonSchema(type="integer", description="User ID")},
+            )
+        )
+        adapter.add_endpoint(
+            Endpoint(
+                name="create_user",
+                method="POST",
+                path="/users",
+                description="Create a user",
+                parameters={
+                    "name": JsonSchema(type="string", description="Name"),
+                    "email": JsonSchema(type="string", description="Email"),
+                },
+            )
+        )
         return adapter
 
     @pytest.mark.asyncio
@@ -228,7 +215,7 @@ class TestHTTPAdapterCallTool:
 
             mock_client_session.return_value = mock_session
 
-            result = await adapter.call_tool("get_user", {"user_id": 42})
+            await adapter.call_tool("get_user", {"user_id": 42})
 
             mock_session.request.assert_called_once()
             call_args = mock_session.request.call_args
@@ -250,10 +237,7 @@ class TestHTTPAdapterCallTool:
 
             mock_client_session.return_value = mock_session
 
-            result = await adapter.call_tool("create_user", {
-                "name": "Bob",
-                "email": "bob@example.com"
-            })
+            await adapter.call_tool("create_user", {"name": "Bob", "email": "bob@example.com"})
 
             mock_session.request.assert_called_once()
             call_args = mock_session.request.call_args
@@ -315,15 +299,12 @@ class TestHTTPAdapterWithRegistry:
     async def test_register_with_registry(self) -> None:
         """HTTPAdapter can be registered with ToolRegistry."""
         from py_code_mode import ToolRegistry
-        from py_code_mode.http_adapter import HTTPAdapter, Endpoint
+        from py_code_mode.http_adapter import Endpoint, HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
-        adapter.add_endpoint(Endpoint(
-            name="get_status",
-            method="GET",
-            path="/status",
-            description="Get API status"
-        ))
+        adapter.add_endpoint(
+            Endpoint(name="get_status", method="GET", path="/status", description="Get API status")
+        )
 
         registry = ToolRegistry()
         await registry.register_adapter(adapter)

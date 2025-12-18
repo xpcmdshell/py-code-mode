@@ -17,8 +17,9 @@ from dataclasses import dataclass
 from typing import Any
 
 try:
-    import docker
     from docker.models.containers import Container
+
+    import docker
 
     DOCKER_AVAILABLE = True
 except ImportError:
@@ -63,8 +64,7 @@ class ContainerExecutor:
         """
         if not DOCKER_AVAILABLE:
             raise ImportError(
-                "docker required for ContainerExecutor. "
-                "Install with: pip install docker"
+                "docker required for ContainerExecutor. Install with: pip install docker"
             )
 
         self.config = config
@@ -73,7 +73,7 @@ class ContainerExecutor:
         self._client: SessionClient | None = None
         self._port: int | None = None
 
-    async def __aenter__(self) -> "ContainerExecutor":
+    async def __aenter__(self) -> ContainerExecutor:
         """Start container and connect."""
         await self.start()
         return self

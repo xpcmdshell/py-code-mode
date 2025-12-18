@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -41,7 +40,7 @@ class TestGetStore:
             mock_client = MagicMock()
             mock_redis_lib.from_url.return_value = mock_client
 
-            store = _get_store("rediss://localhost:6380", prefix="test")
+            _get_store("rediss://localhost:6380", prefix="test")
 
             mock_redis_lib.from_url.assert_called_once_with("rediss://localhost:6380")
 
@@ -299,13 +298,18 @@ class TestCLI:
         from py_code_mode.store import create_parser
 
         parser = create_parser()
-        args = parser.parse_args([
-            "bootstrap",
-            "--source", "/path/to/skills",
-            "--target", "redis://localhost:6379",
-            "--prefix", "my-skills",
-            "--clear",
-        ])
+        args = parser.parse_args(
+            [
+                "bootstrap",
+                "--source",
+                "/path/to/skills",
+                "--target",
+                "redis://localhost:6379",
+                "--prefix",
+                "my-skills",
+                "--clear",
+            ]
+        )
 
         assert args.command == "bootstrap"
         assert str(args.source) == "/path/to/skills"
@@ -318,12 +322,17 @@ class TestCLI:
         from py_code_mode.store import create_parser
 
         parser = create_parser()
-        args = parser.parse_args([
-            "pull",
-            "--target", "redis://localhost:6379",
-            "--prefix", "my-skills",
-            "--dest", "/path/to/dest",
-        ])
+        args = parser.parse_args(
+            [
+                "pull",
+                "--target",
+                "redis://localhost:6379",
+                "--prefix",
+                "my-skills",
+                "--dest",
+                "/path/to/dest",
+            ]
+        )
 
         assert args.command == "pull"
         assert args.target == "redis://localhost:6379"
@@ -335,12 +344,17 @@ class TestCLI:
         from py_code_mode.store import create_parser
 
         parser = create_parser()
-        args = parser.parse_args([
-            "diff",
-            "--source", "/path/to/skills",
-            "--target", "redis://localhost:6379",
-            "--prefix", "my-skills",
-        ])
+        args = parser.parse_args(
+            [
+                "diff",
+                "--source",
+                "/path/to/skills",
+                "--target",
+                "redis://localhost:6379",
+                "--prefix",
+                "my-skills",
+            ]
+        )
 
         assert args.command == "diff"
         assert str(args.source) == "/path/to/skills"
@@ -352,10 +366,14 @@ class TestCLI:
         from py_code_mode.store import create_parser
 
         parser = create_parser()
-        args = parser.parse_args([
-            "pull",
-            "--target", "redis://localhost",
-            "--dest", "/tmp/dest",
-        ])
+        args = parser.parse_args(
+            [
+                "pull",
+                "--target",
+                "redis://localhost",
+                "--dest",
+                "/tmp/dest",
+            ]
+        )
 
         assert args.prefix == "skills"

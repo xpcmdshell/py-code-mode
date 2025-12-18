@@ -9,7 +9,7 @@ from py_code_mode.errors import ToolCallError, ToolNotFoundError
 from py_code_mode.types import ToolDefinition
 
 if TYPE_CHECKING:
-    from py_code_mode.adapters import CLIAdapter
+    pass
 
 
 class EmbeddingProvider(Protocol):
@@ -56,7 +56,7 @@ class ToolRegistry:
         cls,
         path: str,
         embedder: EmbeddingProvider | None = None,
-    ) -> "ToolRegistry":
+    ) -> ToolRegistry:
         """Create registry from a directory of tool YAML files.
 
         Supports both CLI and MCP tools:
@@ -264,7 +264,7 @@ class ToolRegistry:
                 raise
             raise ToolCallError(name, tool_args=args, cause=e) from e
 
-    def scoped_view(self, scope: set[str]) -> "ScopedToolRegistry":
+    def scoped_view(self, scope: set[str]) -> ScopedToolRegistry:
         """Create a scoped view of the registry.
 
         The scoped view only exposes tools matching the given tags.

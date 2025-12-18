@@ -132,8 +132,7 @@ class HTTPAdapter:
             import aiohttp
         except ImportError as e:
             raise ImportError(
-                "aiohttp package required for HTTP adapter. "
-                "Install with: pip install aiohttp"
+                "aiohttp package required for HTTP adapter. Install with: pip install aiohttp"
             ) from e
 
         # Build URL with path parameters

@@ -48,42 +48,46 @@ class TestCLIAdapter:
     @pytest.fixture
     def echo_adapter(self) -> CLIAdapter:
         """Adapter with echo tool."""
-        return CLIAdapter([
-            CLIToolSpec(
-                name="echo",
-                description="Echo text to stdout",
-                command="echo",
-                args_template="{text}",
-                input_schema=JsonSchema(
-                    type="object",
-                    properties={"text": JsonSchema(type="string")},
-                    required=["text"],
+        return CLIAdapter(
+            [
+                CLIToolSpec(
+                    name="echo",
+                    description="Echo text to stdout",
+                    command="echo",
+                    args_template="{text}",
+                    input_schema=JsonSchema(
+                        type="object",
+                        properties={"text": JsonSchema(type="string")},
+                        required=["text"],
+                    ),
+                    tags=frozenset({"text", "output"}),
                 ),
-                tags=frozenset({"text", "output"}),
-            ),
-        ])
+            ]
+        )
 
     @pytest.fixture
     def multi_tool_adapter(self) -> CLIAdapter:
         """Adapter with multiple tools."""
-        return CLIAdapter([
-            CLIToolSpec(
-                name="echo",
-                description="Echo text",
-                command="echo",
-                args_template="{text}",
-                input_schema=JsonSchema(
-                    type="object",
-                    properties={"text": JsonSchema(type="string")},
-                    required=["text"],
+        return CLIAdapter(
+            [
+                CLIToolSpec(
+                    name="echo",
+                    description="Echo text",
+                    command="echo",
+                    args_template="{text}",
+                    input_schema=JsonSchema(
+                        type="object",
+                        properties={"text": JsonSchema(type="string")},
+                        required=["text"],
+                    ),
                 ),
-            ),
-            CLIToolSpec(
-                name="pwd",
-                description="Print working directory",
-                command="pwd",
-            ),
-        ])
+                CLIToolSpec(
+                    name="pwd",
+                    description="Print working directory",
+                    command="pwd",
+                ),
+            ]
+        )
 
     @pytest.mark.asyncio
     async def test_list_tools(self, echo_adapter: CLIAdapter) -> None:
@@ -119,8 +123,8 @@ class TestCLIAdapter:
     async def test_json_parsing(self) -> None:
         # Test JSON parsing with a command that outputs valid JSON
         # Using cat with a heredoc-style approach via sh -c
-        import tempfile
         import os
+        import tempfile
 
         # Create a temp file with JSON content
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -128,15 +132,17 @@ class TestCLIAdapter:
             temp_path = f.name
 
         try:
-            adapter = CLIAdapter([
-                CLIToolSpec(
-                    name="cat_json",
-                    description="Cat a JSON file",
-                    command="cat",
-                    args_template=temp_path,  # Hardcoded path for this test
-                    parse_json=True,
-                ),
-            ])
+            adapter = CLIAdapter(
+                [
+                    CLIToolSpec(
+                        name="cat_json",
+                        description="Cat a JSON file",
+                        command="cat",
+                        args_template=temp_path,  # Hardcoded path for this test
+                        parse_json=True,
+                    ),
+                ]
+            )
 
             result = await adapter.call_tool("cat_json", {})
 
@@ -147,15 +153,17 @@ class TestCLIAdapter:
 
     @pytest.mark.asyncio
     async def test_timeout(self) -> None:
-        adapter = CLIAdapter([
-            CLIToolSpec(
-                name="slow",
-                description="Slow command",
-                command="sleep",
-                args_template="10",
-                timeout_seconds=0.1,  # Very short timeout
-            ),
-        ])
+        adapter = CLIAdapter(
+            [
+                CLIToolSpec(
+                    name="slow",
+                    description="Slow command",
+                    command="sleep",
+                    args_template="10",
+                    timeout_seconds=0.1,  # Very short timeout
+                ),
+            ]
+        )
 
         with pytest.raises(ToolTimeoutError) as exc_info:
             await adapter.call_tool("slow", {})
@@ -173,21 +181,23 @@ class TestCLIAdapterCommandBuilding:
 
     @pytest.mark.asyncio
     async def test_template_substitution(self) -> None:
-        adapter = CLIAdapter([
-            CLIToolSpec(
-                name="greet",
-                description="Greet",
-                command="echo",
-                args_template="Hello, {name}! You are {age} years old.",
-                input_schema=JsonSchema(
-                    type="object",
-                    properties={
-                        "name": JsonSchema(type="string"),
-                        "age": JsonSchema(type="integer"),
-                    },
+        adapter = CLIAdapter(
+            [
+                CLIToolSpec(
+                    name="greet",
+                    description="Greet",
+                    command="echo",
+                    args_template="Hello, {name}! You are {age} years old.",
+                    input_schema=JsonSchema(
+                        type="object",
+                        properties={
+                            "name": JsonSchema(type="string"),
+                            "age": JsonSchema(type="integer"),
+                        },
+                    ),
                 ),
-            ),
-        ])
+            ]
+        )
 
         result = await adapter.call_tool("greet", {"name": "Alice", "age": 30})
 
@@ -197,19 +207,21 @@ class TestCLIAdapterCommandBuilding:
     @pytest.mark.asyncio
     async def test_command_with_complex_args(self) -> None:
         # Test ls with multiple flags
-        adapter = CLIAdapter([
-            CLIToolSpec(
-                name="list",
-                description="List files",
-                command="ls",
-                args_template="-la {path}",
-                input_schema=JsonSchema(
-                    type="object",
-                    properties={"path": JsonSchema(type="string")},
-                    required=["path"],
+        adapter = CLIAdapter(
+            [
+                CLIToolSpec(
+                    name="list",
+                    description="List files",
+                    command="ls",
+                    args_template="-la {path}",
+                    input_schema=JsonSchema(
+                        type="object",
+                        properties={"path": JsonSchema(type="string")},
+                        required=["path"],
+                    ),
                 ),
-            ),
-        ])
+            ]
+        )
 
         result = await adapter.call_tool("list", {"path": "/tmp"})
         # Should succeed and return directory listing

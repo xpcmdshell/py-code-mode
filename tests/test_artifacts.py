@@ -1,8 +1,9 @@
 """Tests for artifacts system - written first to define interface."""
 
 import json
-import pytest
 from pathlib import Path
+
+import pytest
 
 from py_code_mode.artifacts import FileArtifactStore
 

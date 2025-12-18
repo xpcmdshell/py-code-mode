@@ -19,12 +19,11 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 # Check for FastAPI at import time for cleaner error messages
 try:
-    from fastapi import FastAPI, HTTPException, Header
+    from fastapi import FastAPI, Header, HTTPException
     from pydantic import BaseModel
 
     FASTAPI_AVAILABLE = True
@@ -43,7 +42,6 @@ from py_code_mode.executor import CodeExecutor
 from py_code_mode.registry import ToolRegistry
 from py_code_mode.semantic import SkillLibrary, create_skill_library
 from py_code_mode.skill_store import FileSkillStore
-
 
 # Session expiration (seconds)
 SESSION_EXPIRY = 3600  # 1 hour
@@ -213,8 +211,7 @@ def cleanup_expired_sessions() -> int:
     """Remove sessions that haven't been used recently."""
     now = time.time()
     expired = [
-        sid for sid, session in _state.sessions.items()
-        if now - session.last_used > SESSION_EXPIRY
+        sid for sid, session in _state.sessions.items() if now - session.last_used > SESSION_EXPIRY
     ]
     for sid in expired:
         del _state.sessions[sid]
@@ -310,7 +307,7 @@ async def initialize_server(config: SessionConfig) -> None:
         )
 
 
-def create_app(config: SessionConfig | None = None) -> "FastAPI":
+def create_app(config: SessionConfig | None = None) -> FastAPI:
     """Create FastAPI application.
 
     Args:
@@ -318,8 +315,7 @@ def create_app(config: SessionConfig | None = None) -> "FastAPI":
     """
     if not FASTAPI_AVAILABLE:
         raise ImportError(
-            "FastAPI required for session server. "
-            "Install with: pip install fastapi uvicorn"
+            "FastAPI required for session server. Install with: pip install fastapi uvicorn"
         )
 
     # Store config for lifespan to use
@@ -369,6 +365,7 @@ def create_app(config: SessionConfig | None = None) -> "FastAPI":
         # Serialize value for JSON response
         try:
             import json
+
             json.dumps(result.value)
             value = result.value
         except (TypeError, ValueError):
@@ -451,8 +448,7 @@ def main() -> None:
         import uvicorn
     except ImportError as e:
         raise ImportError(
-            "uvicorn required for session server. "
-            "Install with: pip install uvicorn"
+            "uvicorn required for session server. Install with: pip install uvicorn"
         ) from e
 
     config = SessionConfig.from_env()
