@@ -21,8 +21,9 @@ jobs:
     steps:
       - name: Free disk space
         run: |
+          # Remove large pre-installed packages we don't need
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force
+          # NOTE: Don't prune Docker images - keeps base images cached for faster builds
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - run: uv sync
