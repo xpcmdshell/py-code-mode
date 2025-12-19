@@ -15,34 +15,37 @@ Complex workflows with LLMs are fragile. Each step is an LLM call that can hallu
 Let agents write Python that orchestrates tools in a single execution. When a workflow succeeds, save it as a skill. Next time, call the skill directly - no multi-step reasoning required.
 
 ```python
-# First time: agent searches for an existing skill
-results = skills.search("research topic from multiple sources")
+# First time: agent needs to scrape Hacker News
+results = skills.search("scrape hacker news")  # nothing found
 
-if not results:
-    # No skill exists - compose tools to solve it
-    search_results = tools.web_search(query=topic)
-    sources = []
-    for r in search_results[:3]:
-        content = tools.fetch(url=r["url"])
-        sources.append({"url": r["url"], "content": content})
+# Agent iterates to figure out the structure
+content = tools.fetch(url="https://news.ycombinator.com")
 
-    # Save the working solution as a reusable skill
-    skills.create(
-        name="multi_source_research",
-        code='''
-def run(topic: str, num_sources: int = 3) -> dict:
-    results = tools.web_search(query=topic)
-    sources = []
-    for r in results[:num_sources]:
-        content = tools.fetch(url=r["url"])
-        sources.append({"url": r["url"], "content": content})
-    return {"topic": topic, "sources": sources}
+import re
+# Attempt 1: try to find links
+matches = re.findall(r'<a href="([^"]+)"', content)  # too many results, includes nav links
+
+# Attempt 2: look for title pattern
+matches = re.findall(r'class="title".*?href="([^"]+)"', content)  # wrong class name
+
+# Attempt 3: inspect more carefully, find the right selector
+matches = re.findall(r'class="titleline"><a href="([^"]+)".*?>([^<]+)</a>', content)  # works!
+
+# Now save the working solution
+skills.create(
+    name="scrape_hn_stories",
+    code='''
+def run(num_stories: int = 30) -> list:
+    import re
+    content = tools.fetch(url="https://news.ycombinator.com")
+    matches = re.findall(r'class="titleline"><a href="([^"]+)".*?>([^<]+)</a>', content)
+    return [{"url": url, "title": title} for url, title in matches[:num_stories]]
 ''',
-        description="Research a topic by fetching and combining multiple web sources"
-    )
+    description="Extract top stories from Hacker News"
+)
 
-# Next time: one call, no multi-step reasoning
-research = skills.multi_source_research(topic="Python async patterns", num_sources=5)
+# Next time: no iteration needed
+stories = skills.scrape_hn_stories(num_stories=10)
 ```
 
 Skills accumulate. Your agents get more reliable over time.
