@@ -230,8 +230,9 @@ class ContainerExecutor:
         raise RuntimeError(
             "Could not find project root with docker/ directory. "
             "This likely means py-code-mode is installed from a package. "
-            f"Please build the image manually: docker build -f docker/Dockerfile.base -t py-code-mode:base . && "
-            f"docker build -f docker/Dockerfile.tools -t {self.config.image} ."
+            "Please build the image manually:\n"
+            "  docker build -f docker/Dockerfile.base -t py-code-mode:base .\n"
+            f"  docker build -f docker/Dockerfile.tools -t {self.config.image} ."
         )
 
     def _ensure_image_exists(self) -> None:
@@ -241,10 +242,6 @@ class ContainerExecutor:
             RuntimeError: If image doesn't exist and auto_build is disabled,
                         or if build fails.
         """
-        import logging
-
-        logger = logging.getLogger(__name__)
-
         # Check if image exists
         try:
             self._docker.images.get(self.config.image)
