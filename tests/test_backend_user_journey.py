@@ -13,14 +13,16 @@ Critical deployment scenarios:
 
 from __future__ import annotations
 
-import os
 import shutil
 from pathlib import Path
 
 import pytest
+import redis
 
+from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+from py_code_mode.backends.in_process import InProcessExecutor
 from py_code_mode.session import Session
-from py_code_mode.storage import FileStorage
+from py_code_mode.storage import FileStorage, RedisStorage
 
 # =============================================================================
 # Helpers
@@ -30,16 +32,6 @@ from py_code_mode.storage import FileStorage
 def _docker_available() -> bool:
     """Check if Docker is available for testing."""
     return shutil.which("docker") is not None
-
-
-def _testcontainers_available() -> bool:
-    """Check if testcontainers can spin up Redis."""
-    try:
-        from testcontainers.redis import RedisContainer  # noqa: F401
-
-        return _docker_available()
-    except ImportError:
-        return False
 
 
 # =============================================================================
@@ -96,8 +88,6 @@ class TestAgentFullWorkflow:
         User story: An agent lists tools, uses a tool, creates a skill,
         invokes the skill, and saves results as an artifact.
         """
-        from py_code_mode.backends.in_process import InProcessExecutor
-
         storage = FileStorage(tools_storage)
         executor = InProcessExecutor()
 
@@ -149,8 +139,6 @@ skills.create(
         Same workflow as in-process but running inside a Docker container.
         This validates that all namespace injections work in container context.
         """
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         storage = FileStorage(tools_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=60.0))
 
@@ -207,8 +195,6 @@ class TestContainerToolsInvocation:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_tools_list_in_container(self, tools_storage: Path) -> None:
         """tools.list() returns configured tools inside container."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         storage = FileStorage(tools_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=30.0))
 
@@ -223,8 +209,6 @@ class TestContainerToolsInvocation:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_tools_call_in_container(self, tools_storage: Path) -> None:
         """tools.<name>() works inside container."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         storage = FileStorage(tools_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=30.0))
 
@@ -237,8 +221,6 @@ class TestContainerToolsInvocation:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_tools_search_in_container(self, tools_storage: Path) -> None:
         """tools.search() works inside container."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         storage = FileStorage(tools_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=30.0))
 
@@ -261,8 +243,6 @@ class TestContainerSkillsLifecycle:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_skills_create_invoke_delete(self, empty_storage: Path) -> None:
         """Skills can be created, invoked, and deleted in container."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         storage = FileStorage(empty_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=30.0))
 
@@ -307,8 +287,6 @@ skills.create(
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_skill_uses_tools_in_container(self, tools_storage: Path) -> None:
         """Skills can call tools from within container execution."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         storage = FileStorage(tools_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=30.0))
 
@@ -345,8 +323,6 @@ class TestContainerSessionPersistence:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_skill_persists_across_container_sessions(self, empty_storage: Path) -> None:
         """Skills created in one container session are available in next."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         # Session 1: Create skill
         storage1 = FileStorage(empty_storage)
         executor1 = ContainerExecutor(ContainerConfig(timeout=30.0))
@@ -384,8 +360,6 @@ skills.create(
     @pytest.mark.skip(reason="BUG: Container artifact persistence issue")
     async def test_artifact_persists_across_container_sessions(self, empty_storage: Path) -> None:
         """Artifacts saved in one container session are loadable in next."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         # Session 1: Save artifact
         storage1 = FileStorage(empty_storage)
         executor1 = ContainerExecutor(ContainerConfig(timeout=30.0))
@@ -411,113 +385,82 @@ skills.create(
 # =============================================================================
 
 
-@pytest.mark.skip(reason="Requires testcontainers Redis - times out in CI, run locally")
 @pytest.mark.xdist_group("docker")
 class TestRedisContainerIntegration:
     """Test RedisStorage + ContainerExecutor combination.
 
     This is the critical production deployment scenario for Azure Container Apps.
+    Uses testcontainers fixture for isolated Redis per test.
     """
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(not _testcontainers_available(), reason="testcontainers not available")
-    async def test_redis_container_full_workflow(self) -> None:
+    @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
+    async def test_redis_container_full_workflow(self, redis_url: str) -> None:
         """Complete workflow with Redis storage and container executor."""
-        import redis
-        from testcontainers.redis import RedisContainer
+        client = redis.from_url(redis_url)
+        storage = RedisStorage(client, prefix="test")
+        executor = ContainerExecutor(ContainerConfig(timeout=60.0))
 
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-        from py_code_mode.storage import RedisStorage
-
-        # Configure Docker socket for macOS Docker Desktop
-        docker_socket = Path.home() / ".docker" / "run" / "docker.sock"
-        if docker_socket.exists() and "DOCKER_HOST" not in os.environ:
-            os.environ["DOCKER_HOST"] = f"unix://{docker_socket}"
-
-        with RedisContainer() as redis_tc:
-            host = redis_tc.get_container_host_ip()
-            port = redis_tc.get_exposed_port(6379)
-            redis_url = f"redis://{host}:{port}"
-
-            client = redis.from_url(redis_url)
-            storage = RedisStorage(client, prefix="test")
-            executor = ContainerExecutor(ContainerConfig(timeout=60.0))
-
-            async with Session(storage=storage, executor=executor) as session:
-                # 1. Create skill (stored in Redis)
-                result = await session.run("""
+        async with Session(storage=storage, executor=executor) as session:
+            # 1. Create skill (stored in Redis)
+            result = await session.run("""
 skills.create(
     name="redis_skill",
     description="Test skill in Redis",
     source="def run(x: int) -> int:\\n    return x * 2"
 )
 """)
-                assert result.is_ok, f"skills.create() failed: {result.error}"
+            assert result.is_ok, f"skills.create() failed: {result.error}"
 
-                # 2. Invoke skill
-                result = await session.run("skills.redis_skill(x=21)")
-                assert result.is_ok, f"skills.redis_skill() failed: {result.error}"
-                assert result.value == 42
+            # 2. Invoke skill
+            result = await session.run("skills.redis_skill(x=21)")
+            assert result.is_ok, f"skills.redis_skill() failed: {result.error}"
+            assert result.value == 42
 
-                # 3. Save artifact (stored in Redis)
-                result = await session.run(
-                    'artifacts.save("redis_data.json", {"from": "container"}, "Redis test")'
-                )
-                assert result.is_ok, f"artifacts.save() failed: {result.error}"
+            # 3. Save artifact (stored in Redis)
+            result = await session.run(
+                'artifacts.save("redis_data.json", {"from": "container"}, "Redis test")'
+            )
+            assert result.is_ok, f"artifacts.save() failed: {result.error}"
 
-                # 4. Load artifact
-                result = await session.run('artifacts.load("redis_data.json")')
-                assert result.is_ok, f"artifacts.load() failed: {result.error}"
-                assert result.value == {"from": "container"}
+            # 4. Load artifact
+            result = await session.run('artifacts.load("redis_data.json")')
+            assert result.is_ok, f"artifacts.load() failed: {result.error}"
+            assert result.value == {"from": "container"}
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(not _testcontainers_available(), reason="testcontainers not available")
-    async def test_redis_container_skill_persistence(self) -> None:
+    @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
+    async def test_redis_container_skill_persistence(self, redis_url: str) -> None:
         """Skills persist in Redis across container sessions."""
-        import redis
-        from testcontainers.redis import RedisContainer
+        client = redis.from_url(redis_url)
 
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-        from py_code_mode.storage import RedisStorage
+        # Session 1: Create skill
+        storage1 = RedisStorage(client, prefix="persist_test")
+        executor1 = ContainerExecutor(ContainerConfig(timeout=30.0))
 
-        docker_socket = Path.home() / ".docker" / "run" / "docker.sock"
-        if docker_socket.exists() and "DOCKER_HOST" not in os.environ:
-            os.environ["DOCKER_HOST"] = f"unix://{docker_socket}"
-
-        with RedisContainer() as redis_tc:
-            host = redis_tc.get_container_host_ip()
-            port = redis_tc.get_exposed_port(6379)
-            redis_url = f"redis://{host}:{port}"
-
-            client = redis.from_url(redis_url)
-
-            # Session 1: Create skill
-            storage1 = RedisStorage(client, prefix="persist_test")
-            executor1 = ContainerExecutor(ContainerConfig(timeout=30.0))
-
-            async with Session(storage=storage1, executor=executor1) as session:
-                result = await session.run("""
+        async with Session(storage=storage1, executor=executor1) as session:
+            result = await session.run("""
 skills.create(
     name="redis_persistent",
     description="Should persist in Redis",
     source="def run() -> str:\\n    return 'from redis'"
 )
 """)
-                assert result.is_ok
+            assert result.is_ok
 
-            # Session 2: Skill should exist
-            storage2 = RedisStorage(client, prefix="persist_test")
-            executor2 = ContainerExecutor(ContainerConfig(timeout=30.0))
+        # Session 2: Skill should exist
+        storage2 = RedisStorage(client, prefix="persist_test")
+        executor2 = ContainerExecutor(ContainerConfig(timeout=30.0))
 
-            async with Session(storage=storage2, executor=executor2) as session:
-                result = await session.run("skills.list()")
-                assert result.is_ok
-                names = [s["name"] for s in result.value]
-                assert "redis_persistent" in names
+        async with Session(storage=storage2, executor=executor2) as session:
+            result = await session.run("skills.list()")
+            assert result.is_ok
+            names = [s["name"] for s in result.value]
+            assert "redis_persistent" in names
 
-                result = await session.run("skills.redis_persistent()")
-                assert result.is_ok
-                assert result.value == "from redis"
+            result = await session.run("skills.redis_persistent()")
+            assert result.is_ok
+            assert result.value == "from redis"
 
 
 # =============================================================================
@@ -533,8 +476,6 @@ class TestContainerNegativeCases:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_container_timeout_returns_error(self, empty_storage: Path) -> None:
         """Infinite loop with short timeout produces error."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         storage = FileStorage(empty_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=30.0))
 
@@ -548,8 +489,6 @@ class TestContainerNegativeCases:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_container_tool_not_found_error(self, empty_storage: Path) -> None:
         """Calling non-existent tool gives clear error."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         storage = FileStorage(empty_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=30.0))
 
@@ -562,8 +501,6 @@ class TestContainerNegativeCases:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_container_skill_not_found_error(self, empty_storage: Path) -> None:
         """Calling non-existent skill gives clear error."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         storage = FileStorage(empty_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=30.0))
 
@@ -576,8 +513,6 @@ class TestContainerNegativeCases:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_container_invalid_skill_source_rejected(self, empty_storage: Path) -> None:
         """Creating skill with syntax error fails gracefully."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         storage = FileStorage(empty_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=30.0))
 
@@ -606,8 +541,6 @@ class TestContainerInvariants:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_container_namespace_isolation(self, empty_storage: Path) -> None:
         """Variables in one container session don't leak to another."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         # Session 1: Define variable
         storage1 = FileStorage(empty_storage)
         executor1 = ContainerExecutor(ContainerConfig(timeout=30.0))

@@ -1,10 +1,25 @@
 """Test fixtures for py-code-mode."""
 
+import fnmatch
+import functools
+import os
+import shutil
+from pathlib import Path
 from typing import Any
 
 import pytest
+import redis
 
 from py_code_mode import JsonSchema, ToolDefinition
+
+# Optional testcontainers import - only available if testcontainers[redis] installed
+try:
+    from testcontainers.redis import RedisContainer
+
+    TESTCONTAINERS_AVAILABLE = True
+except ImportError:
+    RedisContainer = None  # type: ignore[misc, assignment]
+    TESTCONTAINERS_AVAILABLE = False
 
 
 class MockAdapter:
@@ -26,7 +41,7 @@ class MockAdapter:
                 for name in tools
             }
         else:
-            self._tools = {t.name: t for t in tools}  # type: ignore
+            self._tools = {t.name: t for t in tools}  # type: ignore[union-attr]
         self._call_log: list[tuple[str, dict[str, Any]]] = []
         self._responses: dict[str, Any] = call_results or {}
 
@@ -226,14 +241,10 @@ def controllable_embedder() -> ControllableEmbedder:
 
 def requires_redis(fn):
     """Decorator to skip tests if Redis is not available."""
-    import functools
-    import os
 
     @functools.wraps(fn)
     async def wrapper(*args, **kwargs):
         try:
-            import redis
-
             url = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379")
             client = redis.from_url(url)
             client.ping()
@@ -246,8 +257,6 @@ def requires_redis(fn):
 
 def requires_docker(fn):
     """Decorator to skip tests if Docker is not available."""
-    import functools
-    import shutil
 
     @functools.wraps(fn)
     async def wrapper(*args, **kwargs):
@@ -353,8 +362,6 @@ class MockRedisClient:
 
     def keys(self, pattern: str = "*") -> list[str]:
         """Simple pattern matching for keys."""
-        import fnmatch
-
         all_keys = list(self._strings.keys()) + list(self._data.keys())
         if pattern == "*":
             return all_keys
@@ -370,8 +377,6 @@ def mock_redis() -> MockRedisClient:
 @pytest.fixture
 def temp_storage_dir(tmp_path: Any) -> Any:
     """Create a temporary directory structure for storage tests."""
-    from pathlib import Path
-
     storage_root = Path(tmp_path) / "storage"
     storage_root.mkdir()
 
@@ -417,3 +422,34 @@ def sample_artifact_data() -> dict[str, Any]:
         "data": {"key": "value", "count": 42},
         "description": "Test artifact for unit tests",
     }
+
+
+# --- Testcontainers Redis Fixtures ---
+
+
+@pytest.fixture(scope="function")
+def redis_container():
+    """Spin up a fresh Redis container per test using testcontainers.
+
+    Each test gets an isolated Redis instance - no cross-test pollution.
+    Container starts in ~1-2 seconds on Linux.
+    """
+    if not TESTCONTAINERS_AVAILABLE:
+        pytest.skip("testcontainers[redis] not installed")
+
+    with RedisContainer(image="redis:7-alpine") as container:
+        yield container
+
+
+@pytest.fixture
+def redis_client(redis_container):
+    """Get a Redis client connected to the testcontainer."""
+    return redis_container.get_client()
+
+
+@pytest.fixture
+def redis_url(redis_container) -> str:
+    """Get the Redis URL for the testcontainer."""
+    host = redis_container.get_container_host_ip()
+    port = redis_container.get_exposed_port(6379)
+    return f"redis://{host}:{port}"

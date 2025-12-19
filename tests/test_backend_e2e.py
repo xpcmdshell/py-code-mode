@@ -10,8 +10,17 @@ import shutil
 from pathlib import Path
 
 import pytest
+import redis
 
 from py_code_mode import Capability, CodeExecutor
+from py_code_mode.adapters import CLIAdapter, CLIToolSpec
+from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+from py_code_mode.registry import ToolRegistry
+from py_code_mode.semantic import create_skill_library
+from py_code_mode.session import Session
+from py_code_mode.skill_store import FileSkillStore
+from py_code_mode.skills import PythonSkill
+from py_code_mode.storage import FileStorage, RedisStorage
 
 
 def _docker_available() -> bool:
@@ -31,9 +40,6 @@ class TestNetworkIsolationWithArtifacts:
         """
         artifacts_path = tmp_path / "artifacts"
         artifacts_path.mkdir(parents=True, exist_ok=True)
-
-        # Use container backend which should support network isolation
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
 
         config = ContainerConfig(
             host_artifacts_path=artifacts_path,
@@ -68,9 +74,6 @@ class TestFilesystemIsolationWithArtifacts:
         artifacts_path = tmp_path / "artifacts"
         artifacts_path.mkdir(parents=True, exist_ok=True)
 
-        # Use container backend which should support filesystem isolation
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-
         config = ContainerConfig(
             host_artifacts_path=artifacts_path,
         )
@@ -96,10 +99,6 @@ class TestContainerWithFileArtifacts:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_file_artifacts_save_load(self, tmp_path: Path) -> None:
         """Container with file artifacts can save and load data."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-        from py_code_mode.session import Session
-        from py_code_mode.storage import FileStorage
-
         # Create storage with artifacts
         storage = FileStorage(tmp_path)
 
@@ -129,10 +128,6 @@ class TestContainerWithFileArtifacts:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_file_artifacts_persist_on_host(self, tmp_path: Path) -> None:
         """File artifacts written in container are visible on host filesystem."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-        from py_code_mode.session import Session
-        from py_code_mode.storage import FileStorage
-
         # Create storage
         storage = FileStorage(tmp_path)
         artifacts_path = tmp_path / "artifacts"
@@ -148,69 +143,39 @@ class TestContainerWithFileArtifacts:
         assert len(found) > 0, "Artifact not visible on host filesystem"
 
 
-def _testcontainers_available() -> bool:
-    """Check if testcontainers can spin up Redis."""
-    try:
-        from testcontainers.redis import RedisContainer  # noqa: F401
-
-        return _docker_available()
-    except ImportError:
-        return False
-
-
-@pytest.mark.skip(reason="Requires testcontainers Redis - times out in CI, run locally")
 @pytest.mark.xdist_group("docker")
 class TestContainerWithRedisArtifacts:
     """Test container backend with Redis artifact storage."""
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(not _testcontainers_available(), reason="testcontainers not available")
-    async def test_redis_artifacts_save_load(self) -> None:
-        """Container with Redis artifacts can save and load data."""
-        import os
-        from pathlib import Path
+    @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
+    async def test_redis_artifacts_save_load(self, redis_url: str) -> None:
+        """Container with Redis artifacts can save and load data.
 
-        import redis
-        from testcontainers.redis import RedisContainer
+        Uses testcontainers fixture for isolated Redis per test.
+        """
+        # Create Redis storage using testcontainer fixture
+        client = redis.from_url(redis_url)
+        storage = RedisStorage(client)
 
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-        from py_code_mode.session import Session
-        from py_code_mode.storage import RedisStorage
+        # Use Session with ContainerExecutor
+        config = ContainerConfig(timeout=30.0)
+        executor = ContainerExecutor(config)
+        async with Session(storage=storage, executor=executor) as session:
+            # Save artifact
+            result = await session.run(
+                "artifacts.save('redis_test.txt', b'redis data', 'Redis test')"
+            )
+            assert result.is_ok, f"artifacts.save() failed: {result.error}"
 
-        # Configure Docker socket for macOS Docker Desktop
-        docker_socket = Path.home() / ".docker" / "run" / "docker.sock"
-        if docker_socket.exists() and "DOCKER_HOST" not in os.environ:
-            os.environ["DOCKER_HOST"] = f"unix://{docker_socket}"
-
-        # Spin up Redis container - both host and session container can reach it
-        with RedisContainer() as redis_tc:
-            host = redis_tc.get_container_host_ip()
-            port = redis_tc.get_exposed_port(6379)
-            redis_url = f"redis://{host}:{port}"
-
-            # Create Redis storage (host Python connects via mapped port)
-            client = redis.from_url(redis_url)
-            storage = RedisStorage(client)
-
-            # Use Session with ContainerExecutor
-            # ContainerExecutor transforms localhost -> host.docker.internal
-            config = ContainerConfig(timeout=30.0)
-            executor = ContainerExecutor(config)
-            async with Session(storage=storage, executor=executor) as session:
-                # Save artifact
-                result = await session.run(
-                    "artifacts.save('redis_test.txt', b'redis data', 'Redis test')"
-                )
-                assert result.is_ok, f"artifacts.save() failed: {result.error}"
-
-                # Load artifact
-                result = await session.run("artifacts.load('redis_test.txt')")
-                assert result.is_ok, f"artifacts.load() failed: {result.error}"
-                # Handle both bytes and string return types
-                if isinstance(result.value, bytes):
-                    assert b"redis data" in result.value
-                else:
-                    assert "redis data" in str(result.value)
+            # Load artifact
+            result = await session.run("artifacts.load('redis_test.txt')")
+            assert result.is_ok, f"artifacts.load() failed: {result.error}"
+            # Handle both bytes and string return types
+            if isinstance(result.value, bytes):
+                assert b"redis data" in result.value
+            else:
+                assert "redis data" in str(result.value)
 
 
 @pytest.mark.xdist_group("docker")
@@ -225,10 +190,6 @@ class TestResetWithStateAndArtifacts:
         After reset, variables should be gone but artifacts should persist.
         Uses container backend which supports RESET capability.
         """
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-        from py_code_mode.session import Session
-        from py_code_mode.storage import FileStorage
-
         # Create storage
         storage = FileStorage(tmp_path)
 
@@ -283,12 +244,6 @@ class TestToolsAndSkillsTogether:
     @pytest.mark.asyncio
     async def test_tools_and_skills_in_same_session(self, tmp_path: Path) -> None:
         """Can use both tools and skills in same executor session."""
-        from py_code_mode.adapters import CLIAdapter, CLIToolSpec
-        from py_code_mode.registry import ToolRegistry
-        from py_code_mode.semantic import create_skill_library
-        from py_code_mode.skill_store import FileSkillStore
-        from py_code_mode.skills import PythonSkill
-
         # Setup tools
         specs = [
             CLIToolSpec(
