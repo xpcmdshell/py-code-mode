@@ -15,30 +15,34 @@ Complex workflows with LLMs are fragile. Each step is an LLM call that can hallu
 Let agents write Python that orchestrates tools in a single execution. When a workflow succeeds, save it as a skill. Next time, call the skill directly - no multi-step reasoning required.
 
 ```python
-# First time: agent reasons through the problem
-results = skills.search("security assessment")
+# First time: agent searches for an existing skill
+results = skills.search("research topic from multiple sources")
 
 if not results:
-    # Compose tools to solve it
-    dns = tools.dig(target=target)
-    ports = tools.nmap(target=target, flags="-sV")
-    vulns = tools.nikto(target=target)
+    # No skill exists - compose tools to solve it
+    search_results = tools.web_search(query=topic)
+    sources = []
+    for r in search_results[:3]:
+        content = tools.fetch(url=r["url"])
+        sources.append({"url": r["url"], "content": content})
 
-    # Save the working solution
+    # Save the working solution as a reusable skill
     skills.create(
-        name="security_assessment",
+        name="multi_source_research",
         code='''
-def run(target: str) -> dict:
-    dns = tools.dig(target=target)
-    ports = tools.nmap(target=target, flags="-sV")
-    vulns = tools.nikto(target=target)
-    return {"dns": dns, "ports": ports, "vulns": vulns}
+def run(topic: str, num_sources: int = 3) -> dict:
+    results = tools.web_search(query=topic)
+    sources = []
+    for r in results[:num_sources]:
+        content = tools.fetch(url=r["url"])
+        sources.append({"url": r["url"], "content": content})
+    return {"topic": topic, "sources": sources}
 ''',
-        description="DNS, port scan, and vulnerability scan on a target"
+        description="Research a topic by fetching and combining multiple web sources"
     )
 
-# Next time: one call, no reasoning
-report = skills.security_assessment(target="example.com")
+# Next time: one call, no multi-step reasoning
+research = skills.multi_source_research(topic="Python async patterns", num_sources=5)
 ```
 
 Skills accumulate. Your agents get more reliable over time.
@@ -67,7 +71,7 @@ storage = FileStorage(base_path=Path("./data"))
 
 async with Session(storage=storage) as session:
     # Agent code runs with tools, skills, artifacts available
-    result = await session.run('skills.search("recon")')
+    result = await session.run('skills.search("research")')
 ```
 
 ## What Agents Get
@@ -83,21 +87,23 @@ Three namespaces injected into their execution environment:
 Wrap external capabilities as YAML:
 
 ```yaml
-# tools/nmap.yaml
-name: nmap
-type: cli
-args: "{flags} {target}"
-description: Network scanner for port discovery
-```
-
-```yaml
-# tools/brave_search.yaml
-name: brave_search
+# tools/web_search.yaml
+name: web_search
 type: mcp
 transport: stdio
 command: npx
-args: ["-y", "@anthropic/mcp-brave-search"]
-description: Web search via Brave
+args: ["-y", "@modelcontextprotocol/server-brave-search"]
+description: Search the web and return results with URLs
+```
+
+```yaml
+# tools/fetch.yaml
+name: fetch
+type: mcp
+transport: stdio
+command: npx
+args: ["-y", "@modelcontextprotocol/server-fetch"]
+description: Fetch a URL and return content as markdown
 ```
 
 ## Seeding Skills
@@ -105,12 +111,14 @@ description: Web search via Brave
 Pre-author skills for agents to find:
 
 ```python
-# skills/analyze_url.py
-"""Fetch a URL and analyze its content."""
+# skills/fetch_and_summarize.py
+"""Fetch a URL and extract key information."""
 
 def run(url: str) -> dict:
     content = tools.fetch(url=url)
-    return {"url": url, "word_count": len(content.split())}
+    # Extract first paragraph as summary
+    paragraphs = [p for p in content.split("\n\n") if p.strip()]
+    return {"url": url, "summary": paragraphs[0] if paragraphs else "", "word_count": len(content.split())}
 ```
 
 Or let agents create them at runtime via `skills.create()`.
