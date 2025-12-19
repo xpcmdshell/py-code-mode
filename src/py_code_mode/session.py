@@ -9,12 +9,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from py_code_mode.backend import Executor
-from py_code_mode.backends.in_process import SkillsNamespace, ToolsNamespace
+from py_code_mode.backend import Executor, StorageAccess
 from py_code_mode.types import ExecutionResult
 
 if TYPE_CHECKING:
-    from py_code_mode.backends.container import ContainerConfig
     from py_code_mode.storage import StorageBackend
 
 
@@ -34,87 +32,107 @@ class Session:
 
     def __init__(
         self,
-        storage: StorageBackend,
-        executor: str | Executor | None = None,
+        storage: StorageBackend | None = None,
+        executor: Executor | None = None,
         **executor_kwargs: Any,
     ) -> None:
         """Initialize session.
 
         Args:
             storage: Storage backend (FileStorage or RedisStorage).
-            executor: Executor type string ("in-process", "container") or Executor instance.
-                     Default: "in-process"
-            **executor_kwargs: Additional arguments passed to executor creation.
-                              For "container" executor: network_policy, etc.
+                    Required (cannot be None).
+            executor: Executor instance (InProcessExecutor, ContainerExecutor).
+                     Default: InProcessExecutor()
+            **executor_kwargs: Deprecated. Reserved for future use.
+
+        Raises:
+            TypeError: If executor is a string (deprecated API).
+            ValueError: If storage is None.
         """
+        # Validate storage
+        if storage is None:
+            raise ValueError("storage parameter is required and cannot be None")
+
+        # Reject string-based executor selection
+        if isinstance(executor, str):
+            raise TypeError(
+                f"String-based executor selection is no longer supported. "
+                f"Use typed executor instances instead:\n"
+                f"  Session(storage=storage, executor=InProcessExecutor())\n"
+                f"  Session(storage=storage, executor=ContainerExecutor(config))\n"
+                f"Got: executor={executor!r}"
+            )
+
+        # Validate executor type if provided
+        if executor is not None and not isinstance(executor, Executor):
+            raise TypeError(
+                f"executor must be an Executor instance or None, got {type(executor).__name__}"
+            )
+
         self._storage = storage
-        self._executor_spec = executor or "in-process"
+        self._executor_spec = executor  # Store the instance directly
         self._executor_kwargs = executor_kwargs
         self._executor: Executor | None = None
         self._started = False
         self._closed = False
 
-        # Validate executor type early
-        if isinstance(self._executor_spec, str):
-            valid_backends = ["in-process", "container"]
-            if self._executor_spec not in valid_backends:
-                raise ValueError(
-                    f"Unknown executor type: '{self._executor_spec}'. "
-                    f"Valid types: {', '.join(valid_backends)}"
-                )
+    def _derive_storage_access(self) -> StorageAccess:
+        """Derive StorageAccess descriptor from storage backend.
 
-    def _build_container_config(self) -> ContainerConfig:
-        """Build ContainerConfig from storage backend.
+        Maps FileStorage to FileStorageAccess (paths).
+        Maps RedisStorage to RedisStorageAccess (url + prefixes).
 
-        Maps FileStorage paths to container volume mounts.
-        Maps RedisStorage to container Redis environment.
+        Returns:
+            FileStorageAccess or RedisStorageAccess.
+
+        Raises:
+            ValueError: If storage type is unsupported.
         """
-        from py_code_mode.backends.container import ContainerConfig
+        from py_code_mode.backend import (
+            FileStorageAccess,
+            RedisStorageAccess,
+        )
         from py_code_mode.storage import FileStorage, RedisStorage
 
-        # Extract common kwargs
-        image = self._executor_kwargs.get("image", "py-code-mode-tools:latest")
-        timeout = self._executor_kwargs.get("default_timeout", 30.0)
-        startup_timeout = self._executor_kwargs.get("startup_timeout", 60.0)
-
         if isinstance(self._storage, FileStorage):
-            # Map FileStorage directories to container volume mounts
             base_path = self._storage.root
-            return ContainerConfig(
-                image=image,
-                host_tools_path=base_path / "tools"
+            return FileStorageAccess(
+                # Tools are read-only, only provide path if directory exists
+                tools_path=base_path / "tools"
                 if (base_path / "tools").exists()
                 else None,
-                host_skills_path=base_path / "skills"
-                if (base_path / "skills").exists()
-                else None,
-                host_artifacts_path=base_path / "artifacts",
-                artifact_backend="file",
-                timeout=timeout,
-                startup_timeout=startup_timeout,
+                # Skills path always provided - executor creates if needed
+                skills_path=base_path / "skills",
+                # Artifacts path always provided - executor creates if needed
+                artifacts_path=base_path / "artifacts",
             )
         elif isinstance(self._storage, RedisStorage):
-            # For Redis, container loads everything from Redis
-            # User must provide redis_url since we can't extract it from the client
-            redis_url = self._executor_kwargs.get("redis_url")
-            if redis_url is None:
-                # Try to get from storage if it has the url stored
-                redis_url = getattr(self._storage, "_url", None)
-            if redis_url is None:
-                raise ValueError(
-                    "Container executor with RedisStorage requires 'redis_url' in executor kwargs. "
-                    "Example: Session(storage=redis_storage, executor='container', redis_url='redis://...')"
-                )
-            return ContainerConfig(
-                image=image,
-                artifact_backend="redis",
+            # Reconstruct Redis URL from client connection parameters
+            pool = self._storage._redis.connection_pool
+            kwargs = pool.connection_kwargs
+
+            # Build URL from connection kwargs
+            host = kwargs.get("host", "localhost")
+            port = kwargs.get("port", 6379)
+            db = kwargs.get("db", 0)
+            password = kwargs.get("password")
+
+            if password:
+                redis_url = f"redis://:{password}@{host}:{port}/{db}"
+            else:
+                redis_url = f"redis://{host}:{port}/{db}"
+
+            # Build prefixes from base prefix
+            prefix = self._storage._prefix
+            return RedisStorageAccess(
                 redis_url=redis_url,
-                timeout=timeout,
-                startup_timeout=startup_timeout,
+                tools_prefix=f"{prefix}:tools",
+                skills_prefix=f"{prefix}:skills",
+                artifacts_prefix=f"{prefix}:artifacts",
             )
         else:
             raise ValueError(
-                f"Unsupported storage type for container executor: {type(self._storage).__name__}"
+                f"Unsupported storage type: {type(self._storage).__name__}"
             )
 
     @property
@@ -130,105 +148,21 @@ class Session:
         if self._started:
             return
 
-        # Create or use provided executor
-        if isinstance(self._executor_spec, str):
-            # Check for unsupported capabilities
-            backend_type = self._executor_spec
-            if "network_policy" in self._executor_kwargs:
-                if backend_type == "in-process":
-                    raise ValueError(
-                        "in-process executor does not support network_policy capability"
-                    )
+        # Derive storage access descriptor
+        storage_access = self._derive_storage_access()
 
-            # Create executor (for now, we'll build it manually since we need to inject namespaces)
-            if backend_type == "in-process":
-                from py_code_mode.backends.in_process import InProcessExecutor
+        # Use provided executor or default to InProcessExecutor
+        if self._executor_spec is None:
+            from py_code_mode.backends.in_process import InProcessExecutor
 
-                self._executor = InProcessExecutor(
-                    default_timeout=self._executor_kwargs.get("default_timeout", 30.0)
-                )
-            elif backend_type == "container":
-                from py_code_mode.backends.container import (
-                    ContainerExecutor,
-                )
-
-                # Build ContainerConfig from storage backend
-                container_config = self._build_container_config()
-
-                self._executor = ContainerExecutor(container_config)
-                # ContainerExecutor requires explicit start (starts Docker container)
-                await self._executor.start()
-            else:
-                raise ValueError(f"Unknown executor type: {backend_type}")
+            self._executor = InProcessExecutor()
         else:
             self._executor = self._executor_spec
 
-        # Inject namespaces into executor
-        await self._inject_namespaces()
+        # Start executor with storage access
+        # Executor.start() handles namespace injection based on storage_access
+        await self._executor.start(storage_access=storage_access)
         self._started = True
-
-    async def _inject_namespaces(self) -> None:
-        """Inject tools, skills, and artifacts namespaces into executor."""
-        if self._executor is None:
-            return
-
-        # Get the executor's namespace (only works with InProcessExecutor for now)
-        if hasattr(self._executor, "_namespace"):
-            namespace = self._executor._namespace
-
-            # Inject tools namespace by loading from storage
-
-            from py_code_mode.registry import ToolRegistry
-            from py_code_mode.semantic import create_skill_library
-            from py_code_mode.skill_store import FileSkillStore
-            from py_code_mode.storage import FileStorage
-
-            # Load tools registry from storage
-            # Check if this is FileStorage (has a base path)
-            if isinstance(self._storage, FileStorage):
-                # FileStorage has a _base_path attribute
-                base_path = self._storage._base_path
-                tools_path = base_path / "tools"
-                if tools_path.exists():
-                    registry = await ToolRegistry.from_dir(str(tools_path))
-                else:
-                    registry = ToolRegistry()
-            else:
-                # For other storage types, create empty registry
-                # TODO: Implement loading from RedisStorage
-                registry = ToolRegistry()
-
-            namespace["tools"] = ToolsNamespace(registry)
-
-            # Inject skills namespace
-            # Load skill library from storage
-            if isinstance(self._storage, FileStorage):
-                base_path = self._storage._base_path
-                skills_path = base_path / "skills"
-                if skills_path.exists():
-                    store = FileSkillStore(skills_path)
-                    skill_library = create_skill_library(store=store)
-                else:
-                    # Create empty library
-                    from py_code_mode.semantic import MockEmbedder, SkillLibrary
-                    from py_code_mode.skill_store import MemorySkillStore
-
-                    skill_library = SkillLibrary(
-                        embedder=MockEmbedder(), store=MemorySkillStore()
-                    )
-            else:
-                # For other storage types, create empty library
-                from py_code_mode.semantic import MockEmbedder, SkillLibrary
-                from py_code_mode.skill_store import MemorySkillStore
-
-                skill_library = SkillLibrary(
-                    embedder=MockEmbedder(), store=MemorySkillStore()
-                )
-
-            namespace["skills"] = SkillsNamespace(skill_library, self._executor)  # type: ignore
-
-            # Inject artifacts namespace
-            namespace["artifacts"] = self._storage.artifacts
 
     async def run(self, code: str, timeout: float | None = None) -> ExecutionResult:
         """Run Python code and return result.
@@ -267,12 +201,16 @@ class Session:
         if self._executor is None:
             return
 
-        # Close current executor
-        await self._executor.close()
+        from py_code_mode.backend import Capability
 
-        # Create fresh executor and re-inject namespaces
-        self._started = False
-        await self.start()
+        # Use executor's reset if supported
+        if self._executor.supports(Capability.RESET):
+            await self._executor.reset()
+        else:
+            # Fallback: close and restart
+            await self._executor.close()
+            self._started = False
+            await self.start()
 
     async def close(self) -> None:
         """Release session resources."""

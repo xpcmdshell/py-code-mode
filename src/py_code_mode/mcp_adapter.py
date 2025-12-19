@@ -94,7 +94,9 @@ class MCPAdapter:
             env=env,
         )
 
-        stdio_transport = await exit_stack.enter_async_context(stdio_client(server_params))
+        stdio_transport = await exit_stack.enter_async_context(
+            stdio_client(server_params)
+        )
         stdio, write = stdio_transport
 
         session = await exit_stack.enter_async_context(ClientSession(stdio, write))
@@ -138,11 +140,15 @@ class MCPAdapter:
         exit_stack = AsyncExitStack()
 
         sse_transport = await exit_stack.enter_async_context(
-            sse_client(url, headers=headers, timeout=timeout, sse_read_timeout=sse_read_timeout)
+            sse_client(
+                url, headers=headers, timeout=timeout, sse_read_timeout=sse_read_timeout
+            )
         )
         read_stream, write_stream = sse_transport
 
-        session = await exit_stack.enter_async_context(ClientSession(read_stream, write_stream))
+        session = await exit_stack.enter_async_context(
+            ClientSession(read_stream, write_stream)
+        )
 
         await session.initialize()
 
@@ -251,6 +257,6 @@ class MCPAdapter:
         if self._exit_stack is not None:
             try:
                 await self._exit_stack.aclose()
-            except BaseException:
+            except Exception:
                 pass
         self._tools_cache = None

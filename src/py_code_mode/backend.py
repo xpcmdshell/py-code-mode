@@ -1,16 +1,54 @@
 """Execution backend protocol and registry.
 
 Defines the Executor protocol that all backends must implement,
-capability constants for dynamic feature queries, and the
-backend registry for runtime discovery.
+capability constants for dynamic feature queries, storage access
+descriptors for wiring storage to executors, and the backend
+registry for runtime discovery.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from py_code_mode.types import ExecutionResult
+
+
+# =============================================================================
+# Storage Access Descriptors
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class FileStorageAccess:
+    """Access descriptor for file-based storage.
+
+    Session derives this from FileStorage and passes to executor.start()
+    so the executor knows where to find tools, skills, and artifacts.
+    """
+
+    tools_path: Path | None
+    skills_path: Path | None
+    artifacts_path: Path
+
+
+@dataclass(frozen=True)
+class RedisStorageAccess:
+    """Access descriptor for Redis storage.
+
+    Session derives this from RedisStorage and passes to executor.start()
+    so the executor knows the Redis connection and key prefixes.
+    """
+
+    redis_url: str
+    tools_prefix: str
+    skills_prefix: str
+    artifacts_prefix: str
+
+
+StorageAccess = FileStorageAccess | RedisStorageAccess
 
 
 class Capability:

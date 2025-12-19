@@ -6,16 +6,20 @@ under a single interface, enabling swapping between FileStorage and RedisStorage
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from py_code_mode.artifacts import FileArtifactStore
+from py_code_mode.errors import StorageReadError, StorageWriteError
 from py_code_mode.redis_artifacts import RedisArtifactStore
 from py_code_mode.redis_tools import RedisToolStore, registry_from_redis
 from py_code_mode.registry import ToolRegistry
 from py_code_mode.semantic import SkillLibrary, create_skill_library
 from py_code_mode.skill_store import FileSkillStore, RedisSkillStore, SkillStore
 from py_code_mode.skills import PythonSkill
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from redis import Redis
@@ -96,7 +100,11 @@ class ArtifactStoreWrapper(Protocol):
         ...
 
     def save(
-        self, name: str, data: Any, description: str, metadata: dict[str, Any] | None = None
+        self,
+        name: str,
+        data: Any,
+        description: str,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Save artifact."""
         ...
@@ -160,12 +168,17 @@ class FileToolStore:
         """Get tool by name."""
         import asyncio
 
+        from py_code_mode.errors import ToolNotFoundError
+
         registry = asyncio.run(self._get_registry())
         try:
             tool = registry.get_tool(name)
             return self._tool_to_dict(tool)
-        except Exception:
+        except ToolNotFoundError:
             return None
+        except Exception as e:
+            logger.error(f"Failed to get tool '{name}': {e}")
+            raise StorageReadError(f"Failed to get tool '{name}': {e}") from e
 
     def save(self, tool: dict[str, Any]) -> None:
         """Save tool configuration."""
@@ -230,6 +243,10 @@ class FileSkillStoreWrapper:
                 self._library = create_skill_library(store=self._store)
             except ImportError:
                 # Semantic search not available, use basic store
+                logger.warning(
+                    "Semantic search dependencies not available, falling back to MockEmbedder. "
+                    "Install with: pip install sentence-transformers scikit-learn"
+                )
                 from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
                 self._library = SkillLibrary(embedder=MockEmbedder(), store=self._store)
@@ -254,7 +271,9 @@ class FileSkillStoreWrapper:
         if isinstance(skill, dict):
             # Convert dict to PythonSkill
             skill = PythonSkill.from_source(
-                name=skill["name"], source=skill["source"], description=skill.get("description", "")
+                name=skill["name"],
+                source=skill["source"],
+                description=skill.get("description", ""),
             )
         library = self._get_library()
         library.add(skill)
@@ -276,7 +295,9 @@ class FileSkillStoreWrapper:
 
     def create(self, name: str, description: str, source: str) -> dict[str, Any]:
         """Create a new skill."""
-        skill = PythonSkill.from_source(name=name, source=source, description=description)
+        skill = PythonSkill.from_source(
+            name=name, source=source, description=description
+        )
         library = self._get_library()
         library.add(skill)
         return self._skill_to_dict(skill)
@@ -316,13 +337,22 @@ class FileArtifactStoreWrapper:
 
     def load(self, name: str) -> Any:
         """Load artifact by name."""
+        from py_code_mode.errors import ArtifactNotFoundError
+
         try:
             return self._store.load(name)
-        except Exception:
+        except ArtifactNotFoundError:
             return None
+        except Exception as e:
+            logger.error(f"Failed to load artifact '{name}': {e}")
+            raise StorageReadError(f"Failed to load artifact '{name}': {e}") from e
 
     def save(
-        self, name: str, data: Any, description: str, metadata: dict[str, Any] | None = None
+        self,
+        name: str,
+        data: Any,
+        description: str,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Save artifact."""
         self._store.save(name, data, description, metadata)
@@ -334,8 +364,9 @@ class FileArtifactStoreWrapper:
         try:
             self._store.delete(name)
             return True
-        except Exception:
-            return False
+        except Exception as e:
+            logger.error(f"Failed to delete artifact '{name}': {e}")
+            raise StorageWriteError(f"Failed to delete artifact '{name}': {e}") from e
 
     def exists(self, name: str) -> bool:
         """Check if artifact exists."""
@@ -471,6 +502,10 @@ class RedisSkillStoreWrapper:
                 self._library = create_skill_library(store=self._store)
             except ImportError:
                 # Semantic search not available, use basic store
+                logger.warning(
+                    "Semantic search dependencies not available, falling back to MockEmbedder. "
+                    "Install with: pip install sentence-transformers scikit-learn"
+                )
                 from py_code_mode.semantic import MockEmbedder, SkillLibrary
 
                 self._library = SkillLibrary(embedder=MockEmbedder(), store=self._store)
@@ -495,7 +530,9 @@ class RedisSkillStoreWrapper:
         if isinstance(skill, dict):
             # Convert dict to PythonSkill
             skill = PythonSkill.from_source(
-                name=skill["name"], source=skill["source"], description=skill.get("description", "")
+                name=skill["name"],
+                source=skill["source"],
+                description=skill.get("description", ""),
             )
         library = self._get_library()
         library.add(skill)
@@ -517,7 +554,9 @@ class RedisSkillStoreWrapper:
 
     def create(self, name: str, description: str, source: str) -> dict[str, Any]:
         """Create a new skill."""
-        skill = PythonSkill.from_source(name=name, source=source, description=description)
+        skill = PythonSkill.from_source(
+            name=name, source=source, description=description
+        )
         library = self._get_library()
         library.add(skill)
         return self._skill_to_dict(skill)
@@ -557,13 +596,22 @@ class RedisArtifactStoreWrapper:
 
     def load(self, name: str) -> Any:
         """Load artifact by name."""
+        from py_code_mode.errors import ArtifactNotFoundError
+
         try:
             return self._store.load(name)
-        except Exception:
+        except ArtifactNotFoundError:
             return None
+        except Exception as e:
+            logger.error(f"Failed to load artifact '{name}': {e}")
+            raise StorageReadError(f"Failed to load artifact '{name}': {e}") from e
 
     def save(
-        self, name: str, data: Any, description: str, metadata: dict[str, Any] | None = None
+        self,
+        name: str,
+        data: Any,
+        description: str,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Save artifact."""
         self._store.save(name, data, description, metadata)
@@ -575,8 +623,9 @@ class RedisArtifactStoreWrapper:
         try:
             self._store.delete(name)
             return True
-        except Exception:
-            return False
+        except Exception as e:
+            logger.error(f"Failed to delete artifact '{name}': {e}")
+            raise StorageWriteError(f"Failed to delete artifact '{name}': {e}") from e
 
     def exists(self, name: str) -> bool:
         """Check if artifact exists."""
@@ -629,6 +678,8 @@ class RedisStorage:
     def artifacts(self) -> ArtifactStoreWrapper:
         """Artifact storage interface."""
         if self._artifacts_store is None:
-            artifact_store = RedisArtifactStore(self._redis, prefix=f"{self._prefix}:artifacts")
+            artifact_store = RedisArtifactStore(
+                self._redis, prefix=f"{self._prefix}:artifacts"
+            )
             self._artifacts_store = RedisArtifactStoreWrapper(artifact_store)
         return self._artifacts_store

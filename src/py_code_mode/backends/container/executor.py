@@ -31,7 +31,10 @@ except ImportError:
     docker = None  # type: ignore
     Container = None  # type: ignore
 
-from py_code_mode.backend import Capability, register_backend
+from py_code_mode.backend import (
+    Capability,
+    register_backend,
+)
 from py_code_mode.backends.container.client import SessionClient
 from py_code_mode.backends.container.config import ContainerConfig
 from py_code_mode.types import ExecutionResult
@@ -81,15 +84,20 @@ class ContainerExecutor:
         cls,
         artifacts: str | None = None,
         skills: str | None = None,
+        tools: str | None = None,
         image: str = "py-code-mode-tools:latest",
         timeout: float = 30.0,
         **kwargs: Any,
     ) -> ContainerExecutor:
         """Create container executor from factory kwargs.
 
+        NOTE: This is a convenience factory. Prefer using Session API
+        which handles storage access wiring automatically.
+
         Args:
             artifacts: Path to artifacts directory on host.
             skills: Path to skills directory on host.
+            tools: Path to tools directory on host.
             image: Docker image to use.
             timeout: Default execution timeout.
             **kwargs: Additional options (ignored for compatibility).
@@ -99,15 +107,22 @@ class ContainerExecutor:
         """
         from pathlib import Path
 
+        from py_code_mode.backend import FileStorageAccess
+
         config = ContainerConfig(
             image=image,
-            host_artifacts_path=Path(artifacts) if artifacts else None,
-            host_skills_path=Path(skills) if skills else None,
             timeout=timeout,
         )
 
+        # Build storage access from paths
+        storage_access = FileStorageAccess(
+            tools_path=Path(tools) if tools else None,
+            skills_path=Path(skills) if skills else None,
+            artifacts_path=Path(artifacts) if artifacts else Path("/tmp/artifacts"),
+        )
+
         executor = cls(config)
-        await executor.start()
+        await executor.start(storage_access=storage_access)
         return executor
 
     def supports(self, capability: str) -> bool:
@@ -141,7 +156,10 @@ class ContainerExecutor:
 
         # Common socket locations across platforms
         socket_paths = [
-            Path.home() / ".docker" / "run" / "docker.sock",  # Docker Desktop (macOS/Windows)
+            Path.home()
+            / ".docker"
+            / "run"
+            / "docker.sock",  # Docker Desktop (macOS/Windows)
             Path("/var/run/docker.sock"),  # Linux default
             Path("/run/docker.sock"),  # Some Linux distros
         ]
@@ -160,17 +178,52 @@ class ContainerExecutor:
             "Tried DOCKER_HOST env var and common socket locations."
         )
 
-    async def start(self) -> None:
-        """Start the container and wait for it to be healthy."""
+    async def start(
+        self,
+        storage_access: StorageAccess | None = None,
+    ) -> None:
+        """Start the container and wait for it to be healthy.
+
+        Args:
+            storage_access: Storage access descriptor from Session.
+                           Determines volume mounts (FileStorageAccess) or
+                           Redis connection (RedisStorageAccess).
+        """
+        from py_code_mode.backend import FileStorageAccess, RedisStorageAccess
+
         # Initialize Docker client with fallback socket detection
         self._docker = self._create_docker_client()
 
-        # Prepare container config
-        docker_config = self.config.to_docker_config()
+        # Extract paths/urls from storage access
+        tools_path = None
+        skills_path = None
+        artifacts_path = None
+        redis_url = None
 
-        # Create artifacts directory if needed
-        if self.config.host_artifacts_path:
-            self.config.host_artifacts_path.mkdir(parents=True, exist_ok=True)
+        if storage_access is None:
+            # No storage access - proceed with defaults
+            pass
+        elif isinstance(storage_access, FileStorageAccess):
+            tools_path = storage_access.tools_path
+            skills_path = storage_access.skills_path
+            artifacts_path = storage_access.artifacts_path
+            # Create directories on host before mounting
+            # Skills need to exist for volume mount
+            if skills_path:
+                skills_path.mkdir(parents=True, exist_ok=True)
+            # Artifacts need to exist for volume mount
+            if artifacts_path:
+                artifacts_path.mkdir(parents=True, exist_ok=True)
+        elif isinstance(storage_access, RedisStorageAccess):
+            redis_url = storage_access.redis_url
+
+        # Prepare container config with storage access
+        docker_config = self.config.to_docker_config(
+            tools_path=tools_path,
+            skills_path=skills_path,
+            artifacts_path=artifacts_path,
+            redis_url=redis_url,
+        )
 
         # Start container
         self._container = self._docker.containers.run(**docker_config)
@@ -228,7 +281,9 @@ class ContainerExecutor:
             ExecutionResult with value, stdout, error.
         """
         if self._client is None:
-            raise RuntimeError("Container not started. Use 'async with' or call start()")
+            raise RuntimeError(
+                "Container not started. Use 'async with' or call start()"
+            )
 
         result = await self._client.execute(code, timeout=timeout)
 

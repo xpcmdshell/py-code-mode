@@ -136,18 +136,26 @@ class TestToolsListFeature:
         pytest.fail(f"Unknown storage: {request.param}")
 
     @pytest.fixture(params=["in-process"])  # Add "container" when ready
-    def executor_type(self, request: Any) -> str:
+    def executor(self, request: Any):
         """Parametrize over executor types."""
-        if request.param == "container" and not _docker_available():
-            pytest.skip("Docker not available")
-        return request.param
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
+        #         pytest.skip("Docker not available")
+        #     return ContainerExecutor(ContainerConfig())
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_tools_list_returns_list(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """tools.list() returns a list across all backends."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run("tools.list()")
 
             assert result.is_ok, f"tools.list() failed: {result.error}"
@@ -156,10 +164,10 @@ class TestToolsListFeature:
 
     @pytest.mark.asyncio
     async def test_tools_list_contains_expected_tool(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """tools.list() contains our sample tool."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run("tools.list()")
 
             assert result.is_ok
@@ -179,17 +187,24 @@ class TestToolsSearchFeature:
         return redis_storage
 
     @pytest.fixture(params=["in-process"])
-    def executor_type(self, request: Any) -> str:
-        if request.param == "container" and not _docker_available():
+    def executor(self, request: Any):
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
             pytest.skip("Docker not available")
-        return request.param
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_tools_search_returns_list(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """tools.search(query) returns a list."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run('tools.search("echo")')
 
             assert result.is_ok, f"tools.search() failed: {result.error}"
@@ -208,17 +223,24 @@ class TestToolsCallFeature:
         return redis_storage
 
     @pytest.fixture(params=["in-process"])
-    def executor_type(self, request: Any) -> str:
-        if request.param == "container" and not _docker_available():
+    def executor(self, request: Any):
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
             pytest.skip("Docker not available")
-        return request.param
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_tools_call_invokes_tool(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """tools.call(name, args) invokes the specified tool."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run('tools.call("echo", {"text": "hello"})')
 
             assert result.is_ok, f"tools.call() failed: {result.error}"
@@ -237,17 +259,24 @@ class TestToolsDirectCallFeature:
         return redis_storage
 
     @pytest.fixture(params=["in-process"])
-    def executor_type(self, request: Any) -> str:
-        if request.param == "container" and not _docker_available():
+    def executor(self, request: Any):
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
             pytest.skip("Docker not available")
-        return request.param
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_tools_direct_call_syntax(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """tools.echo(text=...) invokes tool directly."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run('tools.echo(text="direct")')
 
             assert result.is_ok, f"tools.echo() failed: {result.error}"
@@ -266,17 +295,24 @@ class TestSkillsListFeature:
         return redis_storage
 
     @pytest.fixture(params=["in-process"])
-    def executor_type(self, request: Any) -> str:
-        if request.param == "container" and not _docker_available():
+    def executor(self, request: Any):
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
             pytest.skip("Docker not available")
-        return request.param
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_skills_list_returns_list(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """skills.list() returns a list across all backends."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run("skills.list()")
 
             assert result.is_ok, f"skills.list() failed: {result.error}"
@@ -285,10 +321,10 @@ class TestSkillsListFeature:
 
     @pytest.mark.asyncio
     async def test_skills_list_contains_expected_skill(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """skills.list() contains our sample skill."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run("skills.list()")
 
             assert result.is_ok
@@ -308,17 +344,24 @@ class TestSkillsSearchFeature:
         return redis_storage
 
     @pytest.fixture(params=["in-process"])
-    def executor_type(self, request: Any) -> str:
-        if request.param == "container" and not _docker_available():
+    def executor(self, request: Any):
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
             pytest.skip("Docker not available")
-        return request.param
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_skills_search_returns_list(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """skills.search(query) returns a list."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run('skills.search("number")')
 
             assert result.is_ok, f"skills.search() failed: {result.error}"
@@ -337,17 +380,24 @@ class TestSkillsCreateFeature:
         return redis_storage
 
     @pytest.fixture(params=["in-process"])
-    def executor_type(self, request: Any) -> str:
-        if request.param == "container" and not _docker_available():
+    def executor(self, request: Any):
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
             pytest.skip("Docker not available")
-        return request.param
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_skills_create_adds_skill(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """skills.create() creates a new skill that's immediately usable."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             # Create a new skill
             result = await session.run(
                 """
@@ -378,17 +428,24 @@ class TestSkillsDirectCallFeature:
         return redis_storage
 
     @pytest.fixture(params=["in-process"])
-    def executor_type(self, request: Any) -> str:
-        if request.param == "container" and not _docker_available():
+    def executor(self, request: Any):
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
             pytest.skip("Docker not available")
-        return request.param
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_skills_direct_call_syntax(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """skills.double(n=...) invokes skill directly."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run("skills.double(n=21)")
 
             assert result.is_ok, f"skills.double() failed: {result.error}"
@@ -407,17 +464,24 @@ class TestArtifactsListFeature:
         return redis_storage
 
     @pytest.fixture(params=["in-process"])
-    def executor_type(self, request: Any) -> str:
-        if request.param == "container" and not _docker_available():
+    def executor(self, request: Any):
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
             pytest.skip("Docker not available")
-        return request.param
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_artifacts_list_returns_iterable(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """artifacts.list() returns an iterable."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run("list(artifacts.list())")
 
             assert result.is_ok, f"artifacts.list() failed: {result.error}"
@@ -436,17 +500,24 @@ class TestArtifactsSaveFeature:
         return redis_storage
 
     @pytest.fixture(params=["in-process"])
-    def executor_type(self, request: Any) -> str:
-        if request.param == "container" and not _docker_available():
+    def executor(self, request: Any):
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
             pytest.skip("Docker not available")
-        return request.param
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_artifacts_save_stores_data(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """artifacts.save() stores data that can be retrieved."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run(
                 'artifacts.save("test.json", {"key": "value"}, "Test artifact")'
             )
@@ -471,17 +542,24 @@ class TestArtifactsLoadFeature:
         return redis_storage
 
     @pytest.fixture(params=["in-process"])
-    def executor_type(self, request: Any) -> str:
-        if request.param == "container" and not _docker_available():
+    def executor(self, request: Any):
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
             pytest.skip("Docker not available")
-        return request.param
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_artifacts_load_retrieves_data(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """artifacts.load() retrieves saved data."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             await session.run('artifacts.save("load.json", {"n": 42}, "Load test")')
             result = await session.run('artifacts.load("load.json")')
 
@@ -501,17 +579,24 @@ class TestArtifactsDeleteFeature:
         return redis_storage
 
     @pytest.fixture(params=["in-process"])
-    def executor_type(self, request: Any) -> str:
-        if request.param == "container" and not _docker_available():
+    def executor(self, request: Any):
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
             pytest.skip("Docker not available")
-        return request.param
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_artifacts_delete_removes_artifact(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """artifacts.delete() removes the artifact."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             await session.run('artifacts.save("delete.json", {}, "Delete test")')
 
             result = await session.run('artifacts.delete("delete.json")')
@@ -542,17 +627,24 @@ class TestFullFeatureMatrix:
         return redis_storage
 
     @pytest.fixture(params=["in-process"])  # Add "container" with Docker
-    def executor_type(self, request: Any) -> str:
-        if request.param == "container" and not _docker_available():
+    def executor(self, request: Any):
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        if request.param == "in-process":
+            return InProcessExecutor()
+        # Add container executor when ready
+        # elif request.param == "container":
+        #     if not _docker_available():
             pytest.skip("Docker not available")
-        return request.param
+        #     return ContainerExecutor(ContainerConfig())
+        pytest.fail(f"Unknown executor type: {request.param}")
 
     @pytest.mark.asyncio
     async def test_all_features_work_together(
-        self, storage: FileStorage | RedisStorage, executor_type: str
+        self, storage: FileStorage | RedisStorage, executor
     ) -> None:
         """All 12 features work in combination."""
-        async with Session(storage=storage, executor=executor_type) as session:
+        async with Session(storage=storage, executor=executor) as session:
             # --- Tools Features ---
 
             # 1. tools.list()

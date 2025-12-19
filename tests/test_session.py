@@ -42,8 +42,11 @@ class TestSessionConstruction:
         assert session is not None
 
     def test_create_session_with_executor_type(self, storage: FileStorage) -> None:
-        """Session can be created with executor type specification."""
-        session = Session(storage=storage, executor="in-process")
+        """Session can be created with executor instance."""
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        executor = InProcessExecutor()
+        session = Session(storage=storage, executor=executor)
         assert session is not None
 
     def test_storage_property(self, storage: FileStorage) -> None:
@@ -469,7 +472,10 @@ class TestSessionWithDifferentExecutors:
     @pytest.mark.asyncio
     async def test_session_with_in_process_executor(self, storage: FileStorage) -> None:
         """Session works with in-process executor."""
-        async with Session(storage=storage, executor="in-process") as session:
+        from py_code_mode.backends.in_process import InProcessExecutor
+
+        executor = InProcessExecutor()
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run("2 + 2")
 
             assert result.is_ok
@@ -483,7 +489,11 @@ class TestSessionWithDifferentExecutors:
         if shutil.which("docker") is None:
             pytest.skip("Docker not available")
 
-        async with Session(storage=storage, executor="container") as session:
+        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+
+        config = ContainerConfig(timeout=30.0)
+        executor = ContainerExecutor(config)
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run("2 + 2")
 
             assert result.is_ok

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from redis import Redis
@@ -125,6 +128,7 @@ class RedisToolStore:
         tools_path = Path(path)
 
         if not tools_path.exists():
+            logger.warning("Tools path does not exist: %s", tools_path)
             return store
 
         for tool_file in sorted(tools_path.glob("*.yaml")):

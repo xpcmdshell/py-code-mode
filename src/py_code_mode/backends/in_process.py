@@ -16,7 +16,10 @@ from contextlib import redirect_stdout
 from typing import TYPE_CHECKING, Any
 
 from py_code_mode.artifacts import ArtifactStore
-from py_code_mode.backend import Capability, register_backend
+from py_code_mode.backend import (
+    Capability,
+    register_backend,
+)
 from py_code_mode.registry import ToolRegistry
 from py_code_mode.semantic import SkillLibrary
 from py_code_mode.types import ExecutionResult
@@ -254,7 +257,7 @@ class InProcessExecutor:
     """
 
     # Capabilities this backend supports
-    _CAPABILITIES = frozenset({Capability.TIMEOUT})
+    _CAPABILITIES = frozenset({Capability.TIMEOUT, Capability.RESET})
 
     def __init__(
         self,
@@ -381,6 +384,108 @@ class InProcessExecutor:
         if self._registry:
             await self._registry.close()
         self._namespace.clear()
+
+    async def reset(self) -> None:
+        """Reset session state.
+
+        Clears all user-defined variables but preserves tools, skills, artifacts namespaces.
+        """
+        # Store namespace items we want to preserve
+        preserved = {
+            "__builtins__": self._namespace.get("__builtins__"),
+            "tools": self._namespace.get("tools"),
+            "skills": self._namespace.get("skills"),
+            "artifacts": self._namespace.get("artifacts"),
+        }
+
+        # Clear everything
+        self._namespace.clear()
+
+        # Restore preserved items
+        for key, value in preserved.items():
+            if value is not None:
+                self._namespace[key] = value
+
+    async def start(
+        self,
+        storage_access: StorageAccess | None = None,
+    ) -> None:
+        """Start executor and configure from storage access.
+
+        Args:
+            storage_access: Optional storage access descriptor.
+                           If provided, loads tools/skills/artifacts from paths.
+                           If None, uses whatever was passed to __init__.
+        """
+        from py_code_mode.backend import FileStorageAccess, RedisStorageAccess
+
+        if storage_access is None:
+            return  # Use __init__ configuration
+
+        if isinstance(storage_access, FileStorageAccess):
+            # Load from file paths
+            # Always inject tools namespace (empty if no path/directory)
+            if storage_access.tools_path and storage_access.tools_path.exists():
+                self._registry = await ToolRegistry.from_dir(
+                    str(storage_access.tools_path)
+                )
+            else:
+                self._registry = ToolRegistry()
+            self._namespace["tools"] = ToolsNamespace(self._registry)
+
+            # Always inject skills namespace
+            if storage_access.skills_path:
+                from py_code_mode.semantic import create_skill_library
+                from py_code_mode.skill_store import FileSkillStore
+
+                # Create directory if it doesn't exist (same as artifacts behavior)
+                storage_access.skills_path.mkdir(parents=True, exist_ok=True)
+                store = FileSkillStore(storage_access.skills_path)
+                self._skill_library = create_skill_library(store=store)
+            else:
+                # Only use memory store if NO path configured (explicit choice)
+                from py_code_mode.semantic import MockEmbedder, SkillLibrary
+                from py_code_mode.skill_store import MemorySkillStore
+
+                self._skill_library = SkillLibrary(
+                    embedder=MockEmbedder(), store=MemorySkillStore()
+                )
+            self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
+
+            # Always inject artifacts namespace
+            if storage_access.artifacts_path:
+                from py_code_mode.artifacts import FileArtifactStore
+
+                storage_access.artifacts_path.mkdir(parents=True, exist_ok=True)
+                self._artifact_store = FileArtifactStore(storage_access.artifacts_path)
+                self._namespace["artifacts"] = self._artifact_store
+
+        elif isinstance(storage_access, RedisStorageAccess):
+            # Load from Redis
+            try:
+                import redis
+            except ImportError as e:
+                raise ImportError(
+                    "redis required for RedisStorageAccess. Install with: pip install redis"
+                ) from e
+
+            client = redis.from_url(storage_access.redis_url)
+
+            # TODO: Load tools from Redis (not yet implemented)
+
+            from py_code_mode.semantic import create_skill_library
+            from py_code_mode.skill_store import RedisSkillStore
+
+            skill_store = RedisSkillStore(client, prefix=storage_access.skills_prefix)
+            self._skill_library = create_skill_library(store=skill_store)
+            self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
+
+            from py_code_mode.redis_artifacts import RedisArtifactStore
+
+            self._artifact_store = RedisArtifactStore(
+                client, prefix=storage_access.artifacts_prefix
+            )
+            self._namespace["artifacts"] = self._artifact_store
 
     async def __aenter__(self) -> InProcessExecutor:
         return self

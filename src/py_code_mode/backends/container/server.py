@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import importlib
+import logging
 import os
 import subprocess
 import time
@@ -20,6 +21,8 @@ import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Check for FastAPI at import time for cleaner error messages
 try:
@@ -153,7 +156,15 @@ async def build_tool_registry(config: SessionConfig) -> ToolRegistry:
 
 def build_skill_library(config: SessionConfig) -> SkillLibrary | None:
     """Build skill library from configuration with semantic search."""
-    if not config.skills_path.exists():
+    # Create directory if it doesn't exist (same as artifacts behavior)
+    try:
+        config.skills_path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        # If we can't create the directory (e.g., read-only filesystem),
+        # return None to signal no skill library is available
+        logger.warning(
+            "Cannot create skills directory at %s: %s", config.skills_path, e
+        )
         return None
 
     # Use file-based store wrapped in skill library
@@ -211,7 +222,9 @@ def cleanup_expired_sessions() -> int:
     """Remove sessions that haven't been used recently."""
     now = time.time()
     expired = [
-        sid for sid, session in _state.sessions.items() if now - session.last_used > SESSION_EXPIRY
+        sid
+        for sid, session in _state.sessions.items()
+        if now - session.last_used > SESSION_EXPIRY
     ]
     for sid in expired:
         del _state.sessions[sid]
@@ -232,13 +245,13 @@ def install_python_deps(deps: list[str]) -> None:
         try:
             importlib.import_module(import_name)
         except ImportError:
-            print(f"Installing {dep}...")
+            logger.info("Installing %s...", dep)
             subprocess.run(
                 ["pip", "install", "--quiet", dep],
                 check=True,
                 capture_output=True,
             )
-            print(f"Installed {dep}")
+            logger.info("Installed %s", dep)
 
 
 async def initialize_server(config: SessionConfig) -> None:
@@ -263,18 +276,18 @@ async def initialize_server(config: SessionConfig) -> None:
         from py_code_mode.redis_tools import RedisToolStore, registry_from_redis
         from py_code_mode.skill_store import RedisSkillStore
 
-        print(f"Using Redis backend: {redis_url[:50]}...")
+        logger.info("Using Redis backend: %s...", redis_url[:50])
         r = redis_lib.from_url(redis_url)
 
         # Tools from Redis
         tool_store = RedisToolStore(r, prefix="agent-tools")
         registry = await registry_from_redis(tool_store)
-        print(f"  Tools in Redis: {len(tool_store)}")
+        logger.info("  Tools in Redis: %d", len(tool_store))
 
         # Skills from Redis with semantic search
         redis_store = RedisSkillStore(r, prefix="agent-skills")
         skill_library = create_skill_library(store=redis_store)
-        print(f"  Skills in Redis: {len(redis_store)} (semantic search enabled)")
+        logger.info("  Skills in Redis: %d (semantic search enabled)", len(redis_store))
 
         # Artifacts in Redis (shared across sessions)
         artifact_store = RedisArtifactStore(r, prefix="agent-artifacts")
@@ -290,7 +303,7 @@ async def initialize_server(config: SessionConfig) -> None:
         )
     else:
         # File mode: load from config paths
-        print("Using file-based backend (set REDIS_URL for Redis mode)")
+        logger.info("Using file-based backend (set REDIS_URL for Redis mode)")
         registry = await build_tool_registry(config)
         skill_library = build_skill_library(config)
 

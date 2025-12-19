@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from py_code_mode.errors import StorageReadError
 from py_code_mode.skills import PythonSkill, SkillMetadata
 
 if TYPE_CHECKING:
@@ -97,9 +98,15 @@ class FileSkillStore:
             return None
         try:
             return PythonSkill.from_file(path)
-        except Exception as e:
-            logger.warning(f"Failed to load skill '{name}' from {path}: {type(e).__name__}: {e}")
+        except FileNotFoundError:
             return None
+        except Exception as e:
+            logger.error(
+                f"Failed to load skill '{name}' from {path}: {type(e).__name__}: {e}"
+            )
+            raise StorageReadError(
+                f"Failed to load skill '{name}' from {path}: {e}"
+            ) from e
 
     def delete(self, name: str) -> bool:
         """Delete skill .py file."""
@@ -120,7 +127,9 @@ class FileSkillStore:
                 skill = PythonSkill.from_file(path)
                 skills.append(skill)
             except Exception as e:
-                logger.warning(f"Failed to load skill from {path}: {type(e).__name__}: {e}")
+                logger.warning(
+                    f"Failed to load skill from {path}: {type(e).__name__}: {e}"
+                )
                 continue
         return skills
 
@@ -195,19 +204,19 @@ class RedisSkillStore:
 
     def load(self, name: str) -> PythonSkill | None:
         """Load skill from Redis by name."""
-        try:
-            value = self._redis.hget(self._hash_key(), name)
-            if value is None:
-                return None
+        value = self._redis.hget(self._hash_key(), name)
+        if value is None:
+            return None
 
+        try:
             if isinstance(value, bytes):
                 value = value.decode()
 
             data = json.loads(value)
             return self._deserialize_skill(data)
-        except Exception as e:
-            logger.warning(f"Failed to load skill '{name}': {type(e).__name__}: {e}")
-            return None
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Failed to load skill '{name}': {type(e).__name__}: {e}")
+            raise StorageReadError(f"Failed to load skill '{name}': {e}") from e
 
     def delete(self, name: str) -> bool:
         """Delete skill from Redis."""
@@ -230,7 +239,9 @@ class RedisSkillStore:
                 data = json.loads(value)
                 skills.append(self._deserialize_skill(data))
             except Exception as e:
-                logger.warning(f"Failed to deserialize skill '{name}': {type(e).__name__}: {e}")
+                logger.warning(
+                    f"Failed to deserialize skill '{name}': {type(e).__name__}: {e}"
+                )
                 continue
 
         return skills

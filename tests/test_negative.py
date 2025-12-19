@@ -103,7 +103,9 @@ class TestSessionExecutionErrors:
             assert "timeout" in result.error.lower() or "Timeout" in result.error
 
     @pytest.mark.asyncio
-    async def test_error_does_not_corrupt_session_state(self, storage: FileStorage) -> None:
+    async def test_error_does_not_corrupt_session_state(
+        self, storage: FileStorage
+    ) -> None:
         """Errors don't corrupt the session - can continue executing."""
         async with Session(storage=storage) as session:
             # Set a variable
@@ -242,7 +244,9 @@ def run(a: int, b: int) -> float:
             assert "ZeroDivision" in result.error or "division" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_skill_create_invalid_source_error(self, storage: FileStorage) -> None:
+    async def test_skill_create_invalid_source_error(
+        self, storage: FileStorage
+    ) -> None:
         """Creating skill with invalid source gives error."""
         async with Session(storage=storage) as session:
             result = await session.run(
@@ -259,7 +263,9 @@ skills.create(
             assert result.error is not None
 
     @pytest.mark.asyncio
-    async def test_skill_create_missing_run_function_error(self, storage: FileStorage) -> None:
+    async def test_skill_create_missing_run_function_error(
+        self, storage: FileStorage
+    ) -> None:
         """Creating skill without run() function gives error."""
         async with Session(storage=storage) as session:
             result = await session.run(
@@ -309,18 +315,24 @@ class TestArtifactsNamespaceErrors:
         """Saving artifact with invalid name gives error."""
         async with Session(storage=storage) as session:
             # Path traversal attempt
-            result = await session.run('artifacts.save("../../../etc/passwd", "malicious", "hack")')
+            result = await session.run(
+                'artifacts.save("../../../etc/passwd", "malicious", "hack")'
+            )
 
             # Should either fail or sanitize the name
             # Implementation-dependent
 
     @pytest.mark.asyncio
-    async def test_artifact_save_unserializable_data(self, storage: FileStorage) -> None:
+    async def test_artifact_save_unserializable_data(
+        self, storage: FileStorage
+    ) -> None:
         """Saving non-serializable data gives error."""
         async with Session(storage=storage) as session:
             # Functions can't be JSON serialized
             await session.run("def my_func(): pass")
-            result = await session.run('artifacts.save("func.json", my_func, "Function")')
+            result = await session.run(
+                'artifacts.save("func.json", my_func, "Function")'
+            )
 
             # Should fail - functions aren't serializable
             if result.is_ok:
@@ -423,26 +435,22 @@ class TestSessionConfigurationErrors:
 
     @pytest.mark.asyncio
     async def test_unknown_executor_type_error(self, storage: FileStorage) -> None:
-        """Unknown executor type gives clear error."""
-        with pytest.raises(ValueError) as exc_info:
+        """String executor type gives clear error."""
+        with pytest.raises(TypeError) as exc_info:
             Session(storage=storage, executor="unknown_executor")
 
-        assert (
-            "unknown_executor" in str(exc_info.value).lower()
-            or "backend" in str(exc_info.value).lower()
+        assert "String-based executor selection is no longer supported" in str(
+            exc_info.value
         )
 
     @pytest.mark.asyncio
-    async def test_unsupported_capability_error(self, storage: FileStorage) -> None:
-        """Requesting unsupported capability gives error."""
-        # In-process executor doesn't support network isolation
-        with pytest.raises(ValueError):
-            async with Session(
-                storage=storage,
-                executor="in-process",
-                network_policy="deny",
-            ) as session:
-                pass
+    async def test_invalid_executor_type_error(self, storage: FileStorage) -> None:
+        """Passing non-Executor instance gives clear error."""
+        # Pass something that's not an Executor instance
+        with pytest.raises(TypeError) as exc_info:
+            Session(storage=storage, executor={"type": "invalid"})
+
+        assert "executor must be an Executor instance" in str(exc_info.value)
 
 
 # --- Concurrent Operation Errors ---

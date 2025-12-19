@@ -1,6 +1,5 @@
 """Tests for ContainerExecutor."""
 
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -25,10 +24,10 @@ class TestContainerConfig:
         config = ContainerConfig(image="my-tools:v1")
         assert config.image == "my-tools:v1"
 
-    def test_with_artifacts_path(self) -> None:
-        """Can set artifacts path for volume mount."""
-        config = ContainerConfig(host_artifacts_path=Path("/data/artifacts"))
-        assert config.host_artifacts_path == Path("/data/artifacts")
+    def test_custom_timeout(self) -> None:
+        """Can set custom timeout."""
+        config = ContainerConfig(timeout=60.0)
+        assert config.timeout == 60.0
 
 
 class TestContainerExecutor:
@@ -39,7 +38,6 @@ class TestContainerExecutor:
         """Create test config."""
         return ContainerConfig(
             image="py-code-mode-test:latest",
-            host_artifacts_path=tmp_path / "artifacts",
         )
 
     def _make_mock_container(self) -> MagicMock:
@@ -48,7 +46,9 @@ class TestContainerExecutor:
         mock_container.id = "abc123"
         mock_container.status = "running"
         mock_container.attrs = {
-            "NetworkSettings": {"Ports": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}]}}
+            "NetworkSettings": {
+                "Ports": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}]}
+            }
         }
         mock_container.reload = MagicMock()
         return mock_container
@@ -100,7 +100,9 @@ class TestContainerExecutor:
 
                     assert result.value == 42
                     assert result.is_ok
-                    executor._client.execute.assert_called_once_with("21 * 2", timeout=None)
+                    executor._client.execute.assert_called_once_with(
+                        "21 * 2", timeout=None
+                    )
 
     @pytest.mark.asyncio
     async def test_run_with_timeout(self, config) -> None:
@@ -199,7 +201,9 @@ def _make_mock_container() -> MagicMock:
     mock_container.id = "abc123"
     mock_container.status = "running"
     mock_container.attrs = {
-        "NetworkSettings": {"Ports": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}]}}
+        "NetworkSettings": {
+            "Ports": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}]}
+        }
     }
     mock_container.reload = MagicMock()
     return mock_container
@@ -209,26 +213,22 @@ class TestContainerExecutorVolumes:
     """Tests for volume mounting."""
 
     @pytest.mark.asyncio
-    async def test_mounts_artifacts_volume(self, tmp_path) -> None:
-        """Mounts host artifacts path to container."""
+    async def test_to_docker_config_with_volumes(self, tmp_path) -> None:
+        """ContainerConfig.to_docker_config() adds volume mounts."""
         artifacts_path = tmp_path / "artifacts"
-        config = ContainerConfig(
-            image="py-code-mode:latest",
-            host_artifacts_path=artifacts_path,
+        artifacts_path.mkdir()
+
+        config = ContainerConfig(image="py-code-mode:latest")
+
+        docker_config = config.to_docker_config(artifacts_path=artifacts_path)
+
+        # Check that volumes were added
+        assert "volumes" in docker_config
+        assert str(artifacts_path.absolute()) in docker_config["volumes"]
+        assert (
+            docker_config["volumes"][str(artifacts_path.absolute())]["bind"]
+            == "/workspace/artifacts"
         )
-        executor = ContainerExecutor(config)
-
-        mock_container = _make_mock_container()
-        mock_docker = MagicMock()
-        mock_docker.containers.run.return_value = mock_container
-
-        with patch("docker.from_env", return_value=mock_docker):
-            with patch.object(executor, "_wait_for_healthy", new_callable=AsyncMock):
-                async with executor:
-                    # Check that volumes were passed
-                    call_args = mock_docker.containers.run.call_args
-                    volumes = call_args[1].get("volumes", {})
-                    assert str(artifacts_path) in volumes
 
 
 class TestContainerExecutorEnvironment:

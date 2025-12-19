@@ -59,7 +59,9 @@ class TestFilesystemIsolationWithArtifacts:
 
     @pytest.mark.asyncio
     @pytest.mark.xfail(reason="FILESYSTEM_ISOLATION capability not yet implemented")
-    async def test_filesystem_isolated_but_artifacts_accessible(self, tmp_path: Path) -> None:
+    async def test_filesystem_isolated_but_artifacts_accessible(
+        self, tmp_path: Path
+    ) -> None:
         """Host filesystem hidden but artifact store accessible.
 
         Filesystem isolation should prevent reading host files like /etc/passwd,
@@ -82,7 +84,9 @@ class TestFilesystemIsolationWithArtifacts:
             assert not result.is_ok
 
             # Can use artifact store
-            result = await executor.run("artifacts.save('secret.txt', b'safe', 'safe data')")
+            result = await executor.run(
+                "artifacts.save('secret.txt', b'safe', 'safe data')"
+            )
             assert result.is_ok
         finally:
             await executor.close()
@@ -96,18 +100,24 @@ class TestContainerWithFileArtifacts:
     async def test_file_artifacts_save_load(self, tmp_path: Path) -> None:
         """Container with file artifacts can save and load data."""
         from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import FileStorage
 
-        artifacts_path = tmp_path / "artifacts"
-        artifacts_path.mkdir(parents=True, exist_ok=True)
+        # Create storage with artifacts
+        storage = FileStorage(tmp_path)
 
-        config = ContainerConfig(host_artifacts_path=artifacts_path)
-        async with ContainerExecutor(config) as executor:
+        # Use Session with ContainerExecutor
+        config = ContainerConfig(timeout=30.0)
+        executor = ContainerExecutor(config)
+        async with Session(storage=storage, executor=executor) as session:
             # Save artifact
-            result = await executor.run("artifacts.save('report.txt', b'test data', 'Test report')")
+            result = await session.run(
+                "artifacts.save('report.txt', b'test data', 'Test report')"
+            )
             assert result.is_ok, f"artifacts.save() failed: {result.error}"
 
             # Load artifact
-            result = await executor.run("artifacts.load('report.txt')")
+            result = await session.run("artifacts.load('report.txt')")
             assert result.is_ok, f"artifacts.load() failed: {result.error}"
             # Handle both bytes and string return types
             if isinstance(result.value, bytes):
@@ -116,7 +126,7 @@ class TestContainerWithFileArtifacts:
                 assert "test data" in str(result.value)
 
             # List artifacts
-            result = await executor.run("artifacts.list()")
+            result = await session.run("artifacts.list()")
             assert result.is_ok, f"artifacts.list() failed: {result.error}"
             assert result.value is not None, "artifacts.list() returned None"
 
@@ -125,13 +135,20 @@ class TestContainerWithFileArtifacts:
     async def test_file_artifacts_persist_on_host(self, tmp_path: Path) -> None:
         """File artifacts written in container are visible on host filesystem."""
         from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import FileStorage
 
+        # Create storage
+        storage = FileStorage(tmp_path)
         artifacts_path = tmp_path / "artifacts"
-        artifacts_path.mkdir(parents=True, exist_ok=True)
 
-        config = ContainerConfig(host_artifacts_path=artifacts_path)
-        async with ContainerExecutor(config) as executor:
-            await executor.run("artifacts.save('host_visible.txt', b'from container', 'test')")
+        # Use Session with ContainerExecutor
+        config = ContainerConfig(timeout=30.0)
+        executor = ContainerExecutor(config)
+        async with Session(storage=storage, executor=executor) as session:
+            await session.run(
+                "artifacts.save('host_visible.txt', b'from container', 'test')"
+            )
 
         # Verify file exists on host (artifact store may create subdirectories)
         found = list(artifacts_path.rglob("host_visible.txt"))
@@ -158,28 +175,37 @@ class TestContainerWithRedisArtifacts:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    @pytest.mark.skipif(not _redis_available(), reason="Redis not available for testing")
+    @pytest.mark.skipif(
+        not _redis_available(), reason="Redis not available for testing"
+    )
     async def test_redis_artifacts_save_load(self) -> None:
         """Container with Redis artifacts can save and load data."""
         import os
 
+        import redis
+
         from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import RedisStorage
 
         redis_url = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379")
 
-        config = ContainerConfig(
-            artifact_backend="redis",
-            redis_url=redis_url,
-        )
-        async with ContainerExecutor(config) as executor:
+        # Create Redis storage
+        client = redis.from_url(redis_url)
+        storage = RedisStorage(client)
+
+        # Use Session with ContainerExecutor
+        config = ContainerConfig(timeout=30.0)
+        executor = ContainerExecutor(config)
+        async with Session(storage=storage, executor=executor) as session:
             # Save artifact
-            result = await executor.run(
+            result = await session.run(
                 "artifacts.save('redis_test.txt', b'redis data', 'Redis test')"
             )
             assert result.is_ok, f"artifacts.save() failed: {result.error}"
 
             # Load artifact
-            result = await executor.run("artifacts.load('redis_test.txt')")
+            result = await session.run("artifacts.load('redis_test.txt')")
             assert result.is_ok, f"artifacts.load() failed: {result.error}"
             # Handle both bytes and string return types
             if isinstance(result.value, bytes):
@@ -193,36 +219,41 @@ class TestResetWithStateAndArtifacts:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_reset_clears_namespace_preserves_artifacts(self, tmp_path: Path) -> None:
+    async def test_reset_clears_namespace_preserves_artifacts(
+        self, tmp_path: Path
+    ) -> None:
         """Reset clears Python state but keeps artifacts.
 
         After reset, variables should be gone but artifacts should persist.
         Uses container backend which supports RESET capability.
         """
         from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import FileStorage
 
-        artifacts_path = tmp_path / "artifacts"
-        artifacts_path.mkdir(parents=True, exist_ok=True)
+        # Create storage
+        storage = FileStorage(tmp_path)
 
-        # Use container backend which supports RESET
-        config = ContainerConfig(host_artifacts_path=artifacts_path)
-        async with ContainerExecutor(config) as executor:
+        # Use Session with ContainerExecutor (supports RESET)
+        config = ContainerConfig(timeout=30.0)
+        executor = ContainerExecutor(config)
+        async with Session(storage=storage, executor=executor) as session:
             # Set variable
-            await executor.run("x = 42")
+            await session.run("x = 42")
 
             # Save artifact
-            await executor.run("artifacts.save('keep.txt', b'preserved', 'keep')")
+            await session.run("artifacts.save('keep.txt', b'preserved', 'keep')")
 
-            # Reset (clear namespace)
-            await executor.reset()
+            # Reset (clear namespace) - access executor directly
+            await session._executor.reset()
 
             # Variable should be gone
-            result = await executor.run("x")
+            result = await session.run("x")
             assert not result.is_ok
             assert "NameError" in str(result.error)
 
             # Artifact should persist
-            result = await executor.run("artifacts.load('keep.txt')")
+            result = await session.run("artifacts.load('keep.txt')")
             assert result.is_ok
             assert "preserved" in str(result.value)
 
@@ -245,7 +276,9 @@ class TestTimeoutBehavior:
 
             assert not result.is_ok
             # Error should mention timeout
-            assert "timeout" in str(result.error).lower() or "Timeout" in str(result.error)
+            assert "timeout" in str(result.error).lower() or "Timeout" in str(
+                result.error
+            )
 
 
 class TestToolsAndSkillsTogether:

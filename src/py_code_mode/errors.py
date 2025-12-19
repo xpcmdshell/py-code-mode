@@ -15,7 +15,9 @@ class CodeModeError(Exception):
 class ToolNotFoundError(CodeModeError):
     """Raised when a tool name is not found in the registry."""
 
-    def __init__(self, tool_name: str, available_tools: list[str] | None = None) -> None:
+    def __init__(
+        self, tool_name: str, available_tools: list[str] | None = None
+    ) -> None:
         self.tool_name = tool_name
         self.available_tools = available_tools or []
         msg = f"Tool '{tool_name}' not found"
@@ -36,7 +38,9 @@ class ToolCallError(CodeModeError):
         cause: Exception,
     ) -> None:
         self.tool_name = tool_name
-        self.tool_args = tool_args  # Named tool_args to avoid collision with Exception.args
+        self.tool_args = (
+            tool_args  # Named tool_args to avoid collision with Exception.args
+        )
         self.cause = cause
         super().__init__(f"Tool '{tool_name}' failed: {cause}")
 
@@ -103,3 +107,31 @@ class DependencyError(CodeModeError):
         if required_by:
             msg += f" (required by {required_by})"
         super().__init__(msg)
+
+
+class StorageError(CodeModeError):
+    """Base exception for storage operations."""
+
+    pass
+
+
+class StorageReadError(StorageError):
+    """Error reading from storage (corruption, permission, deserialization)."""
+
+    def __init__(self, message: str, path: str | None = None) -> None:
+        self.path = path
+        super().__init__(message)
+
+
+class StorageWriteError(StorageError):
+    """Error writing to storage (permission, serialization)."""
+
+    def __init__(self, message: str, path: str | None = None) -> None:
+        self.path = path
+        super().__init__(message)
+
+
+class ConfigurationError(CodeModeError):
+    """Error in configuration (missing deps, invalid config)."""
+
+    pass

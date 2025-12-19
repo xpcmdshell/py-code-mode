@@ -265,12 +265,38 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "requires_docker: mark test as requiring Docker")
 
 
+class MockConnectionPool:
+    """Mock connection pool to match redis.ConnectionPool interface."""
+
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 6379,
+        db: int = 0,
+        password: str | None = None,
+    ) -> None:
+        self.connection_kwargs = {
+            "host": host,
+            "port": port,
+            "db": db,
+            "password": password,
+        }
+
+
 class MockRedisClient:
     """Mock Redis client for testing RedisStorage without actual Redis."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 6379,
+        db: int = 0,
+        password: str | None = None,
+    ) -> None:
         self._data: dict[str, dict[str, bytes]] = {}
         self._strings: dict[str, bytes] = {}
+        # Match real redis.Redis interface for session.py:_derive_storage_access()
+        self.connection_pool = MockConnectionPool(host, port, db, password)
 
     def hset(self, key: str, field: str, value: bytes) -> int:
         if key not in self._data:
@@ -298,6 +324,9 @@ class MockRedisClient:
 
     def hkeys(self, key: str) -> list[str]:
         return list(self._data.get(key, {}).keys())
+
+    def hlen(self, key: str) -> int:
+        return len(self._data.get(key, {}))
 
     def set(self, key: str, value: bytes, ex: int | None = None) -> bool:
         self._strings[key] = value
