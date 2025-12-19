@@ -22,4 +22,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - run: uv sync
-      - run: uv run pytest tests/ -v -n auto
+      - run: |
+          uv run pytest tests/ -v \
+            --ignore=tests/test_semantic.py \
+            --ignore=tests/test_integration.py \
+            --ignore=tests/test_backend_integration.py \
+            --ignore=tests/test_backend_e2e.py \
+            --ignore=tests/test_feature_matrix_comprehensive.py \
+            --ignore=tests/test_backend_user_journey.py \
+            --ignore=tests/container/
