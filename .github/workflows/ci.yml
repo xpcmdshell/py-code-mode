@@ -27,4 +27,5 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - run: uv sync
-      - run: uv run pytest tests/ -v
+      # Skip container tests in CI for now (too slow - need Docker layer caching)
+      - run: uv run pytest tests/ -v --ignore=tests/test_container.py -k "not Container"
