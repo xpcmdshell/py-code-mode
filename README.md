@@ -37,27 +37,26 @@ Now Claude can:
 ### Agent Frameworks (Python)
 
 ```python
-from py_code_mode import CodeExecutor
+from pathlib import Path
+from py_code_mode import Session, FileStorage
 
-executor = await CodeExecutor.create(
-    tools="./tools/",
-    skills="./skills/",
-)
+storage = FileStorage(base_path=Path("./configs"))
 
-# Agent writes code, executor runs it
-result = await executor.run('''
-    # Search for relevant tools
-    tools.search("web search")
+async with Session(storage=storage) as session:
+    # Agent writes code, session runs it
+    result = await session.run('''
+        # Search for relevant tools
+        tools.search("web search")
 
-    # Call tools
-    results = tools.brave_search(query="python async patterns")
+        # Call tools
+        results = tools.brave_search(query="python async patterns")
 
-    # Fetch and analyze a result
-    content = tools.fetch(url=results[0]["url"])
+        # Fetch and analyze a result
+        content = tools.fetch(url=results[0]["url"])
 
-    # Use existing skills
-    skills.summarize(text=content)
-''')
+        # Use existing skills
+        skills.summarize(text=content)
+    ''')
 ```
 
 ## Why Code Mode?
@@ -182,17 +181,19 @@ Skills can be:
 
 ## API Reference
 
-### CodeExecutor.create()
+### Session
 
-The main way to create an executor:
+The main entry point. Create with storage and optional executor:
 
 ```python
-executor = await CodeExecutor.create(
-    tools="./tools/",           # Directory of tool YAML files
-    skills="./skills/",         # Directory of skill .py files
-    artifacts="./data/",        # Directory for persistent storage
-    embedding_model="bge-small" # Model for semantic search (optional)
-)
+from pathlib import Path
+from py_code_mode import Session, FileStorage
+
+# File-based storage (creates tools/, skills/, artifacts/ subdirs)
+storage = FileStorage(base_path=Path("./data"))
+
+async with Session(storage=storage) as session:
+    result = await session.run('tools.list()')
 ```
 
 ### Tool Operations
@@ -235,30 +236,25 @@ skills.create(
 )
 ```
 
-### Explicit Components
+### Typed Executors
 
-For more control, construct components directly:
+Session accepts typed executor instances for different isolation levels:
 
 ```python
-from pathlib import Path
-from py_code_mode import (
-    CodeExecutor,
-    ToolRegistry,
-    FileSkillStore,
-    FileArtifactStore,
-    create_skill_library,
-)
+from py_code_mode import Session, FileStorage
+from py_code_mode.backends.in_process import InProcessExecutor
+from py_code_mode.backends.container import ContainerExecutor, ContainerConfig
 
-registry = await ToolRegistry.from_dir("./tools/")
-store = FileSkillStore(Path("./skills"))
-skill_library = create_skill_library(store=store)
-artifacts = FileArtifactStore(Path("./data"))
+storage = FileStorage(base_path=Path("./data"))
 
-executor = CodeExecutor(
-    registry=registry,
-    skill_library=skill_library,
-    artifact_store=artifacts,
-)
+# In-process execution (default when executor omitted)
+async with Session(storage=storage, executor=InProcessExecutor()) as session:
+    result = await session.run('2 + 2')
+
+# Container isolation for production
+config = ContainerConfig(image="py-code-mode:latest", timeout=60.0)
+async with Session(storage=storage, executor=ContainerExecutor(config)) as session:
+    result = await session.run('tools.nmap(target="10.0.0.1")')
 ```
 
 ## Configuration
@@ -283,41 +279,31 @@ Built-in aliases:
 Python API:
 
 ```python
-executor = await CodeExecutor.create(
-    tools="./tools",
-    skills="./skills",
-    embedding_model="bge-base",
-)
+from py_code_mode import Session, FileStorage
+
+# Embedding model configured via environment or storage options
+storage = FileStorage(base_path=Path("./data"))
+
+async with Session(storage=storage) as session:
+    # Semantic search uses configured embedding model
+    result = await session.run('tools.search("network scanning")')
 ```
 
 ## Production
 
 ### Redis Backend
 
-For distributed deployments, use Redis for skills and artifacts:
+For distributed deployments, use Redis for tools, skills, and artifacts:
 
 ```python
-from redis import Redis
-from py_code_mode import (
-    CodeExecutor,
-    RedisSkillStore,
-    RedisArtifactStore,
-    create_skill_library,
-    ToolRegistry,
-)
+import redis as redis_lib
+from py_code_mode import Session, RedisStorage
 
-redis = Redis.from_url("redis://localhost:6379")
+client = redis_lib.from_url("redis://localhost:6379")
+storage = RedisStorage(redis=client, prefix="my-agent")
 
-store = RedisSkillStore(redis, prefix="my-agent")
-skill_library = create_skill_library(store=store)
-artifacts = RedisArtifactStore(redis, prefix="my-agent")
-registry = await ToolRegistry.from_dir("./tools/")
-
-executor = CodeExecutor(
-    registry=registry,
-    skill_library=skill_library,
-    artifact_store=artifacts,
-)
+async with Session(storage=storage) as session:
+    result = await session.run('tools.list()')
 ```
 
 MCP server with Redis:
@@ -328,20 +314,23 @@ py-code-mode-mcp --backend redis --url redis://localhost:6379 --prefix my-agent
 
 ### Container Isolation
 
-For production, run in Docker with multi-session support:
+For production, use ContainerExecutor with Docker:
 
 ```python
-from py_code_mode.container import SessionClient
+from py_code_mode import Session, FileStorage
+from py_code_mode.backends.container import ContainerExecutor, ContainerConfig
 
-async with SessionClient("http://localhost:8080") as client:
-    result = await client.execute('tools.nmap(target="scanme.nmap.org")')
+storage = FileStorage(base_path=Path("./data"))
+config = ContainerConfig(image="py-code-mode:latest", timeout=60.0)
+
+async with Session(storage=storage, executor=ContainerExecutor(config)) as session:
+    result = await session.run('tools.nmap(target="scanme.nmap.org")')
 ```
 
-Build and run:
+Build the container image:
 
 ```bash
-docker build -f docker/Dockerfile.tools -t py-code-mode-tools .
-docker run -p 8080:8080 -v $(pwd)/tools:/workspace/tools py-code-mode-tools
+docker build -f docker/Dockerfile.tools -t py-code-mode:latest .
 ```
 
 ## Examples

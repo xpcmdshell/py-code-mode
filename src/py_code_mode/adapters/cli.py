@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import re
 import shlex
 from dataclasses import dataclass, field
@@ -12,6 +13,8 @@ import yaml
 
 from py_code_mode.errors import ToolCallError, ToolNotFoundError, ToolTimeoutError
 from py_code_mode.types import JsonSchema, ToolDefinition
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -109,35 +112,39 @@ class CLIAdapter:
         tools_path = Path(path)
 
         if not tools_path.exists():
+            logger.warning("Tools path does not exist: %s", tools_path)
             return cls([])
 
         for tool_file in sorted(tools_path.glob("*.yaml")):
-            with open(tool_file) as f:
-                tool = yaml.safe_load(f)
-                if not tool or not tool.get("name"):
+            try:
+                with open(tool_file) as f:
+                    tool = yaml.safe_load(f)
+                    if not tool or not tool.get("name"):
+                        continue
+
+                # Skip non-CLI tools (mcp, http, etc.)
+                tool_type = tool.get("type", "cli")
+                if tool_type != "cli":
                     continue
 
-            # Skip non-CLI tools (mcp, http, etc.)
-            tool_type = tool.get("type", "cli")
-            if tool_type != "cli":
-                continue
+                args_template = tool.get("args", "")
+                params = re.findall(r"\{(\w+)\}", args_template)
 
-            args_template = tool.get("args", "")
-            params = re.findall(r"\{(\w+)\}", args_template)
-
-            spec = CLIToolSpec(
-                name=tool["name"],
-                description=tool.get("description", ""),
-                command=tool.get("command"),
-                args_template=args_template,
-                input_schema=JsonSchema(
-                    type="object",
-                    properties={p: JsonSchema(type="string") for p in params},
-                ),
-                tags=frozenset(tool.get("tags", [])),
-                timeout_seconds=tool.get("timeout", 60.0),
-            )
-            specs.append(spec)
+                spec = CLIToolSpec(
+                    name=tool["name"],
+                    description=tool.get("description", ""),
+                    command=tool.get("command"),
+                    args_template=args_template,
+                    input_schema=JsonSchema(
+                        type="object",
+                        properties={p: JsonSchema(type="string") for p in params},
+                    ),
+                    tags=frozenset(tool.get("tags", [])),
+                    timeout_seconds=tool.get("timeout", 60.0),
+                )
+                specs.append(spec)
+            except Exception as e:
+                logger.warning("Failed to load tool file %s: %s", tool_file, e)
 
         return cls(specs)
 
@@ -181,7 +188,9 @@ class CLIAdapter:
                     return json.loads(result)
                 except json.JSONDecodeError as e:
                     raise ToolCallError(
-                        name, tool_args=args, cause=ValueError(f"Invalid JSON output: {e}")
+                        name,
+                        tool_args=args,
+                        cause=ValueError(f"Invalid JSON output: {e}"),
                     ) from e
 
             return result

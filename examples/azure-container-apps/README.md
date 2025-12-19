@@ -22,19 +22,22 @@ Azure Container Apps Environment
 +-------------------------------------------------------------+
 ```
 
-## Why Azure Container Apps (Not Dynamic Sessions)?
+## Why Azure Container Apps?
 
-Azure has two container execution options. We use **regular Container Apps** because:
+Container Apps provides:
+- Custom container images with any tools pre-installed
+- Volume mounts (Azure Files) for persistent storage
+- Network access for Redis and other services
+- Configurable session persistence
+- Production-grade scaling and monitoring
 
-| Feature | Dynamic Sessions | Container Apps |
-|---------|------------------|----------------|
-| Custom container images | Limited (sandbox restrictions) | Full support |
-| Volume mounts | Not supported | Azure Files, EmptyDir |
-| Network access (Redis, etc.) | Isolated by default | Full control |
-| Session persistence | 15 min max idle | Configurable |
-| Use case | Sandboxed untrusted code | Production workloads |
+This example uses the Session API with in-process execution:
+- Session(storage=FileStorage(...)) or Session(storage=RedisStorage(...))
+- Fast in-process execution (no container overhead)
+- File or Redis-backed tools, skills, and artifacts
+- Suitable for trusted LLM output in production
 
-Dynamic Sessions is designed for security sandboxing of untrusted LLM-generated code. For production agents that need custom tools, persistent storage, and network access, regular Container Apps is the right choice.
+For Docker-based isolation with the Session API, see the container backend documentation.
 
 ## Prerequisites
 
@@ -99,18 +102,18 @@ az containerapp create \
 
 ## Configuration
 
-### Tools (configs/tools.yaml)
+### Tools (configs/tools/*.yaml)
 
-Define CLI tools available to agents:
+Define CLI tools as individual YAML files:
 
 ```yaml
-cli_tools:
-  - name: nmap
-    description: Network scanner
-    command: nmap
-    args_template: "{flags} {target}"
-    timeout_seconds: 300
-    tags: [network, recon]
+# configs/tools/nmap.yaml
+name: nmap
+type: cli
+description: Network scanner
+args: "{flags} {target}"
+timeout: 300
+tags: [network, recon]
 ```
 
 ### Skills (configs/skills/*.py)
@@ -121,12 +124,12 @@ Add reusable code recipes:
 # configs/skills/port_scan.py
 def run(target: str, ports: str = "80,443") -> dict:
     """Scan ports on target."""
-    raw = tools.call("cli.nmap", {"target": target, "flags": f"-p {ports}"})
+    raw = tools.nmap(target=target, flags=f"-p {ports}")
     # Parse and return structured results
     return {"target": target, "raw": raw}
 ```
 
-Agents can then use: `skills.invoke("port_scan", target="10.0.0.1")`
+Agents can then use: `skills.port_scan(target="10.0.0.1")`
 
 ### Persistent Artifacts
 
@@ -140,24 +143,42 @@ artifacts.save("scan_results.json", data, description="Initial recon")
 data = artifacts.load("scan_results.json")
 ```
 
-### Redis for Distributed Storage (Optional)
+### Redis for Distributed Storage (Recommended)
 
-For multi-container scenarios, use Redis instead of file-based artifacts:
+For production deployments, use Redis-backed storage:
 
 ```bash
 # Create Azure Cache for Redis
 az redis create --name my-redis --resource-group my-rg --location eastus --sku Basic --vm-size c0
 
 # Get connection string
-REDIS_URL=$(az redis list-keys --name my-redis --resource-group my-rg --query primaryKey -o tsv)
+REDIS_KEY=$(az redis list-keys --name my-redis --resource-group my-rg --query primaryKey -o tsv)
+REDIS_URL="redis://:$REDIS_KEY@my-redis.redis.cache.windows.net:6380?ssl=true"
 
-# Add as secret
-az containerapp secret set --name py-code-mode-session --resource-group my-rg \
-    --secrets redis-connection="redis://:$REDIS_URL@my-redis.redis.cache.windows.net:6380?ssl=true"
+# Bootstrap tools and skills to Redis
+python -m py_code_mode.store bootstrap \
+    --source ./tools \
+    --target "$REDIS_URL" \
+    --prefix myapp:tools \
+    --type tools
 
-# Update container to use Redis
-az containerapp update --name py-code-mode-session --resource-group my-rg \
-    --set-env-vars REDIS_URL=secretref:redis-connection
+python -m py_code_mode.store bootstrap \
+    --source ./skills \
+    --target "$REDIS_URL" \
+    --prefix myapp:skills
+```
+
+Then use in your agent:
+
+```python
+import redis
+from py_code_mode import Session, RedisStorage
+
+r = redis.from_url(os.environ["REDIS_URL"])
+storage = RedisStorage(redis=r, prefix="myapp")
+
+async with Session(storage=storage) as session:
+    result = await session.run('tools.nmap(target="10.0.0.1")')
 ```
 
 ## Files

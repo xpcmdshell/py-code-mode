@@ -3,7 +3,7 @@
 
 This example shows:
 1. Loading tools and skills from the shared directory
-2. Creating a CodeExecutor with CodeExecutor.create()
+2. Creating a Session with FileStorage
 3. Running an agent loop with raw Claude API
 
 The agent can write Python code that calls tools via the tools.* namespace
@@ -17,7 +17,7 @@ from pathlib import Path
 import anthropic
 from dotenv import load_dotenv
 
-from py_code_mode import CodeExecutor
+from py_code_mode import FileStorage, Session
 
 # Load .env file (for ANTHROPIC_API_KEY)
 load_dotenv()
@@ -26,9 +26,10 @@ load_dotenv()
 HERE = Path(__file__).parent
 SHARED = HERE.parent / "shared"
 
-SYSTEM_PROMPT = """You are a helpful assistant with access to CLI tools and skills via Python code execution.
+SYSTEM_PROMPT = """You are a helpful assistant with tools and skills via Python code execution.
 
-Write Python code in ```python blocks. The code runs in an environment with `tools` and `skills` namespaces.
+Write Python code in ```python blocks. The code runs in an environment with
+`tools` and `skills` namespaces.
 
 WORKFLOW:
 1. For any nontrivial task, FIRST search skills: skills.search("relevant keywords")
@@ -73,10 +74,8 @@ def extract_code(text: str) -> str | None:
 
 async def main() -> None:
     # Load tools and skills from shared directory
-    async with await CodeExecutor.create(
-        tools=str(SHARED / "tools"),
-        skills=str(SHARED / "skills"),
-    ) as executor:
+    storage = FileStorage(base_path=SHARED)
+    async with Session(storage=storage) as session:
         # Initialize Claude client
         client = anthropic.Anthropic()
         messages: list[dict] = []
@@ -108,7 +107,7 @@ async def main() -> None:
                 if code:
                     # Execute the code
                     print("\nAgent is executing code...")
-                    result = await executor.run(code)
+                    result = await session.run(code)
 
                     if result.is_ok:
                         result_text = f"Result: {result.value}"

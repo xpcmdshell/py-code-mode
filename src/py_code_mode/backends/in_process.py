@@ -1,4 +1,8 @@
-"""Code executor with persistent state."""
+"""In-process execution backend.
+
+Runs Python code directly in the same process.
+Fast but provides no isolation.
+"""
 
 from __future__ import annotations
 
@@ -9,18 +13,20 @@ import io
 import re
 import traceback
 from contextlib import redirect_stdout
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import yaml
-
-from py_code_mode.adapters import CLIAdapter, CLIToolSpec
-from py_code_mode.artifacts import ArtifactStore, FileArtifactStore
+from py_code_mode.artifacts import ArtifactStore
+from py_code_mode.backend import (
+    Capability,
+    StorageAccess,
+    register_backend,
+)
 from py_code_mode.registry import ToolRegistry
-from py_code_mode.semantic import SkillLibrary, create_skill_library
-from py_code_mode.skill_store import FileSkillStore
-from py_code_mode.types import JsonSchema
+from py_code_mode.semantic import SkillLibrary
+from py_code_mode.types import ExecutionResult
+
+if TYPE_CHECKING:
+    pass
 
 # Use builtins to avoid security hook false positive on Python's code execution
 _run_code = getattr(builtins, "exec")
@@ -37,20 +43,6 @@ def _extract_template_params(args_template: str) -> list[str]:
         List of parameter names like ["flags", "target"]
     """
     return re.findall(r"\{(\w+)\}", args_template)
-
-
-@dataclass
-class ExecutionResult:
-    """Result from code execution."""
-
-    value: Any
-    stdout: str
-    error: str | None
-
-    @property
-    def is_ok(self) -> bool:
-        """True if execution succeeded without error."""
-        return self.error is None
 
 
 class ToolsNamespace:
@@ -140,7 +132,7 @@ class SkillsNamespace:
     Wraps a SkillLibrary and provides agent-facing methods plus skill execution.
     """
 
-    def __init__(self, library: SkillLibrary, executor: CodeExecutor) -> None:
+    def __init__(self, library: SkillLibrary, executor: InProcessExecutor) -> None:
         self._library = library
         self._executor = executor
 
@@ -172,14 +164,14 @@ class SkillsNamespace:
     def create(
         self,
         name: str,
-        code: str,
+        source: str,
         description: str = "",
     ) -> dict[str, Any]:
         """Create and save a new Python skill.
 
         Args:
             name: Skill name (must be valid Python identifier).
-            code: Python source code with def run(...) function.
+            source: Python source code with def run(...) function.
             description: What the skill does.
 
         Returns:
@@ -194,7 +186,7 @@ class SkillsNamespace:
         # PythonSkill.from_source handles all validation
         skill = PythonSkill.from_source(
             name=name,
-            source=code,
+            source=source,
             description=description,
         )
 
@@ -245,20 +237,28 @@ class SkillsNamespace:
         return namespace["run"](**kwargs)
 
 
-class CodeExecutor:
-    """Runs Python code with persistent state.
+class InProcessExecutor:
+    """Runs Python code with persistent state in the same process.
 
     Variables, functions, and imports persist across runs.
     Optionally injects tools.*, skills.*, and artifacts.* namespaces.
 
-    Usage:
-        # From YAML config
-        executor = await CodeExecutor.from_yaml("tools.yaml")
-        result = await executor.run('tools.nmap(target="scanme.nmap.org")')
+    Capabilities:
+    - TIMEOUT: Yes (via asyncio.wait_for)
+    - PROCESS_ISOLATION: No
+    - NETWORK_ISOLATION: No
+    - FILESYSTEM_ISOLATION: No
 
-        # Manual setup
-        executor = CodeExecutor(registry=registry)
+    Usage:
+        executor = await InProcessExecutor.create(
+            tools="./tools/",
+            skills="./skills/",
+        )
+        result = await executor.run('tools.nmap(target="scanme.nmap.org")')
     """
+
+    # Capabilities this backend supports
+    _CAPABILITIES = frozenset({Capability.TIMEOUT, Capability.RESET})
 
     def __init__(
         self,
@@ -286,260 +286,13 @@ class CodeExecutor:
         if artifact_store is not None:
             self._namespace["artifacts"] = artifact_store
 
-    @classmethod
-    async def from_yaml(
-        cls,
-        path: str,
-        skills_path: str | None = None,
-        artifacts_path: str | None = None,
-        allowed_tags: set[str] | None = None,
-        default_timeout: float = 30.0,
-    ) -> CodeExecutor:
-        """Create executor from YAML tools config.
+    def supports(self, capability: str) -> bool:
+        """Check if this backend supports a capability."""
+        return capability in self._CAPABILITIES
 
-        Args:
-            path: Path to tools.yaml file.
-            skills_path: Optional path to skills directory.
-            artifacts_path: Optional path for artifact storage.
-            allowed_tags: Optional set of tags to filter tools.
-            default_timeout: Default execution timeout.
-
-        Returns:
-            Configured CodeExecutor.
-
-        Example tools.yaml:
-            tools:
-              - name: nmap
-                description: Network scanner
-                args: "{flags} {target}"
-                tags: [recon, network]
-
-              - name: curl
-                args: "-s {url}"
-                description: HTTP client
-
-            # Future: MCP servers
-            # mcp_servers:
-            #   brave-search:
-            #     command: npx
-            #     args: ["-y", "@anthropic/mcp-brave-search"]
-        """
-        config_path = Path(path)
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
-
-        # Build tool specs from YAML
-        cli_specs = []
-        for tool in config.get("tools", []):
-            tool_type = tool.get("type", "cli")
-
-            if tool_type == "cli":
-                # Extract parameters from args_template
-                args_template = tool.get("args", "")
-                params = _extract_template_params(args_template)
-
-                spec = CLIToolSpec(
-                    name=tool["name"],
-                    description=tool.get("description", ""),
-                    command=tool.get("command"),  # Defaults to name
-                    args_template=args_template,
-                    input_schema=JsonSchema(
-                        type="object",
-                        properties={p: JsonSchema(type="string") for p in params},
-                    ),
-                    tags=frozenset(tool.get("tags", [])),
-                    timeout_seconds=tool.get("timeout", 60.0),
-                )
-                cli_specs.append(spec)
-            elif tool_type == "mcp":
-                # TODO: MCP adapter support
-                raise NotImplementedError(f"MCP tools not yet supported: {tool['name']}")
-            elif tool_type == "http":
-                # TODO: HTTP adapter support
-                raise NotImplementedError(f"HTTP tools not yet supported: {tool['name']}")
-            else:
-                raise ValueError(f"Unknown tool type: {tool_type}")
-
-        # Create registry and register tools
-        registry = ToolRegistry()
-        if cli_specs:
-            adapter = CLIAdapter(cli_specs)
-            await registry.register_adapter(adapter)
-
-        # Apply tag filtering if specified
-        if allowed_tags:
-            registry = registry.scoped_view(allowed_tags)
-
-        # Build skill library if path provided
-        skill_library = None
-        if skills_path:
-            skills_dir = Path(skills_path)
-            store = FileSkillStore(skills_dir)
-            skill_library = create_skill_library(store=store)
-
-        # Build artifact store if path provided
-        artifact_store = None
-        if artifacts_path:
-            artifact_store = FileArtifactStore(Path(artifacts_path))
-
-        return cls(
-            registry=registry,
-            skill_library=skill_library,
-            artifact_store=artifact_store,
-            default_timeout=default_timeout,
-        )
-
-    @classmethod
-    async def create(
-        cls,
-        tools: str | None = None,
-        skills: str | None = None,
-        artifacts: str | None = None,
-        allowed_tags: set[str] | None = None,
-        default_timeout: float = 30.0,
-        semantic_search: bool = True,
-        embedding_model: str | None = None,
-    ) -> CodeExecutor:
-        """Create executor by specifying where your tools and skills are.
-
-        Args:
-            tools: Path to directory containing tool YAML files.
-            skills: Path to directory containing skill .py files.
-            artifacts: Path to directory for artifact storage.
-            allowed_tags: Optional set of tags to filter tools.
-            default_timeout: Default execution timeout.
-            semantic_search: Enable semantic search for tools and skills.
-                Defaults to True.
-            embedding_model: Model alias ("bge-small", "bge-base", "granite") or
-                full HuggingFace model name. Default: "bge-small".
-
-        Returns:
-            Configured CodeExecutor.
-
-        Example:
-            executor = await CodeExecutor.create(
-                tools="./my_tools/",
-                skills="./my_skills/",
-            )
-        """
-        # Create embedder for semantic search
-        embedder = None
-        if semantic_search:
-            try:
-                from py_code_mode.semantic import Embedder
-
-                embedder = Embedder(model_name=embedding_model)
-            except ImportError:
-                pass  # Embedder not available, fall back to substring search
-
-        # Load tools from directory (supports CLI and MCP tools)
-        if tools:
-            registry = await ToolRegistry.from_dir(tools, embedder=embedder)
-        else:
-            registry = ToolRegistry(embedder=embedder)
-
-        # Apply tag filtering if specified
-        if allowed_tags:
-            registry = registry.scoped_view(allowed_tags)
-
-        # Load skills from directory with semantic search
-        skill_library = None
-        if skills:
-            skills_path = Path(skills)
-            if skills_path.exists():
-                store = FileSkillStore(skills_path)
-                skill_library = create_skill_library(store=store, embedder=embedder)
-
-        # Build artifact store
-        artifact_store = None
-        if artifacts:
-            artifacts_path = Path(artifacts)
-            artifacts_path.mkdir(parents=True, exist_ok=True)
-            artifact_store = FileArtifactStore(artifacts_path)
-
-        return cls(
-            registry=registry,
-            skill_library=skill_library,
-            artifact_store=artifact_store,
-            default_timeout=default_timeout,
-        )
-
-    @classmethod
-    async def quick(
-        cls,
-        tools: dict[str, str | tuple[str, str]] | None = None,
-        skills: str | None = None,
-        artifacts: str | None = None,
-        default_timeout: float = 30.0,
-    ) -> CodeExecutor:
-        """Create executor with inline tool definitions for quick prototyping.
-
-        Args:
-            tools: Dict of tools. Key is name, value is either:
-                - str: args template (e.g., "-s {url}")
-                - tuple: (args_template, description)
-            skills: Path to skills directory.
-            artifacts: Path for artifact storage.
-            default_timeout: Default execution timeout.
-
-        Returns:
-            Configured CodeExecutor.
-
-        Example:
-            executor = await CodeExecutor.quick(
-                tools={
-                    "curl": "-s {url}",
-                    "nmap": ("{flags} {target}", "Network scanner"),
-                },
-                skills="./skills/",
-            )
-        """
-        # Build tool specs
-        cli_specs = []
-        if tools:
-            for name, value in tools.items():
-                if isinstance(value, tuple):
-                    args_template, description = value
-                else:
-                    args_template = value
-                    description = ""
-
-                params = _extract_template_params(args_template)
-                spec = CLIToolSpec(
-                    name=name,
-                    description=description,
-                    args_template=args_template,
-                    input_schema=JsonSchema(
-                        type="object",
-                        properties={p: JsonSchema(type="string") for p in params},
-                    ),
-                )
-                cli_specs.append(spec)
-
-        # Create registry
-        registry = ToolRegistry()
-        if cli_specs:
-            adapter = CLIAdapter(cli_specs)
-            await registry.register_adapter(adapter)
-
-        # Load skills if path provided
-        skill_library = None
-        if skills:
-            skills_path = Path(skills)
-            store = FileSkillStore(skills_path)
-            skill_library = create_skill_library(store=store)
-
-        # Build artifact store if path provided
-        artifact_store = None
-        if artifacts:
-            artifact_store = FileArtifactStore(Path(artifacts))
-
-        return cls(
-            registry=registry,
-            skill_library=skill_library,
-            artifact_store=artifact_store,
-            default_timeout=default_timeout,
-        )
+    def supported_capabilities(self) -> set[str]:
+        """Return set of all capabilities this backend supports."""
+        return set(self._CAPABILITIES)
 
     async def run(self, code: str, timeout: float | None = None) -> ExecutionResult:
         """Run code and return result.
@@ -633,8 +386,115 @@ class CodeExecutor:
             await self._registry.close()
         self._namespace.clear()
 
-    async def __aenter__(self) -> CodeExecutor:
+    async def reset(self) -> None:
+        """Reset session state.
+
+        Clears all user-defined variables but preserves tools, skills, artifacts namespaces.
+        """
+        # Store namespace items we want to preserve
+        preserved = {
+            "__builtins__": self._namespace.get("__builtins__"),
+            "tools": self._namespace.get("tools"),
+            "skills": self._namespace.get("skills"),
+            "artifacts": self._namespace.get("artifacts"),
+        }
+
+        # Clear everything
+        self._namespace.clear()
+
+        # Restore preserved items
+        for key, value in preserved.items():
+            if value is not None:
+                self._namespace[key] = value
+
+    async def start(
+        self,
+        storage_access: StorageAccess | None = None,
+    ) -> None:
+        """Start executor and configure from storage access.
+
+        Args:
+            storage_access: Optional storage access descriptor.
+                           If provided, loads tools/skills/artifacts from paths.
+                           If None, uses whatever was passed to __init__.
+        """
+        from py_code_mode.backend import FileStorageAccess, RedisStorageAccess
+
+        if storage_access is None:
+            return  # Use __init__ configuration
+
+        if isinstance(storage_access, FileStorageAccess):
+            # Load from file paths
+            # Always inject tools namespace (empty if no path/directory)
+            if storage_access.tools_path and storage_access.tools_path.exists():
+                self._registry = await ToolRegistry.from_dir(str(storage_access.tools_path))
+            else:
+                self._registry = ToolRegistry()
+            self._namespace["tools"] = ToolsNamespace(self._registry)
+
+            # Always inject skills namespace
+            if storage_access.skills_path:
+                from py_code_mode.semantic import create_skill_library
+                from py_code_mode.skill_store import FileSkillStore
+
+                # Create directory if it doesn't exist (same as artifacts behavior)
+                storage_access.skills_path.mkdir(parents=True, exist_ok=True)
+                store = FileSkillStore(storage_access.skills_path)
+                self._skill_library = create_skill_library(store=store)
+            else:
+                # Only use memory store if NO path configured (explicit choice)
+                from py_code_mode.semantic import MockEmbedder, SkillLibrary
+                from py_code_mode.skill_store import MemorySkillStore
+
+                self._skill_library = SkillLibrary(
+                    embedder=MockEmbedder(), store=MemorySkillStore()
+                )
+            self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
+
+            # Always inject artifacts namespace
+            if storage_access.artifacts_path:
+                from py_code_mode.artifacts import FileArtifactStore
+
+                storage_access.artifacts_path.mkdir(parents=True, exist_ok=True)
+                self._artifact_store = FileArtifactStore(storage_access.artifacts_path)
+                self._namespace["artifacts"] = self._artifact_store
+
+        elif isinstance(storage_access, RedisStorageAccess):
+            # Load from Redis
+            try:
+                import redis
+            except ImportError as e:
+                raise ImportError(
+                    "redis required for RedisStorageAccess. Install with: pip install redis"
+                ) from e
+
+            client = redis.from_url(storage_access.redis_url)
+
+            # TODO: Load tools from Redis (not yet implemented)
+
+            from py_code_mode.semantic import create_skill_library
+            from py_code_mode.skill_store import RedisSkillStore
+
+            skill_store = RedisSkillStore(client, prefix=storage_access.skills_prefix)
+            self._skill_library = create_skill_library(store=skill_store)
+            self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
+
+            from py_code_mode.redis_artifacts import RedisArtifactStore
+
+            self._artifact_store = RedisArtifactStore(
+                client, prefix=storage_access.artifacts_prefix
+            )
+            self._namespace["artifacts"] = self._artifact_store
+
+    async def __aenter__(self) -> InProcessExecutor:
         return self
 
     async def __aexit__(self, *args: Any) -> None:
         await self.close()
+
+
+# Register this backend
+register_backend("in-process", InProcessExecutor)
+
+# Backward compatibility alias
+CodeExecutor = InProcessExecutor

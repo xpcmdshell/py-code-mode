@@ -126,20 +126,24 @@ class FileArtifactStore:
         # Create subdirectories if needed
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write data
+        # Write data and track type
+        data_type = "bytes" if isinstance(data, bytes) else "text"
         if isinstance(data, bytes):
             file_path.write_bytes(data)
         elif isinstance(data, (dict, list)):
             file_path.write_text(json.dumps(data, indent=2))
+            data_type = "json"
         else:
             file_path.write_text(str(data))
 
         # Update index
         now = datetime.now(UTC)
+        index_metadata = metadata.copy() if metadata else {}
+        index_metadata["_data_type"] = data_type
         self._index[name] = {
             "description": description,
             "created_at": now.isoformat(),
-            "metadata": metadata or {},
+            "metadata": index_metadata,
         }
         self._save_index()
 
@@ -168,16 +172,26 @@ class FileArtifactStore:
         if not file_path.exists():
             raise ArtifactNotFoundError(f"Artifact not found: {name}")
 
-        content = file_path.read_text()
+        # Check metadata for data type
+        data_type = None
+        if name in self._index:
+            data_type = self._index[name].get("metadata", {}).get("_data_type")
 
-        # Try JSON deserialization for .json files
-        if name.endswith(".json"):
+        # Load based on stored type
+        if data_type == "bytes":
+            return file_path.read_bytes()
+        elif data_type == "json" or name.endswith(".json"):
+            content = file_path.read_text()
             try:
                 return json.loads(content)
             except json.JSONDecodeError:
-                pass
-
-        return content
+                return content
+        else:
+            # For text or unknown, try text first, fall back to bytes
+            try:
+                return file_path.read_text()
+            except UnicodeDecodeError:
+                return file_path.read_bytes()
 
     def get(self, name: str) -> Artifact | None:
         """Get artifact metadata by name.

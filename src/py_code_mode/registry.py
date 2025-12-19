@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Protocol
 
 from py_code_mode.adapters.base import ToolAdapter
 from py_code_mode.errors import ToolCallError, ToolNotFoundError
 from py_code_mode.types import ToolDefinition
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     pass
@@ -100,6 +103,7 @@ class ToolRegistry:
         tools_path = PathLib(path)
 
         if not tools_path.exists():
+            logger.warning("Tools path does not exist: %s", tools_path)
             return registry
 
         # Separate CLI and MCP tools
@@ -107,10 +111,15 @@ class ToolRegistry:
         mcp_configs = []
 
         for tool_file in sorted(tools_path.glob("*.yaml")):
-            with open(tool_file) as f:
-                tool = yaml.safe_load(f)
-                if not tool or not tool.get("name"):
-                    continue
+            try:
+                with open(tool_file) as f:
+                    tool = yaml.safe_load(f)
+                    if not tool or not tool.get("name"):
+                        logger.warning("Tool file %s missing 'name' field, skipping", tool_file)
+                        continue
+            except Exception as e:
+                logger.warning("Failed to load tool file %s: %s", tool_file, e)
+                continue
 
             tool_type = tool.get("type", "cli")
 
@@ -145,7 +154,11 @@ class ToolRegistry:
 
                 await registry.register_adapter(adapter)
             except ImportError:
-                # MCP package not installed, skip
+                # MCP package not installed, skip this tool
+                logger.warning(
+                    "MCP tool configured but mcp package not installed. "
+                    "Install with: pip install mcp"
+                )
                 pass
 
         return registry

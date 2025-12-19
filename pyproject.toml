@@ -80,11 +80,18 @@ dev-dependencies = [
     "httpx>=0.28.1",
     "uvicorn>=0.38.0",
     "docker>=7.1.0",
+    "pytest-xdist>=3.8.0",
+    "testcontainers[redis]>=4.13.3",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+norecursedirs = ["tests/future"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-n auto --dist loadgroup"
 
 [tool.mypy]
 python_version = "3.12"

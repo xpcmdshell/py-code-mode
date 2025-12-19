@@ -12,12 +12,11 @@ import asyncio
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.ui import Console
 from autogen_ext.models.anthropic import AnthropicChatCompletionClient
 from autogen_ext.tools.mcp import McpWorkbench, StdioServerParams
+from dotenv import load_dotenv
 
 # Load .env file
 load_dotenv()
@@ -32,11 +31,16 @@ async def main():
     server_params = StdioServerParams(
         command="uv",
         args=[
-            "--directory", str(HERE.parent.parent),  # py-code-mode root
-            "run", "py-code-mode-mcp",
-            "--tools", str(SHARED / "tools"),
-            "--skills", str(SHARED / "skills"),
-            "--artifacts", str(HERE / "artifacts"),
+            "--directory",
+            str(HERE.parent.parent),  # py-code-mode root
+            "run",
+            "py-code-mode-mcp",
+            "--tools",
+            str(SHARED / "tools"),
+            "--skills",
+            str(SHARED / "skills"),
+            "--artifacts",
+            str(HERE / "artifacts"),
         ],
         read_timeout_seconds=120,
     )

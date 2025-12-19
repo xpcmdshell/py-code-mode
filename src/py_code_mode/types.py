@@ -105,3 +105,47 @@ class ToolDefinition:
         if not scope:
             return False
         return bool(self.tags & scope)
+
+
+@dataclass
+class ExecutionResult:
+    """Result from executing code in any backend.
+
+    Unified result type for all execution backends.
+    """
+
+    value: Any
+    stdout: str
+    error: str | None
+    execution_time_ms: float | None = None
+    backend_info: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def is_ok(self) -> bool:
+        """True if execution succeeded (no error)."""
+        return self.error is None
+
+
+@dataclass
+class ExecutorConfig:
+    """Base configuration for all execution backends.
+
+    Security policies are accepted by all backends, but backends
+    will ignore policies they don't support.
+    """
+
+    # Common
+    default_timeout: float = 30.0
+    tools_path: str | None = None
+    skills_path: str | None = None
+    artifacts_path: str | None = None
+
+    # Security policies (backends ignore if unsupported)
+    network_policy: str = "allow"  # "allow", "deny", "filtered"
+    allowed_hosts: list[str] = field(default_factory=list)
+    filesystem_policy: str = "allow"  # "allow", "deny", "readonly"
+    allowed_paths: list[str] = field(default_factory=list)
+
+    # Resource limits
+    memory_limit_mb: int | None = None
+    cpu_limit: float | None = None

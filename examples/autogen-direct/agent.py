@@ -30,21 +30,12 @@ import sys
 from pathlib import Path
 
 import redis as redis_lib
-from dotenv import load_dotenv
-
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.ui import Console
 from autogen_ext.models.anthropic import AnthropicChatCompletionClient
+from dotenv import load_dotenv
 
-from py_code_mode import (
-    CodeExecutor,
-    RedisArtifactStore,
-    RedisSkillStore,
-    RedisToolStore,
-    ToolRegistry,
-    registry_from_redis,
-    create_skill_library,
-)
+from py_code_mode import FileStorage, RedisStorage, Session
 from py_code_mode.integrations.autogen import create_run_code_tool
 
 # Load .env file
@@ -55,16 +46,14 @@ HERE = Path(__file__).parent
 SHARED = HERE.parent / "shared"
 
 
-async def create_executor():
-    """Create executor with appropriate storage backend.
+def create_storage():
+    """Create storage backend.
 
     When REDIS_URL is set:
-    - Skills are loaded from Redis (provisioned via store CLI)
-    - Artifacts are stored in Redis (persistent across restarts)
+    - Tools, skills, and artifacts are loaded from Redis
 
     Without REDIS_URL:
-    - Skills are loaded from shared/skills directory
-    - Artifacts are stored in local files
+    - Tools, skills, and artifacts are loaded from shared/ directory
     """
     redis_url = os.environ.get("REDIS_URL")
 
@@ -72,40 +61,21 @@ async def create_executor():
         # Redis mode: everything from Redis (provisioned separately)
         r = redis_lib.from_url(redis_url)
 
-        # Connect to existing Redis stores
-        # Provisioned via: python -m py_code_mode.store bootstrap
-        skill_store = RedisSkillStore(r, prefix="agent-skills")
-        skill_library = create_skill_library(store=skill_store)
-
-        tool_store = RedisToolStore(r, prefix="agent-tools")
-        registry = await registry_from_redis(tool_store)
-
-        artifact_store = RedisArtifactStore(r, prefix="agent-artifacts")
-
         print(f"Using Redis backend: {redis_url}")
-        print(f"  Tools in Redis: {len(tool_store)}")
-        print(f"  Skills in Redis: {len(list(skill_store.list_all()))}")
 
-        return CodeExecutor(
-            registry=registry,
-            skill_library=skill_library,
-            artifact_store=artifact_store,
-        )
+        return RedisStorage(redis=r, prefix="agent")
     else:
         # File mode: load directly from shared/
         print("Using file-based backend (set REDIS_URL for Redis mode)")
-        return await CodeExecutor.create(
-            tools=str(SHARED / "tools"),
-            skills=str(SHARED / "skills"),
-            artifacts=str(HERE / "artifacts"),
-        )
+        return FileStorage(base_path=SHARED)
 
 
 async def main():
-    # Use async context manager for proper lifecycle management
-    async with await create_executor() as executor:
+    # Create storage and session
+    storage = create_storage()
+    async with Session(storage=storage) as session:
         # Create the run_code tool for AutoGen
-        run_code = create_run_code_tool(executor=executor)
+        run_code = create_run_code_tool(session=session)
 
         system_prompt = """You are a helpful assistant that writes Python code to accomplish tasks.
 
@@ -140,7 +110,7 @@ Always wrap your code in ```python blocks."""
             tools=[run_code],
             system_message=system_prompt,
             reflect_on_tool_use=True,  # Continue after tool calls
-            max_tool_iterations=5,     # Allow multiple tool call rounds
+            max_tool_iterations=5,  # Allow multiple tool call rounds
         )
 
         # Check for command line argument

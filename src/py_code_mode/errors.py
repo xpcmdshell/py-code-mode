@@ -103,3 +103,33 @@ class DependencyError(CodeModeError):
         if required_by:
             msg += f" (required by {required_by})"
         super().__init__(msg)
+
+
+class StorageError(CodeModeError):
+    """Base exception for storage operations."""
+
+    pass
+
+
+class StorageReadError(StorageError):
+    """Error reading from storage (corruption, permission, deserialization)."""
+
+    def __init__(self, message: str, path: str | None = None) -> None:
+        self.path = path
+        full_message = f"{message} (path: {path})" if path else message
+        super().__init__(full_message)
+
+
+class StorageWriteError(StorageError):
+    """Error writing to storage (permission, serialization)."""
+
+    def __init__(self, message: str, path: str | None = None) -> None:
+        self.path = path
+        full_message = f"{message} (path: {path})" if path else message
+        super().__init__(full_message)
+
+
+class ConfigurationError(CodeModeError):
+    """Error in configuration (missing deps, invalid config)."""
+
+    pass

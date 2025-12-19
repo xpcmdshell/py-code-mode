@@ -251,6 +251,6 @@ class MCPAdapter:
         if self._exit_stack is not None:
             try:
                 await self._exit_stack.aclose()
-            except BaseException:
+            except Exception:
                 pass
         self._tools_cache = None

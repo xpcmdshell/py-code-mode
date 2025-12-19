@@ -10,7 +10,30 @@ from py_code_mode.artifacts import (
     ArtifactStoreProtocol,
     FileArtifactStore,
 )
-from py_code_mode.executor import CodeExecutor, ExecutionResult
+
+# Backend protocol and factory
+from py_code_mode.backend import (
+    Capability,
+    Executor,
+    get_backend,
+    list_backends,
+    register_backend,
+)
+
+# Import backends to trigger registration
+from py_code_mode.backends import InProcessExecutor
+from py_code_mode.backends.in_process import CodeExecutor  # Backward compat alias
+
+# Container backend is optional (requires docker, httpx, fastapi)
+try:
+    from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+
+    _CONTAINER_AVAILABLE = True
+except ImportError:
+    _CONTAINER_AVAILABLE = False
+    ContainerConfig = None  # type: ignore
+    ContainerExecutor = None  # type: ignore
+
 from py_code_mode.http_adapter import Endpoint, HTTPAdapter
 from py_code_mode.mcp_adapter import MCPAdapter
 from py_code_mode.redis_artifacts import RedisArtifactStore
@@ -26,6 +49,7 @@ from py_code_mode.skills import (
     SkillMetadata,
     SkillParameter,
 )
+from py_code_mode.types import ExecutionResult
 
 # Semantic features require numpy/scikit-learn - optional import
 try:
@@ -55,15 +79,21 @@ from py_code_mode.errors import (
     ArtifactNotFoundError,
     ArtifactWriteError,
     CodeModeError,
+    ConfigurationError,
     DependencyError,
     SkillExecutionError,
     SkillNotFoundError,
     SkillValidationError,
+    StorageError,
+    StorageReadError,
+    StorageWriteError,
     ToolCallError,
     ToolNotFoundError,
     ToolTimeoutError,
 )
 from py_code_mode.registry import ScopedToolRegistry, ToolRegistry
+from py_code_mode.session import Session
+from py_code_mode.storage import FileStorage, RedisStorage, StorageBackend
 from py_code_mode.types import JsonSchema, ToolDefinition
 
 __version__ = "0.1.0"
@@ -88,9 +118,14 @@ __all__ = [
     "SkillValidationError",
     "SkillExecutionError",
     "DependencyError",
+    "StorageError",
+    "StorageReadError",
+    "StorageWriteError",
+    "ConfigurationError",
     # Types
     "ToolDefinition",
     "JsonSchema",
+    "ExecutionResult",
     # Adapters
     "ToolAdapter",
     "CLIAdapter",
@@ -101,9 +136,17 @@ __all__ = [
     # Registry
     "ToolRegistry",
     "ScopedToolRegistry",
-    # Executor
-    "CodeExecutor",
-    "ExecutionResult",
+    # Backend Protocol and Factory
+    "Executor",
+    "Capability",
+    "register_backend",
+    "get_backend",
+    "list_backends",
+    # Executors
+    "InProcessExecutor",
+    "CodeExecutor",  # Backward compat alias for InProcessExecutor
+    "ContainerExecutor",
+    "ContainerConfig",
     # Skills
     "SkillMetadata",
     "SkillParameter",
@@ -122,4 +165,9 @@ __all__ = [
     "SkillLibrary",
     "resolve_model_name",
     "create_skill_library",
+    # Storage and Session
+    "StorageBackend",
+    "FileStorage",
+    "RedisStorage",
+    "Session",
 ]

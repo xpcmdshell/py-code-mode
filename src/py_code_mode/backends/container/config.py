@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import platform
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -84,8 +86,6 @@ class SessionConfig:
     @classmethod
     def from_env(cls) -> SessionConfig:
         """Load configuration from environment variables."""
-        import os
-
         config = cls()
 
         # Load paths from env
@@ -187,22 +187,17 @@ class ContainerConfig:
     """Configuration for ContainerExecutor on the host side.
 
     Controls how to start and connect to the container.
+    This is RUNTIME configuration only - storage access is passed
+    separately to executor.start().
     """
 
     # Image
     image: str = "py-code-mode-tools:latest"
+    auto_build: bool = True  # Auto-build image if missing
 
     # Networking
     port: int = 0  # 0 = auto-assign
     host: str = "localhost"
-
-    # Volumes
-    host_artifacts_path: Path | None = None
-    host_skills_path: Path | None = None
-
-    # Artifact backend
-    artifact_backend: str = "file"  # "file" or "redis"
-    redis_url: str | None = None
 
     # Timeouts
     timeout: float = 30.0
@@ -214,8 +209,24 @@ class ContainerConfig:
     remove_on_exit: bool = True
     name: str | None = None  # Container name (auto-generated if None)
 
-    def to_docker_config(self) -> dict[str, Any]:
-        """Convert to Docker SDK configuration."""
+    def to_docker_config(
+        self,
+        tools_path: Path | None = None,
+        skills_path: Path | None = None,
+        artifacts_path: Path | None = None,
+        redis_url: str | None = None,
+    ) -> dict[str, Any]:
+        """Convert to Docker SDK configuration.
+
+        Args:
+            tools_path: Host path to tools directory (volume mount).
+            skills_path: Host path to skills directory (volume mount).
+            artifacts_path: Host path to artifacts directory (volume mount).
+            redis_url: Redis URL for Redis-based storage (sets env vars).
+
+        Returns:
+            Docker SDK run() configuration dict.
+        """
         config: dict[str, Any] = {
             "image": self.image,
             "detach": True,
@@ -229,25 +240,38 @@ class ContainerConfig:
         else:
             config["ports"] = {"8080/tcp": None}  # Auto-assign
 
-        # Add volumes
+        # Add volumes from storage access
         volumes = {}
-        if self.host_artifacts_path:
-            volumes[str(self.host_artifacts_path.absolute())] = {
+        if tools_path:
+            volumes[str(tools_path.absolute())] = {
+                "bind": "/app/tools",
+                "mode": "ro",
+            }
+            config["environment"]["TOOLS_PATH"] = "/app/tools"
+        if skills_path:
+            volumes[str(skills_path.absolute())] = {
+                "bind": "/app/skills",
+                "mode": "rw",  # Agents create skills via skills.create()
+            }
+            config["environment"]["SKILLS_PATH"] = "/app/skills"
+        if artifacts_path:
+            volumes[str(artifacts_path.absolute())] = {
                 "bind": "/workspace/artifacts",
                 "mode": "rw",
             }
-        if self.host_skills_path:
-            volumes[str(self.host_skills_path.absolute())] = {
-                "bind": "/app/skills",
-                "mode": "ro",
-            }
+            config["environment"]["ARTIFACTS_PATH"] = "/workspace/artifacts"
         if volumes:
             config["volumes"] = volumes
 
-        # Add artifact backend config
-        if self.artifact_backend == "redis" and self.redis_url:
+        # Add Redis config if provided
+        if redis_url:
             config["environment"]["ARTIFACT_BACKEND"] = "redis"
-            config["environment"]["REDIS_URL"] = self.redis_url
+            config["environment"]["REDIS_URL"] = redis_url
+
+        # Add host.docker.internal mapping for Linux
+        # macOS/Windows Docker Desktop provides this natively, but Linux needs it
+        if platform.system() == "Linux":
+            config["extra_hosts"] = {"host.docker.internal": "host-gateway"}
 
         # Add container name
         if self.name:
