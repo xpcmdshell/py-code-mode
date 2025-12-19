@@ -27,7 +27,8 @@ import pytest
 from py_code_mode.errors import CodeModeError
 
 # Future imports (will fail until implemented):
-# from py_code_mode.errors import StorageError, StorageReadError, StorageWriteError, ConfigurationError
+# from py_code_mode.errors import StorageError, StorageReadError
+# from py_code_mode.errors import StorageWriteError, ConfigurationError
 
 
 # =============================================================================
@@ -248,9 +249,7 @@ class TestToolRegistryFromDirLogging:
     """
 
     @pytest.mark.asyncio
-    async def test_from_dir_missing_path_logs_warning(
-        self, log_capture: pytest.LogCaptureFixture
-    ):
+    async def test_from_dir_missing_path_logs_warning(self, log_capture: pytest.LogCaptureFixture):
         """from_dir() should log warning when path doesn't exist."""
         from py_code_mode.registry import ToolRegistry
 
@@ -306,9 +305,7 @@ class TestCLIAdapterFromDirLogging:
     Fixed behavior: Returns empty adapter AND logs warning.
     """
 
-    def test_from_dir_missing_path_logs_warning(
-        self, log_capture: pytest.LogCaptureFixture
-    ):
+    def test_from_dir_missing_path_logs_warning(self, log_capture: pytest.LogCaptureFixture):
         """from_dir() should log warning when path doesn't exist."""
         from py_code_mode.adapters.cli import CLIAdapter
 
@@ -338,9 +335,7 @@ class TestRedisToolStoreFromDirectoryLogging:
     Fixed behavior: Returns empty store AND logs warning.
     """
 
-    def test_from_directory_missing_path_logs_warning(
-        self, log_capture: pytest.LogCaptureFixture
-    ):
+    def test_from_directory_missing_path_logs_warning(self, log_capture: pytest.LogCaptureFixture):
         """from_directory() should log warning when path doesn't exist."""
         from py_code_mode.redis_tools import RedisToolStore
         from tests.conftest import MockRedisClient
@@ -354,9 +349,7 @@ class TestRedisToolStoreFromDirectoryLogging:
         assert len(store) == 0
 
         # NEW: Should log warning
-        assert any(
-            str(nonexistent) in record.message for record in log_capture.records
-        ), (
+        assert any(str(nonexistent) in record.message for record in log_capture.records), (
             f"Expected warning about missing path '{nonexistent}' but got:\n"
             f"{[r.message for r in log_capture.records]}\n"
             "Fix: Add logging to redis_tools.py:127-128"
@@ -419,8 +412,7 @@ class TestFileToolStoreErrorHandling:
 
         # But warning should be logged so developer can discover the issue
         assert any(
-            "corrupt.yaml" in r.message and "failed" in r.message.lower()
-            for r in caplog.records
+            "corrupt.yaml" in r.message and "failed" in r.message.lower() for r in caplog.records
         ), (
             "Corrupt tool file should log a warning with the filename.\n"
             f"Actual logs: {[r.message for r in caplog.records]}"
@@ -562,12 +554,10 @@ class TestFileSkillStoreErrorHandling:
             result = store.load("syntax_error")
             if result is None:
                 # Check at least warning is logged (current behavior has this)
-                assert any(
-                    "syntax_error" in record.message for record in log_capture.records
-                ), "At minimum, a warning should be logged for syntax errors"
-            pytest.skip(
-                "StorageReadError not yet implemented - upgrade test when added"
-            )
+                assert any("syntax_error" in record.message for record in log_capture.records), (
+                    "At minimum, a warning should be logged for syntax errors"
+                )
+            pytest.skip("StorageReadError not yet implemented - upgrade test when added")
 
         # After fix: should raise StorageReadError
         with pytest.raises(errors.StorageReadError):
@@ -595,9 +585,7 @@ class TestFileSkillStoreListAllLogging:
         assert "valid_skill" in skill_names
 
         # Warning should be logged for syntax_error.py
-        assert any(
-            "syntax_error" in record.message for record in log_capture.records
-        ), (
+        assert any("syntax_error" in record.message for record in log_capture.records), (
             f"Expected warning for syntax_error.py but got:\n"
             f"{[r.message for r in log_capture.records]}"
         )
@@ -634,9 +622,9 @@ class TestRedisSkillStoreErrorHandling:
             result = store.load("corrupt_json")
             if result is None:
                 # At least check warning is logged
-                assert any(
-                    "corrupt_json" in record.message for record in log_capture.records
-                ), "Warning should be logged for corrupt JSON"
+                assert any("corrupt_json" in record.message for record in log_capture.records), (
+                    "Warning should be logged for corrupt JSON"
+                )
             pytest.skip("StorageReadError not yet implemented")
 
         # After fix: should raise StorageReadError
@@ -656,10 +644,9 @@ class TestRedisSkillStoreErrorHandling:
         if not hasattr(errors, "StorageReadError"):
             result = store.load("missing_fields")
             if result is None:
-                assert any(
-                    "missing" in record.message.lower()
-                    for record in log_capture.records
-                ), "Warning should be logged for missing fields"
+                assert any("missing" in record.message.lower() for record in log_capture.records), (
+                    "Warning should be logged for missing fields"
+                )
             pytest.skip("StorageReadError not yet implemented")
 
         with pytest.raises(errors.StorageReadError):
@@ -753,7 +740,7 @@ class TestServerBuildSkillLibraryUsesLogging:
 
         # Mock mkdir to raise OSError
         with patch.object(Path, "mkdir", side_effect=OSError("Permission denied")):
-            result = build_skill_library(config)
+            _result = build_skill_library(config)
 
         captured = capsys.readouterr()
         if "Warning:" in captured.out or "Cannot create" in captured.out:
@@ -857,7 +844,7 @@ command: fake_mcp_server
             # Reload registry module to trigger import failure
             from py_code_mode.registry import ToolRegistry
 
-            registry = await ToolRegistry.from_dir(str(tools_dir))
+            _registry = await ToolRegistry.from_dir(str(tools_dir))
 
         # Check for warning about MCP not installed
         log_messages = " ".join(r.message for r in log_capture.records)
@@ -894,14 +881,11 @@ class TestEmbedderFallbackLogging:
             "py_code_mode.storage.create_skill_library",
             side_effect=ImportError("No module named 'sentence_transformers'"),
         ):
-            library = wrapper._get_library()
+            _library = wrapper._get_library()
 
         # Check for warning about fallback
         log_messages = " ".join(r.message for r in log_capture.records)
-        if (
-            "mock" not in log_messages.lower()
-            and "fallback" not in log_messages.lower()
-        ):
+        if "mock" not in log_messages.lower() and "fallback" not in log_messages.lower():
             pytest.fail(
                 "Fallback to MockEmbedder should log warning.\n"
                 "Fix: Add logging in storage.py:226-236"
@@ -986,9 +970,7 @@ class TestDeveloperErrorDiscovery:
 
             # Developer should be able to find reason in logs
             messages = [r.getMessage() for r in capture.records]
-            assert any(
-                "does not exist" in msg or nonexistent_path in msg for msg in messages
-            ), (
+            assert any("does not exist" in msg or nonexistent_path in msg for msg in messages), (
                 "Developer cannot discover why tools are empty - no log message.\n"
                 f"Logs should indicate the missing path. Got: {messages}"
             )
@@ -1011,9 +993,7 @@ class TestDeveloperErrorDiscovery:
 
         # Developer should see which files failed and why
         log_messages = " ".join(r.message for r in log_capture.records)
-        assert "syntax_error" in log_messages, (
-            "Log should mention which file had errors"
-        )
+        assert "syntax_error" in log_messages, "Log should mention which file had errors"
         # Ideally also shows the error type
         assert "syntax" in log_messages.lower() or "error" in log_messages.lower(), (
             "Log should indicate type of error"
@@ -1028,18 +1008,14 @@ class TestDeveloperErrorDiscovery:
 class TestErrorMessageConsistency:
     """Tests for consistent error message formatting."""
 
-    def test_missing_path_warnings_include_path(
-        self, log_capture: pytest.LogCaptureFixture
-    ):
+    def test_missing_path_warnings_include_path(self, log_capture: pytest.LogCaptureFixture):
         """All missing path warnings should include the actual path."""
         from py_code_mode.adapters.cli import CLIAdapter
 
         test_path = "/test/unique/path/12345"
         CLIAdapter.from_dir(test_path)
 
-        warning_messages = [
-            r.message for r in log_capture.records if r.levelno >= logging.WARNING
-        ]
+        warning_messages = [r.message for r in log_capture.records if r.levelno >= logging.WARNING]
 
         # If any warnings logged, they should include the path
         if not warning_messages:

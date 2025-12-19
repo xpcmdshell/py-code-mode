@@ -31,12 +31,13 @@ Container Apps provides:
 - Configurable session persistence
 - Production-grade scaling and monitoring
 
-For isolated execution of LLM-generated code with the new Session API, use `Session(storage=RedisStorage(...))` which provides:
-- In-process execution (fast, no container overhead)
-- Redis-backed tools, skills, and artifacts (distributed)
+This example uses the Session API with in-process execution:
+- Session(storage=FileStorage(...)) or Session(storage=RedisStorage(...))
+- Fast in-process execution (no container overhead)
+- File or Redis-backed tools, skills, and artifacts
 - Suitable for trusted LLM output in production
 
-For Docker-based isolation, ContainerExecutor support in Session is pending. Use legacy `create_executor(backend="container")` for now.
+For Docker-based isolation with the Session API, see the container backend documentation.
 
 ## Prerequisites
 
@@ -170,14 +171,11 @@ python -m py_code_mode.store bootstrap \
 Then use in your agent:
 
 ```python
+import redis
 from py_code_mode import Session, RedisStorage
 
-storage = RedisStorage(
-    redis_url=os.environ["REDIS_URL"],
-    tools_prefix="myapp:tools",
-    skills_prefix="myapp:skills",
-    artifacts_prefix="myapp:artifacts",
-)
+r = redis.from_url(os.environ["REDIS_URL"])
+storage = RedisStorage(redis=r, prefix="myapp")
 
 async with Session(storage=storage) as session:
     result = await session.run('tools.nmap(target="10.0.0.1")')

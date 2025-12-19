@@ -14,12 +14,11 @@ import asyncio
 import shutil
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.anthropic import AnthropicChatCompletionClient
+from dotenv import load_dotenv
 
-from py_code_mode import CodeExecutor
+from py_code_mode import FileStorage, Session
 from py_code_mode.integrations.autogen import create_run_code_tool
 
 # Load .env file
@@ -78,20 +77,28 @@ Always wrap your code in ```python blocks."""
 
 async def main():
     # Clean up previous test runs
-    if TEST_SKILLS_DIR.exists():
-        shutil.rmtree(TEST_SKILLS_DIR)
-    TEST_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+    test_base = HERE / "test_storage"
+    if test_base.exists():
+        shutil.rmtree(test_base)
+    test_base.mkdir(parents=True, exist_ok=True)
+
+    # Copy tools from SHARED to test directory
+    tools_dir = test_base / "tools"
+    shutil.copytree(SHARED / "tools", tools_dir)
+
+    # Create empty skills directory for testing skill creation
+    skills_dir = test_base / "skills"
+    skills_dir.mkdir(exist_ok=True)
 
     print("=" * 60)
     print("Integration Test: Agent Creates Skill from Task Solution")
     print("=" * 60)
 
-    # Create executor with tools and test_skills directory for skill persistence
-    async with await CodeExecutor.create(
-        tools=str(SHARED / "tools"),
-        skills=str(TEST_SKILLS_DIR),
-    ) as executor:
-        run_code = create_run_code_tool(executor)
+    # Create storage with test directory
+    storage = FileStorage(base_path=test_base)
+
+    async with Session(storage=storage) as session:
+        run_code = create_run_code_tool(session)
 
         model = AnthropicChatCompletionClient(model="claude-sonnet-4-20250514")
         agent = AssistantAgent(
@@ -128,28 +135,26 @@ async def main():
         print("Verification")
         print("=" * 60)
 
-        skill = executor._skill_registry.get("get_hn_headlines")
-        if skill is None:
+        # Check via storage API
+        skill_info = storage.skills.get("get_hn_headlines")
+        if skill_info is None:
             print("FAILED: Skill 'get_hn_headlines' was not created")
             return False
 
-        print(f"Skill created: {skill.name}")
-        print(f"Description: {skill.description}")
+        print(f"Skill created: {skill_info['name']}")
+        print(f"Description: {skill_info['description']}")
 
         # Verify skill file exists
-        skill_file = TEST_SKILLS_DIR / "get_hn_headlines.py"
+        skill_file = skills_dir / "get_hn_headlines.py"
         if not skill_file.exists():
             print(f"FAILED: Skill file was not persisted to {skill_file}")
             return False
 
         print(f"Skill file persisted: {skill_file}")
-        print(f"Skill source:\n{skill.source[:300]}...")
 
         # Invoke the skill to verify it works
         print("\nInvoking skill to verify it works...")
-        invoke_result = await executor.run(
-            'skills.invoke("get_hn_headlines", count=5)'
-        )
+        invoke_result = await session.run('skills.invoke("get_hn_headlines", count=5)')
 
         if not invoke_result.is_ok:
             print(f"FAILED: Skill invocation failed: {invoke_result.error}")
@@ -157,22 +162,20 @@ async def main():
 
         print(f"Skill result: {invoke_result.value}")
 
-    # Verify skill survives a fresh executor (true persistence)
+    # Verify skill survives a fresh session (true persistence)
     print("\n" + "-" * 60)
-    print("Testing persistence: loading skill in fresh executor...")
+    print("Testing persistence: loading skill in fresh session...")
 
-    async with await CodeExecutor.create(
-        tools=str(SHARED / "tools"),
-        skills=str(TEST_SKILLS_DIR),
-    ) as fresh_executor:
-        skill = fresh_executor._skill_registry.get("get_hn_headlines")
-        if skill is None:
-            print("FAILED: Skill not found in fresh executor")
+    fresh_storage = FileStorage(base_path=test_base)
+    async with Session(storage=fresh_storage) as fresh_session:
+        skill_info = fresh_storage.skills.get("get_hn_headlines")
+        if skill_info is None:
+            print("FAILED: Skill not found in fresh session")
             return False
 
-        print(f"Skill loaded from disk: {skill.name}")
+        print(f"Skill loaded from disk: {skill_info['name']}")
 
-        result = await fresh_executor.run('skills.get_hn_headlines(count=3)')
+        result = await fresh_session.run("skills.get_hn_headlines(count=3)")
         if not result.is_ok:
             print(f"FAILED: Skill invocation failed: {result.error}")
             return False

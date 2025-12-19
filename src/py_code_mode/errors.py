@@ -15,9 +15,7 @@ class CodeModeError(Exception):
 class ToolNotFoundError(CodeModeError):
     """Raised when a tool name is not found in the registry."""
 
-    def __init__(
-        self, tool_name: str, available_tools: list[str] | None = None
-    ) -> None:
+    def __init__(self, tool_name: str, available_tools: list[str] | None = None) -> None:
         self.tool_name = tool_name
         self.available_tools = available_tools or []
         msg = f"Tool '{tool_name}' not found"
@@ -38,9 +36,7 @@ class ToolCallError(CodeModeError):
         cause: Exception,
     ) -> None:
         self.tool_name = tool_name
-        self.tool_args = (
-            tool_args  # Named tool_args to avoid collision with Exception.args
-        )
+        self.tool_args = tool_args  # Named tool_args to avoid collision with Exception.args
         self.cause = cause
         super().__init__(f"Tool '{tool_name}' failed: {cause}")
 

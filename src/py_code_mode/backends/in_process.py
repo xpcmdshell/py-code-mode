@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from py_code_mode.artifacts import ArtifactStore
 from py_code_mode.backend import (
     Capability,
+    StorageAccess,
     register_backend,
 )
 from py_code_mode.registry import ToolRegistry
@@ -426,9 +427,7 @@ class InProcessExecutor:
             # Load from file paths
             # Always inject tools namespace (empty if no path/directory)
             if storage_access.tools_path and storage_access.tools_path.exists():
-                self._registry = await ToolRegistry.from_dir(
-                    str(storage_access.tools_path)
-                )
+                self._registry = await ToolRegistry.from_dir(str(storage_access.tools_path))
             else:
                 self._registry = ToolRegistry()
             self._namespace["tools"] = ToolsNamespace(self._registry)

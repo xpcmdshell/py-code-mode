@@ -115,9 +115,7 @@ class ToolRegistry:
                 with open(tool_file) as f:
                     tool = yaml.safe_load(f)
                     if not tool or not tool.get("name"):
-                        logger.warning(
-                            "Tool file %s missing 'name' field, skipping", tool_file
-                        )
+                        logger.warning("Tool file %s missing 'name' field, skipping", tool_file)
                         continue
             except Exception as e:
                 logger.warning("Failed to load tool file %s: %s", tool_file, e)

@@ -336,7 +336,7 @@ def run(n: int) -> int:
             '"""Double a number by multiplying by 2."""\ndef run(n: int) -> int:\n    return n * 2'
         )
         (tmp_path / "skills" / "greet.py").write_text(
-            '"""Greet someone with a hello message."""\ndef run(name: str) -> str:\n    return f"Hello, {name}!"'
+            '"""Greet someone."""\ndef run(name: str) -> str:\n    return f"Hello, {name}!"'
         )
 
         result = storage.skills.search("number")

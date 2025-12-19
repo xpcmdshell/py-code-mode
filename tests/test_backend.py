@@ -16,9 +16,7 @@ from py_code_mode.types import ExecutionResult
 class TestExecutorProtocol:
     """Tests that define the Executor protocol contract."""
 
-    @pytest.fixture(
-        params=["in-process"]
-    )  # Start with just in-process, add others as implemented
+    @pytest.fixture(params=["in-process"])  # Start with just in-process, add others as implemented
     async def executor(self, request, tmp_path) -> Executor:
         """Create executor for each backend type."""
         backend = request.param
@@ -261,9 +259,7 @@ class TestInProcessCapabilities:
         assert Capability.TIMEOUT in caps
         assert Capability.RESET in caps
 
-    def test_capabilities_set_does_not_contain_isolation(
-        self, executor: Executor
-    ) -> None:
+    def test_capabilities_set_does_not_contain_isolation(self, executor: Executor) -> None:
         """supported_capabilities() does not include isolation capabilities."""
         caps = executor.supported_capabilities()
         assert Capability.PROCESS_ISOLATION not in caps

@@ -98,9 +98,7 @@ class Session:
             base_path = self._storage.root
             return FileStorageAccess(
                 # Tools are read-only, only provide path if directory exists
-                tools_path=base_path / "tools"
-                if (base_path / "tools").exists()
-                else None,
+                tools_path=base_path / "tools" if (base_path / "tools").exists() else None,
                 # Skills path always provided - executor creates if needed
                 skills_path=base_path / "skills",
                 # Artifacts path always provided - executor creates if needed
@@ -131,9 +129,7 @@ class Session:
                 artifacts_prefix=f"{prefix}:artifacts",
             )
         else:
-            raise ValueError(
-                f"Unsupported storage type: {type(self._storage).__name__}"
-            )
+            raise ValueError(f"Unsupported storage type: {type(self._storage).__name__}")
 
     @property
     def storage(self) -> StorageBackend:

@@ -59,9 +59,7 @@ class TestFilesystemIsolationWithArtifacts:
 
     @pytest.mark.asyncio
     @pytest.mark.xfail(reason="FILESYSTEM_ISOLATION capability not yet implemented")
-    async def test_filesystem_isolated_but_artifacts_accessible(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_filesystem_isolated_but_artifacts_accessible(self, tmp_path: Path) -> None:
         """Host filesystem hidden but artifact store accessible.
 
         Filesystem isolation should prevent reading host files like /etc/passwd,
@@ -84,9 +82,7 @@ class TestFilesystemIsolationWithArtifacts:
             assert not result.is_ok
 
             # Can use artifact store
-            result = await executor.run(
-                "artifacts.save('secret.txt', b'safe', 'safe data')"
-            )
+            result = await executor.run("artifacts.save('secret.txt', b'safe', 'safe data')")
             assert result.is_ok
         finally:
             await executor.close()
@@ -111,9 +107,7 @@ class TestContainerWithFileArtifacts:
         executor = ContainerExecutor(config)
         async with Session(storage=storage, executor=executor) as session:
             # Save artifact
-            result = await session.run(
-                "artifacts.save('report.txt', b'test data', 'Test report')"
-            )
+            result = await session.run("artifacts.save('report.txt', b'test data', 'Test report')")
             assert result.is_ok, f"artifacts.save() failed: {result.error}"
 
             # Load artifact
@@ -146,9 +140,7 @@ class TestContainerWithFileArtifacts:
         config = ContainerConfig(timeout=30.0)
         executor = ContainerExecutor(config)
         async with Session(storage=storage, executor=executor) as session:
-            await session.run(
-                "artifacts.save('host_visible.txt', b'from container', 'test')"
-            )
+            await session.run("artifacts.save('host_visible.txt', b'from container', 'test')")
 
         # Verify file exists on host (artifact store may create subdirectories)
         found = list(artifacts_path.rglob("host_visible.txt"))
@@ -175,9 +167,7 @@ class TestContainerWithRedisArtifacts:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    @pytest.mark.skipif(
-        not _redis_available(), reason="Redis not available for testing"
-    )
+    @pytest.mark.skipif(not _redis_available(), reason="Redis not available for testing")
     async def test_redis_artifacts_save_load(self) -> None:
         """Container with Redis artifacts can save and load data."""
         import os
@@ -219,9 +209,7 @@ class TestResetWithStateAndArtifacts:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_reset_clears_namespace_preserves_artifacts(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_reset_clears_namespace_preserves_artifacts(self, tmp_path: Path) -> None:
         """Reset clears Python state but keeps artifacts.
 
         After reset, variables should be gone but artifacts should persist.
@@ -276,9 +264,7 @@ class TestTimeoutBehavior:
 
             assert not result.is_ok
             # Error should mention timeout
-            assert "timeout" in str(result.error).lower() or "Timeout" in str(
-                result.error
-            )
+            assert "timeout" in str(result.error).lower() or "Timeout" in str(result.error)
 
 
 class TestToolsAndSkillsTogether:

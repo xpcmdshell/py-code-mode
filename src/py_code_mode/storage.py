@@ -295,9 +295,7 @@ class FileSkillStoreWrapper:
 
     def create(self, name: str, description: str, source: str) -> dict[str, Any]:
         """Create a new skill."""
-        skill = PythonSkill.from_source(
-            name=name, source=source, description=description
-        )
+        skill = PythonSkill.from_source(name=name, source=source, description=description)
         library = self._get_library()
         library.add(skill)
         return self._skill_to_dict(skill)
@@ -554,9 +552,7 @@ class RedisSkillStoreWrapper:
 
     def create(self, name: str, description: str, source: str) -> dict[str, Any]:
         """Create a new skill."""
-        skill = PythonSkill.from_source(
-            name=name, source=source, description=description
-        )
+        skill = PythonSkill.from_source(name=name, source=source, description=description)
         library = self._get_library()
         library.add(skill)
         return self._skill_to_dict(skill)
@@ -678,8 +674,6 @@ class RedisStorage:
     def artifacts(self) -> ArtifactStoreWrapper:
         """Artifact storage interface."""
         if self._artifacts_store is None:
-            artifact_store = RedisArtifactStore(
-                self._redis, prefix=f"{self._prefix}:artifacts"
-            )
+            artifact_store = RedisArtifactStore(self._redis, prefix=f"{self._prefix}:artifacts")
             self._artifacts_store = RedisArtifactStoreWrapper(artifact_store)
         return self._artifacts_store

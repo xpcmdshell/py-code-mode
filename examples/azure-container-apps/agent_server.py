@@ -3,24 +3,20 @@
 Exposes the AutoGen agent as an HTTP API for Azure Container Apps.
 """
 
-import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import redis as redis_lib
+from autogen_agentchat.agents import AssistantAgent
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from autogen_agentchat.agents import AssistantAgent
-
-from py_code_mode import CodeExecutor, ToolRegistry
+from py_code_mode import FileStorage, RedisStorage, Session
 from py_code_mode.integrations.autogen import create_run_code_tool
-from py_code_mode.semantic import create_skill_library
-from py_code_mode.skill_store import RedisSkillStore
 
-
-# Global executor and agent (initialized at startup)
-executor = None
+# Global session and agent (initialized at startup)
+session = None
 agent = None
 
 
@@ -38,8 +34,8 @@ def get_model_client():
     azure_endpoint = os.environ.get("AZURE_AI_ENDPOINT")
 
     if azure_endpoint:
-        from azure.identity import DefaultAzureCredential
         from autogen_ext.models.azure import AzureAIChatCompletionClient
+        from azure.identity import DefaultAzureCredential
 
         return AzureAIChatCompletionClient(
             model="claude-sonnet-4-20250514",
@@ -52,48 +48,30 @@ def get_model_client():
         return AnthropicChatCompletionClient(model="claude-sonnet-4-20250514")
 
 
-async def create_executor():
-    """Create executor - Redis mode if REDIS_URL set, file mode otherwise."""
+def create_storage():
+    """Create storage - Redis mode if REDIS_URL set, file mode otherwise."""
     redis_url = os.environ.get("REDIS_URL")
 
-    # Tools and skills paths (mounted via Azure Files or local)
-    tools_path = os.environ.get("TOOLS_PATH", "/workspace/configs/tools")
-    skills_path = os.environ.get("SKILLS_PATH", "/workspace/configs/skills")
+    # Base path for file storage (mounted via Azure Files or local)
+    base_path = os.environ.get("STORAGE_PATH", "/workspace/configs")
 
     if redis_url:
-        import redis as redis_lib
-        from py_code_mode import RedisArtifactStore
-
         r = redis_lib.from_url(redis_url)
-
-        # Use Redis store wrapped in skill library for semantic search
-        redis_store = RedisSkillStore(r, prefix="agent-skills")
-        skill_library = create_skill_library(store=redis_store)
-        artifact_store = RedisArtifactStore(r, prefix="agent-artifacts")
-
-        registry = await ToolRegistry.from_dir(Path(tools_path))
-
-        return CodeExecutor(
-            registry=registry,
-            skill_library=skill_library,
-            artifact_store=artifact_store,
-        )
+        return RedisStorage(redis=r, prefix="agent")
     else:
-        return await CodeExecutor.create(
-            tools=tools_path,
-            skills=skills_path,
-        )
+        return FileStorage(base_path=Path(base_path))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize executor and agent at startup."""
-    global executor, agent
+    """Initialize session and agent at startup."""
+    global session, agent
 
-    executor = await create_executor()
-    await executor.__aenter__()
+    storage = create_storage()
+    session = Session(storage=storage)
+    await session.start()
 
-    run_code = create_run_code_tool(executor=executor)
+    run_code = create_run_code_tool(session=session)
 
     system_prompt = """You are a helpful assistant that writes Python code to accomplish tasks.
 
@@ -131,7 +109,7 @@ Always wrap your code in ```python blocks."""
 
     yield
 
-    await executor.__aexit__(None, None, None)
+    await session.close()
 
 
 app = FastAPI(title="py-code-mode Agent", lifespan=lifespan)
@@ -160,13 +138,13 @@ async def run_task(request: TaskRequest):
 @app.get("/info")
 async def info():
     """Get available tools and skills."""
-    if executor is None:
-        raise HTTPException(status_code=503, detail="Executor not initialized")
+    if session is None:
+        raise HTTPException(status_code=503, detail="Session not initialized")
 
-    tools = executor._namespace.get("tools")
-    skills = executor._namespace.get("skills")
+    # Get storage info instead
+    storage = session.storage
 
     return {
-        "tools": tools.list() if tools else [],
-        "skills": skills.list() if skills else [],
+        "tools": storage.tools.list() if hasattr(storage, "tools") else [],
+        "skills": storage.skills.list() if hasattr(storage, "skills") else [],
     }

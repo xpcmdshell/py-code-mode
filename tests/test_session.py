@@ -72,9 +72,7 @@ class TestSessionContextManager:
             assert result.value == 2
 
     @pytest.mark.asyncio
-    async def test_session_close_can_be_called_directly(
-        self, storage: FileStorage
-    ) -> None:
+    async def test_session_close_can_be_called_directly(self, storage: FileStorage) -> None:
         """Session.close() can be called explicitly."""
         session = Session(storage=storage)
         await session.start()
@@ -175,9 +173,7 @@ description: Echo text back
         return storage
 
     @pytest.mark.asyncio
-    async def test_tools_namespace_available(
-        self, storage_with_tools: FileStorage
-    ) -> None:
+    async def test_tools_namespace_available(self, storage_with_tools: FileStorage) -> None:
         """tools namespace is available in session."""
         async with Session(storage=storage_with_tools) as session:
             result = await session.run("'tools' in dir()")
@@ -196,9 +192,7 @@ description: Echo text back
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_tools_list_returns_tool_info(
-        self, storage_with_tools: FileStorage
-    ) -> None:
+    async def test_tools_list_returns_tool_info(self, storage_with_tools: FileStorage) -> None:
         """tools.list() returns tool info with name, description, params."""
         async with Session(storage=storage_with_tools) as session:
             result = await session.run("tools.list()")
@@ -220,9 +214,7 @@ description: Echo text back
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_tools_call_invokes_tool(
-        self, storage_with_tools: FileStorage
-    ) -> None:
+    async def test_tools_call_invokes_tool(self, storage_with_tools: FileStorage) -> None:
         """tools.call(name, args) invokes the tool."""
         async with Session(storage=storage_with_tools) as session:
             result = await session.run('tools.call("echo", {"text": "hello"})')
@@ -231,9 +223,7 @@ description: Echo text back
             assert "hello" in str(result.value)
 
     @pytest.mark.asyncio
-    async def test_tool_direct_invocation(
-        self, storage_with_tools: FileStorage
-    ) -> None:
+    async def test_tool_direct_invocation(self, storage_with_tools: FileStorage) -> None:
         """tools.tool_name(**kwargs) syntax works."""
         async with Session(storage=storage_with_tools) as session:
             result = await session.run('tools.echo(text="direct call")')
@@ -261,9 +251,7 @@ def run(n: int) -> int:
         return storage
 
     @pytest.mark.asyncio
-    async def test_skills_namespace_available(
-        self, storage_with_skills: FileStorage
-    ) -> None:
+    async def test_skills_namespace_available(self, storage_with_skills: FileStorage) -> None:
         """skills namespace is available in session."""
         async with Session(storage=storage_with_skills) as session:
             result = await session.run("'skills' in dir()")
@@ -282,9 +270,7 @@ def run(n: int) -> int:
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_skills_list_returns_skill_info(
-        self, storage_with_skills: FileStorage
-    ) -> None:
+    async def test_skills_list_returns_skill_info(self, storage_with_skills: FileStorage) -> None:
         """skills.list() returns skill info with name, description, params."""
         async with Session(storage=storage_with_skills) as session:
             result = await session.run("skills.list()")
@@ -297,9 +283,7 @@ def run(n: int) -> int:
             assert "params" in skill
 
     @pytest.mark.asyncio
-    async def test_skills_search_callable(
-        self, storage_with_skills: FileStorage
-    ) -> None:
+    async def test_skills_search_callable(self, storage_with_skills: FileStorage) -> None:
         """skills.search(query) is callable and returns list."""
         async with Session(storage=storage_with_skills) as session:
             result = await session.run('skills.search("number")')
@@ -308,9 +292,7 @@ def run(n: int) -> int:
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_skills_create_callable(
-        self, storage_with_skills: FileStorage
-    ) -> None:
+    async def test_skills_create_callable(self, storage_with_skills: FileStorage) -> None:
         """skills.create(name, description, source) is callable."""
         async with Session(storage=storage_with_skills) as session:
             result = await session.run(
@@ -331,9 +313,7 @@ skills.create(
             assert result.value == 30
 
     @pytest.mark.asyncio
-    async def test_skill_direct_invocation(
-        self, storage_with_skills: FileStorage
-    ) -> None:
+    async def test_skill_direct_invocation(self, storage_with_skills: FileStorage) -> None:
         """skills.skill_name(**kwargs) syntax works."""
         async with Session(storage=storage_with_skills) as session:
             result = await session.run("skills.double(n=21)")

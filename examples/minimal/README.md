@@ -72,11 +72,7 @@ from pathlib import Path
 from py_code_mode import Session, FileStorage
 
 # File-based storage
-storage = FileStorage(
-    tools_path=Path("./tools"),
-    skills_path=Path("./skills"),
-    artifacts_path=Path("./artifacts"),
-)
+storage = FileStorage(base_path=Path("./configs"))
 
 # Create session (defaults to in-process execution)
 async with Session(storage=storage) as session:
@@ -86,14 +82,11 @@ async with Session(storage=storage) as session:
 Or with Redis:
 
 ```python
+import redis
 from py_code_mode import Session, RedisStorage
 
-storage = RedisStorage(
-    redis_url="redis://localhost:6379",
-    tools_prefix="myapp:tools",
-    skills_prefix="myapp:skills",
-    artifacts_prefix="myapp:artifacts",
-)
+r = redis.from_url("redis://localhost:6379")
+storage = RedisStorage(redis=r, prefix="myapp")
 
 async with Session(storage=storage) as session:
     result = await session.run('tools.curl(url="...")')
@@ -157,7 +150,7 @@ cli = CLIAdapter([
 Instead of defining tools in code, create individual YAML files per tool:
 
 ```yaml
-# tools/curl.yaml
+# configs/tools/curl.yaml
 name: curl
 type: cli
 description: HTTP client
@@ -168,12 +161,8 @@ args: "-s {url}"
 from pathlib import Path
 from py_code_mode import Session, FileStorage
 
-# Tools automatically loaded from directory
-storage = FileStorage(
-    tools_path=Path("./tools"),
-    skills_path=Path("./skills"),
-    artifacts_path=Path("./artifacts"),
-)
+# Tools automatically loaded from configs/tools/ directory
+storage = FileStorage(base_path=Path("./configs"))
 
 async with Session(storage=storage) as session:
     result = await session.run('tools.curl(url="...")')
@@ -184,7 +173,7 @@ async with Session(storage=storage) as session:
 Skills are reusable code snippets the agent can invoke:
 
 ```python
-# skills/fetch_json.py
+# configs/skills/fetch_json.py
 def run(url: str) -> dict:
     """Fetch JSON from a URL and parse it."""
     import json
@@ -198,11 +187,8 @@ Skills are automatically loaded from the directory when using `FileStorage`:
 from pathlib import Path
 from py_code_mode import Session, FileStorage
 
-storage = FileStorage(
-    tools_path=Path("./tools"),
-    skills_path=Path("./skills"),  # Skills loaded from here
-    artifacts_path=Path("./artifacts"),
-)
+# Skills loaded from configs/skills/
+storage = FileStorage(base_path=Path("./configs"))
 
 async with Session(storage=storage) as session:
     # Agent can use: skills.fetch_json(url="...")

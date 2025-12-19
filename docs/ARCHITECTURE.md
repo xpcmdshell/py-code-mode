@@ -19,55 +19,80 @@ Storage handles where tools, skills, and artifacts live. Two implementations:
 | `FileStorage` | Local development | Directories for tools, skills, artifacts |
 | `RedisStorage` | Distributed/production | Redis keys with prefixes |
 
-**New API** (recommended):
+**Current API:**
 ```python
+from pathlib import Path
+from redis import Redis
 from py_code_mode import Session, FileStorage, RedisStorage
+from py_code_mode.backends.in_process import InProcessExecutor
+from py_code_mode.backends.container import ContainerExecutor, ContainerConfig
 
-# File-based
-storage = FileStorage(
-    tools_path=Path("./tools"),
-    skills_path=Path("./skills"),
-    artifacts_path=Path("./artifacts"),
-)
+# File-based storage (single base_path creates subdirs)
+storage = FileStorage(base_path=Path("./storage"))
+# Creates: ./storage/tools/, ./storage/skills/, ./storage/artifacts/
 
-# Redis-based
-storage = RedisStorage(
-    redis_url="redis://localhost:6379",
-    tools_prefix="myapp:tools",
-    skills_prefix="myapp:skills",
-    artifacts_prefix="myapp:artifacts",
-)
+# Redis-based storage (client instance + prefix)
+redis_client = Redis.from_url("redis://localhost:6379")
+storage = RedisStorage(redis=redis_client, prefix="myapp")
+# Uses keys: myapp:tools:*, myapp:skills:*, myapp:artifacts:*
 
+# Session with default in-process executor
 async with Session(storage=storage) as session:
+    result = await session.run('tools.curl(url="...")')
+
+# Session with explicit executor
+executor = ContainerExecutor(config=ContainerConfig(...))
+async with Session(storage=storage, executor=executor) as session:
     result = await session.run('tools.curl(url="...")')
 ```
 
-**Legacy API** (for container backend):
-- `create_executor(backend="in-process", tools=..., skills=...)`
-- `create_executor(backend="container")` (with SessionServer)
+**Key changes from legacy API:**
+- `Session` accepts typed `Executor` instances, not `backend="container"` strings
+- `FileStorage` takes single `base_path`, creates subdirs automatically
+- `RedisStorage` takes Redis client instance and prefix, not separate URL/prefix params
+- Session derives `StorageAccess` from storage backend, passes to `executor.start()`
 
-ContainerExecutor support in Session is pending.
+## Session Architecture
 
-## Deployment Scenarios
-
-Storage and execution are now separate concerns:
+Session orchestrates storage and execution:
 
 ```
-Session(storage=..., executor=...)
+Session(storage=StorageBackend, executor=Executor)
     │
     ├─ Storage (where data lives):
-    │   ├─ FileStorage(tools_path, skills_path, artifacts_path)
-    │   └─ RedisStorage(redis_url, prefixes...)
+    │   ├─ FileStorage(base_path) → creates tools/, skills/, artifacts/
+    │   └─ RedisStorage(redis, prefix) → keys with prefix:tools:*, etc.
+    │
+    ├─ Storage Access Pattern:
+    │   │
+    │   ├─ Session._derive_storage_access() converts:
+    │   │   │
+    │   │   ├─ FileStorage → FileStorageAccess(tools_path, skills_path, artifacts_path)
+    │   │   └─ RedisStorage → RedisStorageAccess(redis_url, tools_prefix, skills_prefix, artifacts_prefix)
+    │   │
+    │   └─ Passed to executor.start(storage_access=...) during session startup
     │
     └─ Executor (where code runs):
+        │
         ├─ InProcessExecutor (default, same process)
-        └─ ContainerExecutor (Docker isolation, pending)
+        │   └─ start(storage_access) loads tools/skills/artifacts from paths or Redis
+        │
+        └─ ContainerExecutor (Docker isolation)
+            └─ start(storage_access) configures container environment
+
 ```
 
+**Key Flow:**
+1. User creates `Session(storage=storage, executor=executor)`
+2. Session calls `executor.start(storage_access=derived_access)`
+3. Executor loads tools, skills, artifacts from storage_access descriptor
+4. Executor injects namespaces: `tools.*`, `skills.*`, `artifacts.*`
+5. User calls `session.run(code)` which delegates to executor
+
 **Current state:**
-- `Session` API supports FileStorage and RedisStorage
-- `Session` defaults to InProcessExecutor
-- ContainerExecutor integration pending (use legacy `create_executor(backend="container")`)
+- `Session` API fully supports FileStorage and RedisStorage
+- `Session` defaults to InProcessExecutor if executor not specified
+- ContainerExecutor works with Session when explicitly passed
 
 ---
 
@@ -83,10 +108,8 @@ Session(storage=..., executor=...)
 │   │                     Your Agent                        │     │
 │   │                                                       │     │
 │   │   storage = FileStorage(                              │     │
-│   │       tools_path=Path("./tools"),                     │     │
-│   │       skills_path=Path("./skills"),                   │     │
-│   │       artifacts_path=Path("./artifacts"),             │     │
-│   │   )                                                   │     │
+│   │       base_path=Path("./storage")                    │     │
+│   │   )  # Creates tools/, skills/, artifacts/ subdirs   │     │
 │   │                                                       │     │
 │   │   async with Session(storage=storage) as session:     │     │
 │   │       result = await session.run('tools.curl(...)')   │     │
@@ -117,11 +140,8 @@ Session(storage=..., executor=...)
 from pathlib import Path
 from py_code_mode import Session, FileStorage
 
-storage = FileStorage(
-    tools_path=Path("./tools"),
-    skills_path=Path("./skills"),
-    artifacts_path=Path("./artifacts"),
-)
+# FileStorage creates tools/, skills/, artifacts/ subdirs automatically
+storage = FileStorage(base_path=Path("./storage"))
 
 async with Session(storage=storage) as session:
     result = await session.run('tools.curl(url="https://api.example.com")')
@@ -141,12 +161,12 @@ async with Session(storage=storage) as session:
 │   ┌───────────────────────────────────────────────────────┐     │
 │   │                     Your Agent                        │     │
 │   │                                                       │     │
+│   │   from redis import Redis                             │     │
+│   │   redis = Redis.from_url("redis://localhost:6379")   │     │
 │   │   storage = RedisStorage(                             │     │
-│   │       redis_url="redis://localhost:6379",             │     │
-│   │       tools_prefix="agent:tools",                     │     │
-│   │       skills_prefix="agent:skills",                   │     │
-│   │       artifacts_prefix="agent:artifacts",             │     │
-│   │   )                                                   │     │
+│   │       redis=redis,                                    │     │
+│   │       prefix="agent"                                  │     │
+│   │   )  # Uses agent:tools:*, agent:skills:*, etc.      │     │
 │   │                                                       │     │
 │   │   async with Session(storage=storage) as session:     │     │
 │   │       result = await session.run('tools.curl(...)')   │     │
@@ -174,14 +194,13 @@ async with Session(storage=storage) as session:
 
 **Code:**
 ```python
+from redis import Redis
 from py_code_mode import Session, RedisStorage
 
-storage = RedisStorage(
-    redis_url="redis://localhost:6379",
-    tools_prefix="agent:tools",
-    skills_prefix="agent:skills",
-    artifacts_prefix="agent:artifacts",
-)
+# RedisStorage takes client instance and prefix
+redis_client = Redis.from_url("redis://localhost:6379")
+storage = RedisStorage(redis=redis_client, prefix="agent")
+# Creates keys: agent:tools:*, agent:skills:*, agent:artifacts:*
 
 async with Session(storage=storage) as session:
     result = await session.run('tools.curl(url="https://api.example.com")')
@@ -210,11 +229,8 @@ python -m py_code_mode.store bootstrap \
 
 **Best for:** Process isolation with local development.
 
-> **Note:** ContainerExecutor support in Session is pending.
-> Use the legacy `create_executor(backend="container")` API for now.
-> The `tools` parameter is **ignored** by the container backend.
-> Tools must be provided via `TOOLS_CONFIG` environment variable pointing
-> to a YAML file (baked into the image or volume mounted).
+**Note:** Container backend can be used with Session by passing `ContainerExecutor` explicitly.
+Storage is provided via volume mounts for tools, skills, and artifacts.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -223,18 +239,25 @@ python -m py_code_mode.store bootstrap \
 │   ┌───────────────────────────────────────────────────────┐     │
 │   │                     Your Agent                        │     │
 │   │                                                       │     │
-│   │   executor = await create_executor(                   │     │
-│   │       backend="container",                            │     │
-│   │       # NOTE: tools= is IGNORED by container backend  │     │
-│   │       artifacts="./artifacts/",   ─────────┐          │     │
-│   │       skills="./skills/",         ───────┐ │          │     │
-│   │   )                                      │ │          │     │
-│   └───────────────────────┬──────────────────┼─┼──────────┘     │
-│                           │ HTTP             │ │                │
-│                           │                  │ │                │
-│   ╔═══════════════════════▼══════════════════▼═▼══════════════╗ │
+│   │   from py_code_mode.backends.container import (       │     │
+│   │       ContainerExecutor, ContainerConfig              │     │
+│   │   )                                                   │     │
+│   │                                                       │     │
+│   │   storage = FileStorage(base_path=Path("./storage")) │     │
+│   │   executor = ContainerExecutor(config=ContainerConfig(│     │
+│   │       image="py-code-mode:latest",                    │     │
+│   │       # Storage access derived by Session             │     │
+│   │   ))                                                  │     │
+│   │                                                       │     │
+│   │   async with Session(storage=storage,                 │     │
+│   │                      executor=executor) as session:   │     │
+│   │       result = await session.run('tools.curl(...)')   │     │
+│   └───────────────────────┬───────────────────────────────┘     │
+│                           │ HTTP                                │
+│                           │                                     │
+│   ╔═══════════════════════▼═══════════════════════════════════╗ │
 │   ║               Docker Container                            ║ │
-│   ║               (no REDIS_URL set)                          ║ │
+│   ║               (FileStorageAccess passed via Session)      ║ │
 │   ║                                                           ║ │
 │   ║   ┌─────────────────────────────────────────────────┐     ║ │
 │   ║   │            SessionServer (FastAPI)              │     ║ │
@@ -281,8 +304,8 @@ ARTIFACTS_PATH=/workspace/artifacts   # Volume mounted from host
 
 **Best for:** Cloud deployments, horizontal scaling, shared state.
 
-> **Note:** ContainerExecutor support in Session is pending.
-> Use the legacy `create_executor(backend="container")` API for now.
+**Note:** Container backend can be used with Session by passing `ContainerExecutor` explicitly.
+Session derives RedisStorageAccess from RedisStorage and passes to container.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -291,22 +314,35 @@ ARTIFACTS_PATH=/workspace/artifacts   # Volume mounted from host
 │   ┌───────────────────────────────────────────────────────┐     │
 │   │                     Your Agent                        │     │
 │   │                                                       │     │
-│   │   executor = await create_executor(                   │     │
-│   │       backend="container",                            │     │
+│   │   from redis import Redis                             │     │
+│   │   from py_code_mode.backends.container import (       │     │
+│   │       ContainerExecutor, ContainerConfig              │     │
 │   │   )                                                   │     │
 │   │                                                       │     │
-│   │   # Container receives REDIS_URL env var              │     │
+│   │   redis = Redis.from_url("redis://redis:6379")        │     │
+│   │   storage = RedisStorage(redis=redis, prefix="agent") │     │
+│   │   executor = ContainerExecutor(config=ContainerConfig(│     │
+│   │       image="py-code-mode:latest"                     │     │
+│   │   ))                                                  │     │
+│   │                                                       │     │
+│   │   async with Session(storage=storage,                 │     │
+│   │                      executor=executor) as session:   │     │
+│   │       result = await session.run('tools.curl(...)')   │     │
 │   └───────────────────────┬───────────────────────────────┘     │
 │                           │ HTTP                                │
 │                           │                                     │
 │   ╔═══════════════════════▼═══════════════════════════════════╗ │
 │   ║               Docker Container                            ║ │
-│   ║               REDIS_URL=redis://redis:6379                ║ │
+│   ║               (RedisStorageAccess passed via Session)     ║ │
 │   ║                                                           ║ │
 │   ║   ┌─────────────────────────────────────────────────┐     ║ │
 │   ║   │            SessionServer (FastAPI)              │     ║ │
 │   ║   │                                                 │     ║ │
-│   ║   │   When REDIS_URL is set:                        │     ║ │
+│   ║   │   Receives RedisStorageAccess from Session:     │     ║ │
+│   ║   │   - redis_url: connection string                │     ║ │
+│   ║   │   - tools_prefix, skills_prefix, artifacts_prefix   ║ │
+│   ║   │                                                 │     ║ │
+│   ║   │   Loads from Redis:                             │     ║ │
 │   ║   │   - registry = registry_from_redis(tool_store)  │     ║ │
 │   ║   │   - skill_library from RedisSkillStore          │     ║ │
 │   ║   │   - artifact_store = RedisArtifactStore         │     ║ │
@@ -332,16 +368,13 @@ ARTIFACTS_PATH=/workspace/artifacts   # Volume mounted from host
         └───────────────────────────────────────────────────┘
 ```
 
-**Key insight:** When `REDIS_URL` is set in the container environment, the SessionServer automatically loads **everything** from Redis:
-- Tools via `registry_from_redis()`
-- Skills via `RedisSkillStore`
-- Artifacts via `RedisArtifactStore`
+**Key flow:**
+1. Session derives `RedisStorageAccess` from `RedisStorage`
+2. Session passes `RedisStorageAccess` to `executor.start(storage_access=...)`
+3. ContainerExecutor configures container with Redis connection details
+4. SessionServer (in container) loads everything from Redis using provided prefixes
 
-**Container environment:**
-```
-REDIS_URL=redis://redis:6379
-# That's it! No volume mounts needed.
-```
+**No volume mounts needed** - all data comes from Redis.
 
 **Provisioning before deployment:**
 ```bash
@@ -349,14 +382,14 @@ REDIS_URL=redis://redis:6379
 python -m py_code_mode.store bootstrap \
     --source ./tools \
     --target redis://redis:6379 \
-    --prefix agent-tools \
+    --prefix agent:tools \
     --type tools
 
 # Bootstrap skills to Redis
 python -m py_code_mode.store bootstrap \
     --source ./skills \
     --target redis://redis:6379 \
-    --prefix agent-skills
+    --prefix agent:skills
 ```
 
 ---
@@ -365,27 +398,26 @@ python -m py_code_mode.store bootstrap \
 
 | Storage Type | API | Tools Source | Skills Source | Artifacts Store |
 |--------------|-----|--------------|---------------|-----------------|
-| FileStorage | `Session(storage=FileStorage(...))` | `./tools/*.yaml` | `./skills/*.py` | `./artifacts/` |
-| RedisStorage | `Session(storage=RedisStorage(...))` | Redis keys | Redis keys | Redis keys |
-| Container + File (legacy) | `create_executor(backend="container")` | `TOOLS_CONFIG` yaml | Volume mount | Volume mount |
-| Container + Redis (legacy) | `create_executor(backend="container")` with `REDIS_URL` | Redis | Redis | Redis |
+| FileStorage | `Session(storage=FileStorage(base_path=...))` | `<base>/tools/*.yaml` | `<base>/skills/*.py` | `<base>/artifacts/` |
+| RedisStorage | `Session(storage=RedisStorage(redis=client, prefix=...))` | `<prefix>:tools:*` | `<prefix>:skills:*` | `<prefix>:artifacts:*` |
+| Container + File | `Session(storage=FileStorage(...), executor=ContainerExecutor(...))` | Volume mounted | Volume mounted | Volume mounted |
+| Container + Redis | `Session(storage=RedisStorage(...), executor=ContainerExecutor(...))` | Redis keys | Redis keys | Redis keys |
 
 **Decision tree:**
 
 ```
-Do you need process isolation (Docker)?
+Choose storage backend:
     │
-    ├─ No  → Session API
-    │         │
-    │         ├─ Single machine?  → FileStorage
-    │         └─ Distributed?     → RedisStorage
-    │
-    └─ Yes → Legacy create_executor(backend="container")
-              │
-              ├─ Local dev?       → Volume mounts (no REDIS_URL)
-              └─ Production?      → Redis storage (set REDIS_URL)
+    ├─ Single machine, local dev?  → FileStorage(base_path=Path("./storage"))
+    └─ Distributed, production?    → RedisStorage(redis=client, prefix="app")
 
-              (ContainerExecutor support in Session pending)
+Choose executor:
+    │
+    ├─ Same-process execution?     → InProcessExecutor() (default)
+    └─ Process isolation needed?   → ContainerExecutor(config=ContainerConfig(...))
+
+Combine:
+    Session(storage=storage, executor=executor)  # or omit executor for default
 ```
 
 ---
@@ -456,28 +488,28 @@ Agent writes: "artifacts.save('data.json', b'...', 'description')"
 ## Deployment Checklist
 
 ### Local Development (Session + FileStorage)
-- [ ] Create `./tools/` with YAML tool definitions
-- [ ] Create `./skills/` with Python skill files
-- [ ] Create `./artifacts/` for output storage
-- [ ] Use `Session(storage=FileStorage(tools_path=..., skills_path=..., artifacts_path=...))`
+- [ ] Create base storage directory
+- [ ] Add YAML tool definitions to `<base_path>/tools/`
+- [ ] Add Python skill files to `<base_path>/skills/`
+- [ ] Use `Session(storage=FileStorage(base_path=Path("./storage")))`
 
 ### Local with Container Isolation (Container + File)
 - [ ] Build Docker image with py-code-mode and tools installed
 - [ ] Configure `TOOLS_CONFIG` in image or mount tools directory
 - [ ] Mount skills directory: `-v ./skills:/app/skills:ro`
 - [ ] Mount artifacts directory: `-v ./artifacts:/workspace/artifacts:rw`
-- [ ] Use `create_executor(backend="container", ...)`
+- [ ] Use `Session(storage=FileStorage(...), executor=ContainerExecutor(config))`
 
 ### Production (Session + RedisStorage)
 - [ ] Provision Redis instance
 - [ ] Bootstrap tools: `python -m py_code_mode.store bootstrap --type tools --target redis://... --prefix myapp:tools`
 - [ ] Bootstrap skills: `python -m py_code_mode.store bootstrap --target redis://... --prefix myapp:skills`
-- [ ] Use `Session(storage=RedisStorage(redis_url=..., tools_prefix=..., skills_prefix=..., artifacts_prefix=...))`
+- [ ] Create storage: `RedisStorage(redis=Redis.from_url("redis://..."), prefix="myapp")`
+- [ ] Use `Session(storage=storage)`
 
-### Production (Legacy Container + Redis)
+### Production with Container Isolation
 - [ ] Provision Redis instance
 - [ ] Bootstrap tools and skills to Redis (as above)
-- [ ] Set `REDIS_URL` environment variable in container
-- [ ] Deploy container (no volume mounts needed)
-- [ ] Container automatically loads everything from Redis
-- [ ] Use `create_executor(backend="container")` (legacy API)
+- [ ] Create storage: `RedisStorage(redis=redis_client, prefix="myapp")`
+- [ ] Create executor: `ContainerExecutor(config=ContainerConfig(...))`
+- [ ] Use `Session(storage=storage, executor=executor)`

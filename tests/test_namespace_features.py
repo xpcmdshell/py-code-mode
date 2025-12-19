@@ -192,9 +192,9 @@ class TestToolsSearchFeature:
 
         if request.param == "in-process":
             return InProcessExecutor()
-        # Add container executor when ready
-        # elif request.param == "container":
-        #     if not _docker_available():
+            # Add container executor when ready
+            # elif request.param == "container":
+            #     if not _docker_available():
             pytest.skip("Docker not available")
         #     return ContainerExecutor(ContainerConfig())
         pytest.fail(f"Unknown executor type: {request.param}")
@@ -228,9 +228,9 @@ class TestToolsCallFeature:
 
         if request.param == "in-process":
             return InProcessExecutor()
-        # Add container executor when ready
-        # elif request.param == "container":
-        #     if not _docker_available():
+            # Add container executor when ready
+            # elif request.param == "container":
+            #     if not _docker_available():
             pytest.skip("Docker not available")
         #     return ContainerExecutor(ContainerConfig())
         pytest.fail(f"Unknown executor type: {request.param}")
@@ -264,9 +264,9 @@ class TestToolsDirectCallFeature:
 
         if request.param == "in-process":
             return InProcessExecutor()
-        # Add container executor when ready
-        # elif request.param == "container":
-        #     if not _docker_available():
+            # Add container executor when ready
+            # elif request.param == "container":
+            #     if not _docker_available():
             pytest.skip("Docker not available")
         #     return ContainerExecutor(ContainerConfig())
         pytest.fail(f"Unknown executor type: {request.param}")
@@ -300,9 +300,9 @@ class TestSkillsListFeature:
 
         if request.param == "in-process":
             return InProcessExecutor()
-        # Add container executor when ready
-        # elif request.param == "container":
-        #     if not _docker_available():
+            # Add container executor when ready
+            # elif request.param == "container":
+            #     if not _docker_available():
             pytest.skip("Docker not available")
         #     return ContainerExecutor(ContainerConfig())
         pytest.fail(f"Unknown executor type: {request.param}")
@@ -349,9 +349,9 @@ class TestSkillsSearchFeature:
 
         if request.param == "in-process":
             return InProcessExecutor()
-        # Add container executor when ready
-        # elif request.param == "container":
-        #     if not _docker_available():
+            # Add container executor when ready
+            # elif request.param == "container":
+            #     if not _docker_available():
             pytest.skip("Docker not available")
         #     return ContainerExecutor(ContainerConfig())
         pytest.fail(f"Unknown executor type: {request.param}")
@@ -385,9 +385,9 @@ class TestSkillsCreateFeature:
 
         if request.param == "in-process":
             return InProcessExecutor()
-        # Add container executor when ready
-        # elif request.param == "container":
-        #     if not _docker_available():
+            # Add container executor when ready
+            # elif request.param == "container":
+            #     if not _docker_available():
             pytest.skip("Docker not available")
         #     return ContainerExecutor(ContainerConfig())
         pytest.fail(f"Unknown executor type: {request.param}")
@@ -433,9 +433,9 @@ class TestSkillsDirectCallFeature:
 
         if request.param == "in-process":
             return InProcessExecutor()
-        # Add container executor when ready
-        # elif request.param == "container":
-        #     if not _docker_available():
+            # Add container executor when ready
+            # elif request.param == "container":
+            #     if not _docker_available():
             pytest.skip("Docker not available")
         #     return ContainerExecutor(ContainerConfig())
         pytest.fail(f"Unknown executor type: {request.param}")
@@ -469,9 +469,9 @@ class TestArtifactsListFeature:
 
         if request.param == "in-process":
             return InProcessExecutor()
-        # Add container executor when ready
-        # elif request.param == "container":
-        #     if not _docker_available():
+            # Add container executor when ready
+            # elif request.param == "container":
+            #     if not _docker_available():
             pytest.skip("Docker not available")
         #     return ContainerExecutor(ContainerConfig())
         pytest.fail(f"Unknown executor type: {request.param}")
@@ -505,9 +505,9 @@ class TestArtifactsSaveFeature:
 
         if request.param == "in-process":
             return InProcessExecutor()
-        # Add container executor when ready
-        # elif request.param == "container":
-        #     if not _docker_available():
+            # Add container executor when ready
+            # elif request.param == "container":
+            #     if not _docker_available():
             pytest.skip("Docker not available")
         #     return ContainerExecutor(ContainerConfig())
         pytest.fail(f"Unknown executor type: {request.param}")
@@ -547,9 +547,9 @@ class TestArtifactsLoadFeature:
 
         if request.param == "in-process":
             return InProcessExecutor()
-        # Add container executor when ready
-        # elif request.param == "container":
-        #     if not _docker_available():
+            # Add container executor when ready
+            # elif request.param == "container":
+            #     if not _docker_available():
             pytest.skip("Docker not available")
         #     return ContainerExecutor(ContainerConfig())
         pytest.fail(f"Unknown executor type: {request.param}")
@@ -584,9 +584,9 @@ class TestArtifactsDeleteFeature:
 
         if request.param == "in-process":
             return InProcessExecutor()
-        # Add container executor when ready
-        # elif request.param == "container":
-        #     if not _docker_available():
+            # Add container executor when ready
+            # elif request.param == "container":
+            #     if not _docker_available():
             pytest.skip("Docker not available")
         #     return ContainerExecutor(ContainerConfig())
         pytest.fail(f"Unknown executor type: {request.param}")
@@ -632,9 +632,9 @@ class TestFullFeatureMatrix:
 
         if request.param == "in-process":
             return InProcessExecutor()
-        # Add container executor when ready
-        # elif request.param == "container":
-        #     if not _docker_available():
+            # Add container executor when ready
+            # elif request.param == "container":
+            #     if not _docker_available():
             pytest.skip("Docker not available")
         #     return ContainerExecutor(ContainerConfig())
         pytest.fail(f"Unknown executor type: {request.param}")

@@ -145,9 +145,7 @@ class TestFromScratchScenario:
     """
 
     @pytest.mark.asyncio
-    async def test_complete_workflow_from_empty_directory(
-        self, empty_base_dir: Path
-    ) -> None:
+    async def test_complete_workflow_from_empty_directory(self, empty_base_dir: Path) -> None:
         """Complete agent workflow starting from empty directory.
 
         User story: Developer creates new project, initializes py-code-mode,
@@ -166,18 +164,14 @@ class TestFromScratchScenario:
             result = await session.run("tools.list()")
             assert result.is_ok, f"tools.list() failed on empty dir: {result.error}"
             assert result.value is not None, "tools.list() returned None"
-            assert isinstance(result.value, list), (
-                f"tools.list() returned {type(result.value)}"
-            )
+            assert isinstance(result.value, list), f"tools.list() returned {type(result.value)}"
             # Empty list is expected - no tools defined yet
 
             # 2. Verify skills namespace exists (empty is fine)
             result = await session.run("skills.list()")
             assert result.is_ok, f"skills.list() failed on empty dir: {result.error}"
             assert result.value is not None, "skills.list() returned None"
-            assert isinstance(result.value, list), (
-                f"skills.list() returned {type(result.value)}"
-            )
+            assert isinstance(result.value, list), f"skills.list() returned {type(result.value)}"
 
             # 3. Create a skill - this MUST create skills/ directory
             result = await session.run("""
@@ -270,9 +264,7 @@ skills.create(
             assert result.value == 40
 
     @pytest.mark.asyncio
-    async def test_artifacts_persist_across_sessions(
-        self, empty_base_dir: Path
-    ) -> None:
+    async def test_artifacts_persist_across_sessions(self, empty_base_dir: Path) -> None:
         """Artifacts saved in one session are loadable in the next.
 
         This test WILL FAIL if:
@@ -298,9 +290,7 @@ skills.create(
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_from_scratch_with_container_executor(
-        self, empty_base_dir: Path
-    ) -> None:
+    async def test_from_scratch_with_container_executor(self, empty_base_dir: Path) -> None:
         """From scratch scenario works with container executor too.
 
         Verifies that the container receives proper storage access configuration:
@@ -320,9 +310,7 @@ skills.create(
             assert result.is_ok, f"skills.list() failed in container: {result.error}"
 
             # Artifacts should work
-            result = await session.run(
-                'artifacts.save("container_test.txt", b"hello", "test")'
-            )
+            result = await session.run('artifacts.save("container_test.txt", b"hello", "test")')
             assert result.is_ok, f"artifacts.save() failed in container: {result.error}"
 
 
@@ -357,9 +345,7 @@ skills.create(
             assert result.is_ok, f"Failed: {result.error}"
 
         # Directory should now exist
-        assert (empty_base_dir / "skills").exists(), (
-            "skills/ not created by skills.create()"
-        )
+        assert (empty_base_dir / "skills").exists(), "skills/ not created by skills.create()"
 
     @pytest.mark.asyncio
     async def test_artifacts_save_creates_directory(self, empty_base_dir: Path) -> None:
@@ -369,15 +355,11 @@ skills.create(
         assert not (empty_base_dir / "artifacts").exists()
 
         async with Session(storage=storage) as session:
-            result = await session.run(
-                'artifacts.save("test.json", {"ok": True}, "Test")'
-            )
+            result = await session.run('artifacts.save("test.json", {"ok": True}, "Test")')
             assert result.is_ok, f"Failed: {result.error}"
 
         # Directory should now exist
-        assert (empty_base_dir / "artifacts").exists(), (
-            "artifacts/ not created by artifacts.save()"
-        )
+        assert (empty_base_dir / "artifacts").exists(), "artifacts/ not created by artifacts.save()"
 
 
 # =============================================================================
@@ -443,9 +425,7 @@ class TestEmptyDirectoryListings:
             assert result.value == []
 
     @pytest.mark.asyncio
-    async def test_artifacts_list_on_missing_directory(
-        self, empty_base_dir: Path
-    ) -> None:
+    async def test_artifacts_list_on_missing_directory(self, empty_base_dir: Path) -> None:
         """artifacts.list() returns empty on missing artifacts/."""
         storage = FileStorage(empty_base_dir)
 
@@ -458,9 +438,7 @@ class TestEmptyDirectoryListings:
             assert result.value == []
 
     @pytest.mark.asyncio
-    async def test_artifacts_list_on_empty_directory(
-        self, empty_base_dir: Path
-    ) -> None:
+    async def test_artifacts_list_on_empty_directory(self, empty_base_dir: Path) -> None:
         """artifacts.list() returns empty when artifacts/ exists but empty."""
         (empty_base_dir / "artifacts").mkdir()
         storage = FileStorage(empty_base_dir)
@@ -485,9 +463,7 @@ class TestNamespacesAlwaysAvailable:
     """
 
     @pytest.mark.asyncio
-    async def test_all_namespaces_exist_in_empty_session(
-        self, empty_base_dir: Path
-    ) -> None:
+    async def test_all_namespaces_exist_in_empty_session(self, empty_base_dir: Path) -> None:
         """All three namespaces exist even with no content."""
         storage = FileStorage(empty_base_dir)
 
@@ -555,14 +531,10 @@ class TestMissingResourceErrors:
             assert result.error is not None
             # Error should mention the tool name or "not found"
             error_lower = result.error.lower()
-            assert any(
-                x in error_lower for x in ["nonexistent", "not found", "attribute"]
-            )
+            assert any(x in error_lower for x in ["nonexistent", "not found", "attribute"])
 
     @pytest.mark.asyncio
-    async def test_skill_not_found_gives_clear_error(
-        self, empty_base_dir: Path
-    ) -> None:
+    async def test_skill_not_found_gives_clear_error(self, empty_base_dir: Path) -> None:
         """Calling non-existent skill gives clear error."""
         storage = FileStorage(empty_base_dir)
 
@@ -572,14 +544,10 @@ class TestMissingResourceErrors:
             assert not result.is_ok, "Expected error for missing skill"
             assert result.error is not None
             error_lower = result.error.lower()
-            assert any(
-                x in error_lower for x in ["nonexistent", "not found", "attribute"]
-            )
+            assert any(x in error_lower for x in ["nonexistent", "not found", "attribute"])
 
     @pytest.mark.asyncio
-    async def test_artifact_load_missing_gives_error_or_none(
-        self, empty_base_dir: Path
-    ) -> None:
+    async def test_artifact_load_missing_gives_error_or_none(self, empty_base_dir: Path) -> None:
         """Loading non-existent artifact gives error or None."""
         storage = FileStorage(empty_base_dir)
 
@@ -604,9 +572,7 @@ class TestPartialDirectoryConditions:
     """Test behavior when some directories exist but others don't."""
 
     @pytest.mark.asyncio
-    async def test_skills_work_without_tools_directory(
-        self, partial_dir_skills_only: Path
-    ) -> None:
+    async def test_skills_work_without_tools_directory(self, partial_dir_skills_only: Path) -> None:
         """Skills work even when tools/ doesn't exist."""
         storage = FileStorage(partial_dir_skills_only)
 
@@ -637,9 +603,7 @@ def run(a: int, b: int) -> int:
 
         async with Session(storage=storage) as session:
             # artifacts should work
-            result = await session.run(
-                'artifacts.save("test.json", {"ok": True}, "Test")'
-            )
+            result = await session.run('artifacts.save("test.json", {"ok": True}, "Test")')
             assert result.is_ok
 
             # skills.list() should work (empty)
@@ -722,33 +686,23 @@ class TestExecutorMatrix:
             return _create_container_executor()
 
     @pytest.mark.asyncio
-    async def test_skills_list_works_with_executor(
-        self, executor, empty_base_dir: Path
-    ) -> None:
+    async def test_skills_list_works_with_executor(self, executor, empty_base_dir: Path) -> None:
         """skills.list() works across executors."""
         storage = FileStorage(empty_base_dir)
 
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("skills.list()")
-            assert result.is_ok, (
-                f"skills.list() failed with {type(executor)}: {result.error}"
-            )
+            assert result.is_ok, f"skills.list() failed with {type(executor)}: {result.error}"
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_artifacts_save_works_with_executor(
-        self, executor, empty_base_dir: Path
-    ) -> None:
+    async def test_artifacts_save_works_with_executor(self, executor, empty_base_dir: Path) -> None:
         """artifacts.save() works across executors."""
         storage = FileStorage(empty_base_dir)
 
         async with Session(storage=storage, executor=executor) as session:
-            result = await session.run(
-                'artifacts.save("executor_test.json", {"ok": True}, "Test")'
-            )
-            assert result.is_ok, (
-                f"artifacts.save() failed with {type(executor)}: {result.error}"
-            )
+            result = await session.run('artifacts.save("executor_test.json", {"ok": True}, "Test")')
+            assert result.is_ok, f"artifacts.save() failed with {type(executor)}: {result.error}"
 
 
 # =============================================================================
