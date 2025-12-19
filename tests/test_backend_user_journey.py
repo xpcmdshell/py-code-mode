@@ -343,9 +343,7 @@ class TestContainerSessionPersistence:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_skill_persists_across_container_sessions(
-        self, empty_storage: Path
-    ) -> None:
+    async def test_skill_persists_across_container_sessions(self, empty_storage: Path) -> None:
         """Skills created in one container session are available in next."""
         from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
 
@@ -383,9 +381,7 @@ skills.create(
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_artifact_persists_across_container_sessions(
-        self, empty_storage: Path
-    ) -> None:
+    async def test_artifact_persists_across_container_sessions(self, empty_storage: Path) -> None:
         """Artifacts saved in one container session are loadable in next."""
         from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
 
@@ -422,9 +418,7 @@ class TestRedisContainerIntegration:
     """
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(
-        not _testcontainers_available(), reason="testcontainers not available"
-    )
+    @pytest.mark.skipif(not _testcontainers_available(), reason="testcontainers not available")
     async def test_redis_container_full_workflow(self) -> None:
         """Complete workflow with Redis storage and container executor."""
         import redis
@@ -475,9 +469,7 @@ skills.create(
                 assert result.value == {"from": "container"}
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(
-        not _testcontainers_available(), reason="testcontainers not available"
-    )
+    @pytest.mark.skipif(not _testcontainers_available(), reason="testcontainers not available")
     async def test_redis_container_skill_persistence(self) -> None:
         """Skills persist in Redis across container sessions."""
         import redis
@@ -580,9 +572,7 @@ class TestContainerNegativeCases:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_container_invalid_skill_source_rejected(
-        self, empty_storage: Path
-    ) -> None:
+    async def test_container_invalid_skill_source_rejected(self, empty_storage: Path) -> None:
         """Creating skill with syntax error fails gracefully."""
         from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
 

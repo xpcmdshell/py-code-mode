@@ -64,9 +64,7 @@ def _transform_localhost_for_docker(url: str) -> str:
         if platform.system() in ("Darwin", "Windows"):
             # Replace hostname while preserving port and other components
             netloc = (
-                f"host.docker.internal:{parsed.port}"
-                if parsed.port
-                else "host.docker.internal"
+                f"host.docker.internal:{parsed.port}" if parsed.port else "host.docker.internal"
             )
             return urlunparse(parsed._replace(netloc=netloc))
     return url
@@ -188,10 +186,7 @@ class ContainerExecutor:
 
         # Common socket locations across platforms
         socket_paths = [
-            Path.home()
-            / ".docker"
-            / "run"
-            / "docker.sock",  # Docker Desktop (macOS/Windows)
+            Path.home() / ".docker" / "run" / "docker.sock",  # Docker Desktop (macOS/Windows)
             Path("/var/run/docker.sock"),  # Linux default
             Path("/run/docker.sock"),  # Some Linux distros
         ]
@@ -418,9 +413,7 @@ class ContainerExecutor:
             ExecutionResult with value, stdout, error.
         """
         if self._client is None:
-            raise RuntimeError(
-                "Container not started. Use 'async with' or call start()"
-            )
+            raise RuntimeError("Container not started. Use 'async with' or call start()")
 
         result = await self._client.execute(code, timeout=timeout)
 

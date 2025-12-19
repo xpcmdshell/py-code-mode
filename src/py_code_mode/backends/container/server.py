@@ -167,9 +167,7 @@ def build_skill_library(config: SessionConfig) -> SkillLibrary | None:
     except OSError as e:
         # If we can't create the directory (e.g., read-only filesystem),
         # return None to signal no skill library is available
-        logger.warning(
-            "Cannot create skills directory at %s: %s", config.skills_path, e
-        )
+        logger.warning("Cannot create skills directory at %s: %s", config.skills_path, e)
         return None
 
     # Use file-based store wrapped in skill library
@@ -227,9 +225,7 @@ def cleanup_expired_sessions() -> int:
     """Remove sessions that haven't been used recently."""
     now = time.time()
     expired = [
-        sid
-        for sid, session in _state.sessions.items()
-        if now - session.last_used > SESSION_EXPIRY
+        sid for sid, session in _state.sessions.items() if now - session.last_used > SESSION_EXPIRY
     ]
     for sid in expired:
         del _state.sessions[sid]

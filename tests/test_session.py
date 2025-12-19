@@ -78,9 +78,7 @@ class TestSessionContextManager:
             assert result.value == 2
 
     @pytest.mark.asyncio
-    async def test_session_close_can_be_called_directly(
-        self, storage: FileStorage
-    ) -> None:
+    async def test_session_close_can_be_called_directly(self, storage: FileStorage) -> None:
         """Session.close() can be called explicitly."""
         session = Session(storage=storage)
         await session.start()
@@ -191,9 +189,7 @@ description: Echo text back
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_tools_list_returns_tool_info(
-        self, storage_with_tools: FileStorage
-    ) -> None:
+    async def test_tools_list_returns_tool_info(self, storage_with_tools: FileStorage) -> None:
         """tools.list() returns tool info with name, description, params."""
         async with Session(storage=storage_with_tools) as session:
             result = await session.run("tools.list()")
@@ -215,9 +211,7 @@ description: Echo text back
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_tools_call_invokes_tool(
-        self, storage_with_tools: FileStorage
-    ) -> None:
+    async def test_tools_call_invokes_tool(self, storage_with_tools: FileStorage) -> None:
         """tools.call(name, args) invokes the tool."""
         async with Session(storage=storage_with_tools) as session:
             result = await session.run('tools.call("echo", {"text": "hello"})')
@@ -226,9 +220,7 @@ description: Echo text back
             assert "hello" in str(result.value)
 
     @pytest.mark.asyncio
-    async def test_tool_direct_invocation(
-        self, storage_with_tools: FileStorage
-    ) -> None:
+    async def test_tool_direct_invocation(self, storage_with_tools: FileStorage) -> None:
         """tools.tool_name(**kwargs) syntax works."""
         async with Session(storage=storage_with_tools) as session:
             result = await session.run('tools.echo(text="direct call")')
@@ -266,9 +258,7 @@ def run(n: int) -> int:
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_skills_list_returns_skill_info(
-        self, storage_with_skills: FileStorage
-    ) -> None:
+    async def test_skills_list_returns_skill_info(self, storage_with_skills: FileStorage) -> None:
         """skills.list() returns skill info with name, description, params."""
         async with Session(storage=storage_with_skills) as session:
             result = await session.run("skills.list()")
@@ -281,9 +271,7 @@ def run(n: int) -> int:
             assert "params" in skill
 
     @pytest.mark.asyncio
-    async def test_skills_search_callable(
-        self, storage_with_skills: FileStorage
-    ) -> None:
+    async def test_skills_search_callable(self, storage_with_skills: FileStorage) -> None:
         """skills.search(query) is callable and returns list."""
         async with Session(storage=storage_with_skills) as session:
             result = await session.run('skills.search("number")')
@@ -292,9 +280,7 @@ def run(n: int) -> int:
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_skills_create_callable(
-        self, storage_with_skills: FileStorage
-    ) -> None:
+    async def test_skills_create_callable(self, storage_with_skills: FileStorage) -> None:
         """skills.create(name, description, source) is callable."""
         async with Session(storage=storage_with_skills) as session:
             result = await session.run(
@@ -315,9 +301,7 @@ skills.create(
             assert result.value == 30
 
     @pytest.mark.asyncio
-    async def test_skill_direct_invocation(
-        self, storage_with_skills: FileStorage
-    ) -> None:
+    async def test_skill_direct_invocation(self, storage_with_skills: FileStorage) -> None:
         """skills.skill_name(**kwargs) syntax works."""
         async with Session(storage=storage_with_skills) as session:
             result = await session.run("skills.double(n=21)")
@@ -620,14 +604,9 @@ class TestSessionTypedExecutorAPI:
         with pytest.raises(TypeError) as exc_info:
             Session(storage=storage, executor="in-process")  # type: ignore
 
-        assert (
-            "str" in str(exc_info.value).lower()
-            or "executor" in str(exc_info.value).lower()
-        )
+        assert "str" in str(exc_info.value).lower() or "executor" in str(exc_info.value).lower()
 
-    def test_session_defaults_to_in_process_executor(
-        self, storage: FileStorage
-    ) -> None:
+    def test_session_defaults_to_in_process_executor(self, storage: FileStorage) -> None:
         """Session defaults to InProcessExecutor when executor=None."""
         from py_code_mode.backends.in_process import InProcessExecutor
 
@@ -638,9 +617,7 @@ class TestSessionTypedExecutorAPI:
         )
 
     @pytest.mark.asyncio
-    async def test_session_with_explicit_in_process_executor(
-        self, storage: FileStorage
-    ) -> None:
+    async def test_session_with_explicit_in_process_executor(self, storage: FileStorage) -> None:
         """Session works with explicitly passed InProcessExecutor."""
         from py_code_mode.backends.in_process import InProcessExecutor
 
@@ -731,9 +708,7 @@ def run(n: int) -> int:
             assert result.value is True
 
     @pytest.mark.asyncio
-    async def test_tools_are_loaded_from_storage(
-        self, storage_with_tools: FileStorage
-    ) -> None:
+    async def test_tools_are_loaded_from_storage(self, storage_with_tools: FileStorage) -> None:
         """tools from storage are available in executor."""
         from py_code_mode.backends.in_process import InProcessExecutor
 
@@ -745,9 +720,7 @@ def run(n: int) -> int:
             assert "echo" in tool_names
 
     @pytest.mark.asyncio
-    async def test_skills_are_loaded_from_storage(
-        self, storage_with_skills: FileStorage
-    ) -> None:
+    async def test_skills_are_loaded_from_storage(self, storage_with_skills: FileStorage) -> None:
         """skills from storage are available in executor."""
         from py_code_mode.backends.in_process import InProcessExecutor
 
@@ -831,9 +804,7 @@ class TestExecutorStartSignature:
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     @pytest.mark.xdist_group("docker")
-    async def test_container_executor_start_accepts_storage_access(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_container_executor_start_accepts_storage_access(self, tmp_path: Path) -> None:
         """ContainerExecutor.start() accepts storage_access parameter."""
         from py_code_mode.backend import FileStorageAccess
         from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
@@ -869,9 +840,7 @@ class TestDefaultExecutorBehavior:
         return FileStorage(tmp_path)
 
     @pytest.mark.asyncio
-    async def test_omitting_executor_creates_in_process(
-        self, storage: FileStorage
-    ) -> None:
+    async def test_omitting_executor_creates_in_process(self, storage: FileStorage) -> None:
         """Omitting executor parameter creates InProcessExecutor."""
         async with Session(storage=storage) as session:
             result = await session.run("2 + 2")
@@ -901,9 +870,7 @@ class TestCapabilityPreservation:
         return FileStorage(tmp_path)
 
     @pytest.mark.asyncio
-    async def test_in_process_capabilities_unchanged(
-        self, storage: FileStorage
-    ) -> None:
+    async def test_in_process_capabilities_unchanged(self, storage: FileStorage) -> None:
         """InProcessExecutor capabilities unchanged with new API."""
         from py_code_mode.backend import Capability
         from py_code_mode.backends.in_process import InProcessExecutor

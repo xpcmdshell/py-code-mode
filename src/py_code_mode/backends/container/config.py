@@ -121,9 +121,7 @@ class SessionConfig:
                 # Support both 'tools' (new) and 'cli_tools' (legacy) keys
                 tools_list = tools_data.get("tools") or tools_data.get("cli_tools", [])
                 config.cli_tools = cls._parse_cli_tools(tools_list)
-                config.mcp_servers = cls._parse_mcp_servers(
-                    tools_data.get("mcp_servers", [])
-                )
+                config.mcp_servers = cls._parse_mcp_servers(tools_data.get("mcp_servers", []))
                 config.python_deps = tools_data.get("python_deps", [])
 
         return config

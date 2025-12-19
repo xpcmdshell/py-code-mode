@@ -63,9 +63,7 @@ class TestSessionExecutionErrors:
             assert "timeout" in result.error.lower() or "Timeout" in result.error
 
     @pytest.mark.asyncio
-    async def test_error_does_not_corrupt_session_state(
-        self, storage: FileStorage
-    ) -> None:
+    async def test_error_does_not_corrupt_session_state(self, storage: FileStorage) -> None:
         """Errors don't corrupt the session - can continue executing."""
         async with Session(storage=storage) as session:
             # Set a variable
@@ -204,9 +202,7 @@ def run(a: int, b: int) -> float:
             assert "ZeroDivision" in result.error or "division" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_skill_create_invalid_source_error(
-        self, storage: FileStorage
-    ) -> None:
+    async def test_skill_create_invalid_source_error(self, storage: FileStorage) -> None:
         """Creating skill with invalid source gives error."""
         async with Session(storage=storage) as session:
             result = await session.run(
@@ -223,9 +219,7 @@ skills.create(
             assert result.error is not None
 
     @pytest.mark.asyncio
-    async def test_skill_create_missing_run_function_error(
-        self, storage: FileStorage
-    ) -> None:
+    async def test_skill_create_missing_run_function_error(self, storage: FileStorage) -> None:
         """Creating skill without run() function gives error."""
         async with Session(storage=storage) as session:
             result = await session.run(
@@ -283,16 +277,12 @@ class TestArtifactsNamespaceErrors:
             # Implementation-dependent
 
     @pytest.mark.asyncio
-    async def test_artifact_save_unserializable_data(
-        self, storage: FileStorage
-    ) -> None:
+    async def test_artifact_save_unserializable_data(self, storage: FileStorage) -> None:
         """Saving non-serializable data gives error."""
         async with Session(storage=storage) as session:
             # Functions can't be JSON serialized
             await session.run("def my_func(): pass")
-            result = await session.run(
-                'artifacts.save("func.json", my_func, "Function")'
-            )
+            result = await session.run('artifacts.save("func.json", my_func, "Function")')
 
             # Should fail - functions aren't serializable
             if result.is_ok:
@@ -399,9 +389,7 @@ class TestSessionConfigurationErrors:
         with pytest.raises(TypeError) as exc_info:
             Session(storage=storage, executor="unknown_executor")
 
-        assert "String-based executor selection is no longer supported" in str(
-            exc_info.value
-        )
+        assert "String-based executor selection is no longer supported" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_invalid_executor_type_error(self, storage: FileStorage) -> None:
