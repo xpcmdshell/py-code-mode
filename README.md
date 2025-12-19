@@ -24,7 +24,8 @@ Here's what the agent's code looks like:
 
 ```python
 # First time: agent needs to scrape Hacker News
-results = skills.search("scrape hacker news")  # nothing found
+results = skills.search("scrape hacker news")
+# returns: []  (no matching skills yet)
 
 # Agent iterates to figure out the structure
 content = tools.fetch(url="https://news.ycombinator.com")
@@ -58,7 +59,8 @@ Next time the agent needs this:
 
 ```python
 # Agent searches for a relevant skill
-results = skills.search("scrape hacker news")  # finds scrape_hn_stories
+results = skills.search("scrape hacker news")
+# returns: [{"name": "scrape_hn_stories", "description": "Extract top stories from Hacker News", "params": {"num_stories": "int"}}]
 
 # Found one - just call it, no iteration needed
 stories = skills.scrape_hn_stories(num_stories=10)
@@ -103,26 +105,52 @@ Three namespaces injected into their execution environment:
 
 ## Defining Tools
 
-Wrap external capabilities as YAML:
+Wrap external capabilities as YAML. Three types supported:
+
+**CLI tools** - wrap command-line programs:
 
 ```yaml
-# tools/web_search.yaml
-name: web_search
-type: mcp
-transport: stdio
-command: npx
-args: ["-y", "@modelcontextprotocol/server-brave-search"]
-description: Search the web and return results with URLs
+# tools/ffmpeg.yaml
+name: ffmpeg
+type: cli
+args: "-i {input_path} {flags} {output_path}"
+description: Run ffmpeg with input file, flags, and output path
+timeout: 300
 ```
+
+```yaml
+# tools/extract_audio.yaml
+name: extract_audio
+type: cli
+command: ffmpeg
+args: "-i {video_path} -vn -q:a 0 {audio_output_path}"
+description: Extract audio track from video file as MP3
+```
+
+**MCP tools** - connect to MCP servers:
 
 ```yaml
 # tools/fetch.yaml
 name: fetch
 type: mcp
 transport: stdio
-command: npx
-args: ["-y", "@modelcontextprotocol/server-fetch"]
-description: Fetch a URL and return content as markdown
+command: uvx
+args: ["mcp-server-fetch"]
+description: Fetch web pages with full content extraction
+```
+
+**HTTP tools** - wrap REST APIs (defined in Python):
+
+```python
+from py_code_mode import HTTPAdapter, Endpoint
+
+adapter = HTTPAdapter(base_url="https://api.example.com")
+adapter.add_endpoint(Endpoint(
+    name="get_user",
+    method="GET",
+    path="/users/{user_id}",
+    description="Get user by ID"
+))
 ```
 
 ## Seeding Skills
