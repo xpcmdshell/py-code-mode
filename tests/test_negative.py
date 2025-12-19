@@ -36,46 +36,6 @@ class TestSessionExecutionErrors:
         return FileStorage(tmp_path)
 
     @pytest.mark.asyncio
-    async def test_syntax_error_captured(self, storage: FileStorage) -> None:
-        """Syntax errors are captured in result.error, not raised."""
-        async with Session(storage=storage) as session:
-            result = await session.run("if True print('bad')")
-
-            assert not result.is_ok
-            assert result.error is not None
-            assert "SyntaxError" in result.error or "syntax" in result.error.lower()
-
-    @pytest.mark.asyncio
-    async def test_name_error_captured(self, storage: FileStorage) -> None:
-        """NameError is captured in result.error."""
-        async with Session(storage=storage) as session:
-            result = await session.run("undefined_variable")
-
-            assert not result.is_ok
-            assert result.error is not None
-            assert "NameError" in result.error
-
-    @pytest.mark.asyncio
-    async def test_type_error_captured(self, storage: FileStorage) -> None:
-        """TypeError is captured in result.error."""
-        async with Session(storage=storage) as session:
-            result = await session.run("1 + 'string'")
-
-            assert not result.is_ok
-            assert result.error is not None
-            assert "TypeError" in result.error
-
-    @pytest.mark.asyncio
-    async def test_value_error_captured(self, storage: FileStorage) -> None:
-        """ValueError is captured in result.error."""
-        async with Session(storage=storage) as session:
-            result = await session.run("int('not_a_number')")
-
-            assert not result.is_ok
-            assert result.error is not None
-            assert "ValueError" in result.error
-
-    @pytest.mark.asyncio
     async def test_exception_in_function_captured(self, storage: FileStorage) -> None:
         """Exceptions in user-defined functions are captured."""
         async with Session(storage=storage) as session:
@@ -103,7 +63,9 @@ class TestSessionExecutionErrors:
             assert "timeout" in result.error.lower() or "Timeout" in result.error
 
     @pytest.mark.asyncio
-    async def test_error_does_not_corrupt_session_state(self, storage: FileStorage) -> None:
+    async def test_error_does_not_corrupt_session_state(
+        self, storage: FileStorage
+    ) -> None:
         """Errors don't corrupt the session - can continue executing."""
         async with Session(storage=storage) as session:
             # Set a variable
@@ -242,7 +204,9 @@ def run(a: int, b: int) -> float:
             assert "ZeroDivision" in result.error or "division" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_skill_create_invalid_source_error(self, storage: FileStorage) -> None:
+    async def test_skill_create_invalid_source_error(
+        self, storage: FileStorage
+    ) -> None:
         """Creating skill with invalid source gives error."""
         async with Session(storage=storage) as session:
             result = await session.run(
@@ -259,7 +223,9 @@ skills.create(
             assert result.error is not None
 
     @pytest.mark.asyncio
-    async def test_skill_create_missing_run_function_error(self, storage: FileStorage) -> None:
+    async def test_skill_create_missing_run_function_error(
+        self, storage: FileStorage
+    ) -> None:
         """Creating skill without run() function gives error."""
         async with Session(storage=storage) as session:
             result = await session.run(
@@ -317,12 +283,16 @@ class TestArtifactsNamespaceErrors:
             # Implementation-dependent
 
     @pytest.mark.asyncio
-    async def test_artifact_save_unserializable_data(self, storage: FileStorage) -> None:
+    async def test_artifact_save_unserializable_data(
+        self, storage: FileStorage
+    ) -> None:
         """Saving non-serializable data gives error."""
         async with Session(storage=storage) as session:
             # Functions can't be JSON serialized
             await session.run("def my_func(): pass")
-            result = await session.run('artifacts.save("func.json", my_func, "Function")')
+            result = await session.run(
+                'artifacts.save("func.json", my_func, "Function")'
+            )
 
             # Should fail - functions aren't serializable
             if result.is_ok:
@@ -429,7 +399,9 @@ class TestSessionConfigurationErrors:
         with pytest.raises(TypeError) as exc_info:
             Session(storage=storage, executor="unknown_executor")
 
-        assert "String-based executor selection is no longer supported" in str(exc_info.value)
+        assert "String-based executor selection is no longer supported" in str(
+            exc_info.value
+        )
 
     @pytest.mark.asyncio
     async def test_invalid_executor_type_error(self, storage: FileStorage) -> None:

@@ -92,6 +92,7 @@ class TestFilesystemIsolationWithArtifacts:
             await executor.close()
 
 
+@pytest.mark.xdist_group("docker")
 class TestContainerWithFileArtifacts:
     """Test container backend with file-based artifact storage."""
 
@@ -165,6 +166,7 @@ def _testcontainers_available() -> bool:
         return False
 
 
+@pytest.mark.xdist_group("docker")
 class TestContainerWithRedisArtifacts:
     """Test container backend with Redis artifact storage."""
 
@@ -220,6 +222,7 @@ class TestContainerWithRedisArtifacts:
                     assert "redis data" in str(result.value)
 
 
+@pytest.mark.xdist_group("docker")
 class TestResetWithStateAndArtifacts:
     """Test that reset clears namespace but preserves artifacts."""
 
