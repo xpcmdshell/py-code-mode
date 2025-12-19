@@ -101,8 +101,12 @@ class FileSkillStore:
         except FileNotFoundError:
             return None
         except Exception as e:
-            logger.error(f"Failed to load skill '{name}' from {path}: {type(e).__name__}: {e}")
-            raise StorageReadError(f"Failed to load skill '{name}' from {path}: {e}") from e
+            logger.error(
+                f"Failed to load skill '{name}' from {path}: {type(e).__name__}: {e}"
+            )
+            raise StorageReadError(
+                f"Failed to load skill '{name}' from {path}: {e}"
+            ) from e
 
     def delete(self, name: str) -> bool:
         """Delete skill .py file."""
@@ -123,7 +127,9 @@ class FileSkillStore:
                 skill = PythonSkill.from_file(path)
                 skills.append(skill)
             except Exception as e:
-                logger.warning(f"Failed to load skill from {path}: {type(e).__name__}: {e}")
+                logger.warning(
+                    f"Failed to load skill from {path}: {type(e).__name__}: {e}"
+                )
                 continue
         return skills
 
@@ -233,7 +239,9 @@ class RedisSkillStore:
                 data = json.loads(value)
                 skills.append(self._deserialize_skill(data))
             except Exception as e:
-                logger.warning(f"Failed to deserialize skill '{name}': {type(e).__name__}: {e}")
+                logger.warning(
+                    f"Failed to deserialize skill '{name}': {type(e).__name__}: {e}"
+                )
                 continue
 
         return skills
@@ -241,3 +249,7 @@ class RedisSkillStore:
     def exists(self, name: str) -> bool:
         """Check if skill exists in Redis."""
         return self._redis.hexists(self._hash_key(), name)
+
+    def __len__(self) -> int:
+        """Return the number of skills in the store."""
+        return self._redis.hlen(self._hash_key())

@@ -59,7 +59,9 @@ class TestFilesystemIsolationWithArtifacts:
 
     @pytest.mark.asyncio
     @pytest.mark.xfail(reason="FILESYSTEM_ISOLATION capability not yet implemented")
-    async def test_filesystem_isolated_but_artifacts_accessible(self, tmp_path: Path) -> None:
+    async def test_filesystem_isolated_but_artifacts_accessible(
+        self, tmp_path: Path
+    ) -> None:
         """Host filesystem hidden but artifact store accessible.
 
         Filesystem isolation should prevent reading host files like /etc/passwd,
@@ -82,7 +84,9 @@ class TestFilesystemIsolationWithArtifacts:
             assert not result.is_ok
 
             # Can use artifact store
-            result = await executor.run("artifacts.save('secret.txt', b'safe', 'safe data')")
+            result = await executor.run(
+                "artifacts.save('secret.txt', b'safe', 'safe data')"
+            )
             assert result.is_ok
         finally:
             await executor.close()
@@ -107,7 +111,9 @@ class TestContainerWithFileArtifacts:
         executor = ContainerExecutor(config)
         async with Session(storage=storage, executor=executor) as session:
             # Save artifact
-            result = await session.run("artifacts.save('report.txt', b'test data', 'Test report')")
+            result = await session.run(
+                "artifacts.save('report.txt', b'test data', 'Test report')"
+            )
             assert result.is_ok, f"artifacts.save() failed: {result.error}"
 
             # Load artifact
@@ -140,25 +146,22 @@ class TestContainerWithFileArtifacts:
         config = ContainerConfig(timeout=30.0)
         executor = ContainerExecutor(config)
         async with Session(storage=storage, executor=executor) as session:
-            await session.run("artifacts.save('host_visible.txt', b'from container', 'test')")
+            await session.run(
+                "artifacts.save('host_visible.txt', b'from container', 'test')"
+            )
 
         # Verify file exists on host (artifact store may create subdirectories)
         found = list(artifacts_path.rglob("host_visible.txt"))
         assert len(found) > 0, "Artifact not visible on host filesystem"
 
 
-def _redis_available() -> bool:
-    """Check if Redis is available for testing."""
+def _testcontainers_available() -> bool:
+    """Check if testcontainers can spin up Redis."""
     try:
-        import os
+        from testcontainers.redis import RedisContainer  # noqa: F401
 
-        import redis
-
-        url = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379")
-        client = redis.from_url(url)
-        client.ping()
-        return True
-    except Exception:
+        return _docker_available()
+    except ImportError:
         return False
 
 
@@ -166,42 +169,55 @@ class TestContainerWithRedisArtifacts:
     """Test container backend with Redis artifact storage."""
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    @pytest.mark.skipif(not _redis_available(), reason="Redis not available for testing")
+    @pytest.mark.skipif(
+        not _testcontainers_available(), reason="testcontainers not available"
+    )
     async def test_redis_artifacts_save_load(self) -> None:
         """Container with Redis artifacts can save and load data."""
         import os
+        from pathlib import Path
 
         import redis
+        from testcontainers.redis import RedisContainer
 
         from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
         from py_code_mode.session import Session
         from py_code_mode.storage import RedisStorage
 
-        redis_url = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379")
+        # Configure Docker socket for macOS Docker Desktop
+        docker_socket = Path.home() / ".docker" / "run" / "docker.sock"
+        if docker_socket.exists() and "DOCKER_HOST" not in os.environ:
+            os.environ["DOCKER_HOST"] = f"unix://{docker_socket}"
 
-        # Create Redis storage
-        client = redis.from_url(redis_url)
-        storage = RedisStorage(client)
+        # Spin up Redis container - both host and session container can reach it
+        with RedisContainer() as redis_tc:
+            host = redis_tc.get_container_host_ip()
+            port = redis_tc.get_exposed_port(6379)
+            redis_url = f"redis://{host}:{port}"
 
-        # Use Session with ContainerExecutor
-        config = ContainerConfig(timeout=30.0)
-        executor = ContainerExecutor(config)
-        async with Session(storage=storage, executor=executor) as session:
-            # Save artifact
-            result = await session.run(
-                "artifacts.save('redis_test.txt', b'redis data', 'Redis test')"
-            )
-            assert result.is_ok, f"artifacts.save() failed: {result.error}"
+            # Create Redis storage (host Python connects via mapped port)
+            client = redis.from_url(redis_url)
+            storage = RedisStorage(client)
 
-            # Load artifact
-            result = await session.run("artifacts.load('redis_test.txt')")
-            assert result.is_ok, f"artifacts.load() failed: {result.error}"
-            # Handle both bytes and string return types
-            if isinstance(result.value, bytes):
-                assert b"redis data" in result.value
-            else:
-                assert "redis data" in str(result.value)
+            # Use Session with ContainerExecutor
+            # ContainerExecutor transforms localhost -> host.docker.internal
+            config = ContainerConfig(timeout=30.0)
+            executor = ContainerExecutor(config)
+            async with Session(storage=storage, executor=executor) as session:
+                # Save artifact
+                result = await session.run(
+                    "artifacts.save('redis_test.txt', b'redis data', 'Redis test')"
+                )
+                assert result.is_ok, f"artifacts.save() failed: {result.error}"
+
+                # Load artifact
+                result = await session.run("artifacts.load('redis_test.txt')")
+                assert result.is_ok, f"artifacts.load() failed: {result.error}"
+                # Handle both bytes and string return types
+                if isinstance(result.value, bytes):
+                    assert b"redis data" in result.value
+                else:
+                    assert "redis data" in str(result.value)
 
 
 class TestResetWithStateAndArtifacts:
@@ -209,7 +225,9 @@ class TestResetWithStateAndArtifacts:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_reset_clears_namespace_preserves_artifacts(self, tmp_path: Path) -> None:
+    async def test_reset_clears_namespace_preserves_artifacts(
+        self, tmp_path: Path
+    ) -> None:
         """Reset clears Python state but keeps artifacts.
 
         After reset, variables should be gone but artifacts should persist.
@@ -264,7 +282,9 @@ class TestTimeoutBehavior:
 
             assert not result.is_ok
             # Error should mention timeout
-            assert "timeout" in str(result.error).lower() or "Timeout" in str(result.error)
+            assert "timeout" in str(result.error).lower() or "Timeout" in str(
+                result.error
+            )
 
 
 class TestToolsAndSkillsTogether:
