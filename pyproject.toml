@@ -91,7 +91,7 @@ norecursedirs = ["tests/future"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-n auto --dist worksteal"
+addopts = "-n auto --dist loadgroup"
 
 [tool.mypy]
 python_version = "3.12"
