@@ -17,8 +17,11 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 try:
     from docker.models.containers import Container
@@ -33,6 +36,8 @@ except ImportError:
 
 from py_code_mode.backend import (
     Capability,
+    FileStorageAccess,
+    RedisStorageAccess,
     StorageAccess,
     register_backend,
 )
@@ -45,8 +50,11 @@ def _transform_localhost_for_docker(url: str) -> str:
     """Transform localhost URLs for access from inside Docker containers.
 
     Inside a Docker container, 'localhost' refers to the container itself,
-    not the host machine. On macOS/Windows, use 'host.docker.internal' to
-    reach host services from within containers.
+    not the host machine. We use 'host.docker.internal' to reach host services.
+
+    - macOS/Windows: Docker Desktop provides host.docker.internal natively
+    - Linux: Requires extra_hosts={"host.docker.internal": "host-gateway"}
+             in container config (added in to_docker_config)
 
     Args:
         url: Original URL (e.g., redis://localhost:6379)
@@ -54,19 +62,11 @@ def _transform_localhost_for_docker(url: str) -> str:
     Returns:
         Transformed URL (e.g., redis://host.docker.internal:6379)
     """
-    import platform
-    from urllib.parse import urlparse, urlunparse
-
     parsed = urlparse(url)
     if parsed.hostname in ("localhost", "127.0.0.1"):
-        # macOS and Windows Docker Desktop support host.docker.internal
-        # Linux requires --add-host or host network mode
-        if platform.system() in ("Darwin", "Windows"):
-            # Replace hostname while preserving port and other components
-            netloc = (
-                f"host.docker.internal:{parsed.port}" if parsed.port else "host.docker.internal"
-            )
-            return urlunparse(parsed._replace(netloc=netloc))
+        # Replace hostname while preserving port and other components
+        netloc = f"host.docker.internal:{parsed.port}" if parsed.port else "host.docker.internal"
+        return urlunparse(parsed._replace(netloc=netloc))
     return url
 
 
@@ -135,10 +135,6 @@ class ContainerExecutor:
         Returns:
             Started ContainerExecutor.
         """
-        from pathlib import Path
-
-        from py_code_mode.backend import FileStorageAccess
-
         config = ContainerConfig(
             image=image,
             timeout=timeout,
@@ -174,8 +170,6 @@ class ContainerExecutor:
 
     def _create_docker_client(self) -> Any:
         """Create Docker client, trying multiple socket locations if needed."""
-        from pathlib import Path
-
         # Try standard from_env first (respects DOCKER_HOST)
         try:
             client = docker.from_env()
@@ -205,7 +199,7 @@ class ContainerExecutor:
             "Tried DOCKER_HOST env var and common socket locations."
         )
 
-    def _find_project_root(self) -> Any:
+    def _find_project_root(self) -> Path:
         """Find project root by looking for docker/ directory.
 
         Returns:
@@ -214,8 +208,6 @@ class ContainerExecutor:
         Raises:
             RuntimeError: If project root cannot be found.
         """
-        from pathlib import Path
-
         # Start from this file's location and walk up
         current = Path(__file__).resolve().parent
         while current != current.parent:
@@ -262,8 +254,6 @@ class ContainerExecutor:
         Raises:
             RuntimeError: If build fails or project root cannot be found.
         """
-        import logging
-
         logger = logging.getLogger(__name__)
 
         # Find project root (where docker/ directory is)
@@ -314,8 +304,6 @@ class ContainerExecutor:
                            Determines volume mounts (FileStorageAccess) or
                            Redis connection (RedisStorageAccess).
         """
-        from py_code_mode.backend import FileStorageAccess, RedisStorageAccess
-
         # Initialize Docker client with fallback socket detection
         self._docker = self._create_docker_client()
 

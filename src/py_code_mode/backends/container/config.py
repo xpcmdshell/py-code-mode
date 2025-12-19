@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import platform
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -84,8 +86,6 @@ class SessionConfig:
     @classmethod
     def from_env(cls) -> SessionConfig:
         """Load configuration from environment variables."""
-        import os
-
         config = cls()
 
         # Load paths from env
@@ -267,6 +267,11 @@ class ContainerConfig:
         if redis_url:
             config["environment"]["ARTIFACT_BACKEND"] = "redis"
             config["environment"]["REDIS_URL"] = redis_url
+
+        # Add host.docker.internal mapping for Linux
+        # macOS/Windows Docker Desktop provides this natively, but Linux needs it
+        if platform.system() == "Linux":
+            config["extra_hosts"] = {"host.docker.internal": "host-gateway"}
 
         # Add container name
         if self.name:
