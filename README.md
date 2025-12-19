@@ -12,7 +12,15 @@ Complex workflows with LLMs are fragile. Each step is an LLM call that can hallu
 
 ## The Solution
 
-Let agents write Python that orchestrates tools in a single execution. When a workflow succeeds, save it as a skill. Next time, call the skill directly - no multi-step reasoning required.
+Agents write Python code strings. You execute them with `tools`, `skills`, and `artifacts` available:
+
+```python
+await session.run(agent_code)  # agent_code is a string the LLM generated
+```
+
+When a workflow succeeds, the agent saves it as a skill. Next time, it calls the skill directly - no multi-step reasoning required.
+
+Here's what the agent's code looks like:
 
 ```python
 # First time: agent needs to scrape Hacker News
