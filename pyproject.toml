@@ -91,7 +91,7 @@ norecursedirs = ["tests/future"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "--ignore=tests/test_silent_failure_fixes.py"
+addopts = "-n auto --dist worksteal"
 
 [tool.mypy]
 python_version = "3.12"

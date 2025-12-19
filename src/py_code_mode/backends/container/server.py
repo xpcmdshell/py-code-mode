@@ -167,7 +167,9 @@ def build_skill_library(config: SessionConfig) -> SkillLibrary | None:
     except OSError as e:
         # If we can't create the directory (e.g., read-only filesystem),
         # return None to signal no skill library is available
-        logger.warning("Cannot create skills directory at %s: %s", config.skills_path, e)
+        logger.warning(
+            "Cannot create skills directory at %s: %s", config.skills_path, e
+        )
         return None
 
     # Use file-based store wrapped in skill library
@@ -225,7 +227,9 @@ def cleanup_expired_sessions() -> int:
     """Remove sessions that haven't been used recently."""
     now = time.time()
     expired = [
-        sid for sid, session in _state.sessions.items() if now - session.last_used > SESSION_EXPIRY
+        sid
+        for sid, session in _state.sessions.items()
+        if now - session.last_used > SESSION_EXPIRY
     ]
     for sid in expired:
         del _state.sessions[sid]
@@ -305,7 +309,18 @@ async def initialize_server(config: SessionConfig) -> None:
     else:
         # File mode: load from config paths
         logger.info("Using file-based backend (set REDIS_URL for Redis mode)")
-        registry = await build_tool_registry(config)
+
+        # Load tools from mounted directory if TOOLS_PATH is set, otherwise from config
+        tools_path = os.environ.get("TOOLS_PATH")
+        if tools_path:
+            logger.info("  Loading tools from directory: %s", tools_path)
+            registry = await ToolRegistry.from_dir(tools_path)
+            logger.info("  Tools in directory: %d", len(registry.list_tools()))
+        else:
+            # No TOOLS_PATH - use tools from config (baked into image)
+            registry = await build_tool_registry(config)
+            logger.info("  Tools from config: %d", len(registry.list_tools()))
+
         skill_library = build_skill_library(config)
 
         # Ensure base artifacts path exists

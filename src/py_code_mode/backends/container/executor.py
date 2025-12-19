@@ -210,6 +210,107 @@ class ContainerExecutor:
             "Tried DOCKER_HOST env var and common socket locations."
         )
 
+    def _find_project_root(self) -> Any:
+        """Find project root by looking for docker/ directory.
+
+        Returns:
+            Path to project root.
+
+        Raises:
+            RuntimeError: If project root cannot be found.
+        """
+        from pathlib import Path
+
+        # Start from this file's location and walk up
+        current = Path(__file__).resolve().parent
+        while current != current.parent:
+            if (current / "docker" / "Dockerfile.base").exists():
+                return current
+            current = current.parent
+        raise RuntimeError(
+            "Could not find project root with docker/ directory. "
+            "This likely means py-code-mode is installed from a package. "
+            f"Please build the image manually: docker build -f docker/Dockerfile.base -t py-code-mode:base . && "
+            f"docker build -f docker/Dockerfile.tools -t {self.config.image} ."
+        )
+
+    def _ensure_image_exists(self) -> None:
+        """Build Docker image if it doesn't exist.
+
+        Raises:
+            RuntimeError: If image doesn't exist and auto_build is disabled,
+                        or if build fails.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Check if image exists
+        try:
+            self._docker.images.get(self.config.image)
+            return  # Image exists, no need to build
+        except docker.errors.ImageNotFound:
+            pass  # Image not found, continue to build logic
+
+        # Image doesn't exist
+        if not self.config.auto_build:
+            raise RuntimeError(
+                f"Docker image '{self.config.image}' not found. "
+                "Build it with:\n"
+                f"  docker build -f docker/Dockerfile.base -t py-code-mode:base .\n"
+                f"  docker build -f docker/Dockerfile.tools -t {self.config.image} ."
+            )
+
+        # Auto-build enabled - build the image
+        self._build_image()
+
+    def _build_image(self) -> None:
+        """Build the Docker image from Dockerfiles.
+
+        Raises:
+            RuntimeError: If build fails or project root cannot be found.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Find project root (where docker/ directory is)
+        project_root = self._find_project_root()
+
+        # Check if base image exists, build if missing
+        base_image_exists = False
+        try:
+            self._docker.images.get("py-code-mode:base")
+            base_image_exists = True
+        except docker.errors.ImageNotFound:
+            pass
+
+        if not base_image_exists:
+            logger.info("Building py-code-mode:base image...")
+            try:
+                self._docker.images.build(
+                    path=str(project_root),
+                    dockerfile="docker/Dockerfile.base",
+                    tag="py-code-mode:base",
+                    rm=True,
+                )
+                logger.info("Successfully built py-code-mode:base")
+            except Exception as e:
+                raise RuntimeError(f"Failed to build base image: {e}") from e
+
+        # Build tools image
+        logger.info(f"Building {self.config.image} image...")
+        try:
+            self._docker.images.build(
+                path=str(project_root),
+                dockerfile="docker/Dockerfile.tools",
+                tag=self.config.image,
+                rm=True,
+            )
+            logger.info(f"Successfully built {self.config.image}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to build tools image: {e}") from e
+
     async def start(
         self,
         storage_access: StorageAccess | None = None,
@@ -225,6 +326,9 @@ class ContainerExecutor:
 
         # Initialize Docker client with fallback socket detection
         self._docker = self._create_docker_client()
+
+        # Ensure image exists (build if needed and auto_build=True)
+        self._ensure_image_exists()
 
         # Extract paths/urls from storage access
         tools_path = None
