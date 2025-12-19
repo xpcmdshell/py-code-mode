@@ -4,39 +4,44 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A scripting engine for AI agents that learns. Skills accumulate as institutional knowledge.
+Make your agents' tool orchestration more robust over time.
 
-## How Agents Use It
+## The Problem
+
+Complex workflows with LLMs are fragile. Each step is an LLM call that can hallucinate, pick the wrong tool, or lose context. A 5-tool workflow = 5 chances to fail.
+
+## The Solution
+
+Let agents write Python that orchestrates tools in a single execution. When a workflow succeeds, save it as a skill. Next time, call the skill directly - no multi-step reasoning required.
 
 ```python
-# 1. Agent searches for a skill that matches the task
-results = skills.search("analyze website for vulnerabilities")
+# First time: agent reasons through the problem
+results = skills.search("security assessment")
 
-# 2. Found one? Use it
-if results:
-    report = skills.web_vuln_scan(url="https://target.com")
+if not results:
+    # Compose tools to solve it
+    dns = tools.dig(target=target)
+    ports = tools.nmap(target=target, flags="-sV")
+    vulns = tools.nikto(target=target)
 
-# 3. No skill exists? Compose tools to solve the task
-else:
-    content = tools.fetch(url="https://target.com")
-    headers = tools.curl(url="https://target.com", flags="-I")
-    scan = tools.nikto(target="target.com")
-
-    # 4. Save the recipe as a reusable skill
+    # Save the working solution
     skills.create(
-        name="web_vuln_scan",
+        name="security_assessment",
         code='''
-def run(url: str) -> dict:
-    content = tools.fetch(url=url)
-    headers = tools.curl(url=url, flags="-I")
-    scan = tools.nikto(target=url)
-    return {"content": content, "headers": headers, "scan": scan}
+def run(target: str) -> dict:
+    dns = tools.dig(target=target)
+    ports = tools.nmap(target=target, flags="-sV")
+    vulns = tools.nikto(target=target)
+    return {"dns": dns, "ports": ports, "vulns": vulns}
 ''',
-        description="Fetch content, headers, and run nikto scan on a URL"
+        description="DNS, port scan, and vulnerability scan on a target"
     )
+
+# Next time: one call, no reasoning
+report = skills.security_assessment(target="example.com")
 ```
 
-Next time any agent needs this capability, the skill already exists.
+Skills accumulate. Your agents get more reliable over time.
 
 ## Installation
 
@@ -61,21 +66,21 @@ from py_code_mode import Session, FileStorage
 storage = FileStorage(base_path=Path("./data"))
 
 async with Session(storage=storage) as session:
-    result = await session.run('skills.search("port scanning")')
-    print(result.value)
+    # Agent code runs with tools, skills, artifacts available
+    result = await session.run('skills.search("recon")')
 ```
 
-## Three Namespaces
+## What Agents Get
 
-Agents get access to:
+Three namespaces injected into their execution environment:
 
-- **tools** - CLI commands, MCP servers, and APIs you've wrapped
-- **skills** - Reusable recipes (agent-created or human-authored)
+- **tools** - Your CLI commands, MCP servers, and APIs wrapped as functions
+- **skills** - Reusable workflows (agent-created or human-authored)
 - **artifacts** - Persistent storage across sessions
 
 ## Defining Tools
 
-Tools are YAML files wrapping external capabilities:
+Wrap external capabilities as YAML:
 
 ```yaml
 # tools/nmap.yaml
@@ -95,31 +100,31 @@ args: ["-y", "@anthropic/mcp-brave-search"]
 description: Web search via Brave
 ```
 
-## Writing Skills
+## Seeding Skills
 
-You can seed skills for agents to find:
+Pre-author skills for agents to find:
 
 ```python
 # skills/analyze_url.py
-"""Fetch a URL and summarize its content."""
+"""Fetch a URL and analyze its content."""
 
 def run(url: str) -> dict:
     content = tools.fetch(url=url)
-    return {"url": url, "word_count": len(content.split()), "content": content}
+    return {"url": url, "word_count": len(content.split())}
 ```
 
 Or let agents create them at runtime via `skills.create()`.
 
 ## Production
 
-- **Redis storage** - Share skills across agents (one agent learns, all benefit)
-- **Container isolation** - Execute untrusted agent code in Docker
+- **Redis storage** - One agent learns, all agents benefit
+- **Container isolation** - Execute untrusted agent code safely
 
 ```python
 from py_code_mode import Session, RedisStorage
 from py_code_mode.backends.container import ContainerExecutor, ContainerConfig
 
-storage = RedisStorage(redis=client, prefix="my-agent")
+storage = RedisStorage(redis=client, prefix="my-agents")
 executor = ContainerExecutor(ContainerConfig(timeout=60.0))
 
 async with Session(storage=storage, executor=executor) as session:
