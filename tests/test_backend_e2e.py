@@ -1,38 +1,46 @@
 """End-to-end tests for backend feature combinations.
 
 These tests validate that intuitive feature combinations work correctly.
-Tests skip for backends that don't support the required capabilities.
+Tests that require unimplemented features are marked xfail.
 """
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
 
 from py_code_mode import Capability, CodeExecutor
-from py_code_mode.artifacts import FileArtifactStore
+
+
+def _docker_available() -> bool:
+    """Check if Docker is available for testing."""
+    return shutil.which("docker") is not None
 
 
 class TestNetworkIsolationWithArtifacts:
     """Test that network isolation doesn't break artifact storage."""
 
     @pytest.mark.asyncio
+    @pytest.mark.xfail(reason="NETWORK_ISOLATION capability not yet implemented")
     async def test_network_denied_but_artifacts_work(self, tmp_path: Path) -> None:
         """Network blocked but local artifact storage works.
 
         When network is isolated, agents should still be able to save artifacts.
-        This test skips for backends without network isolation support.
         """
         artifacts_path = tmp_path / "artifacts"
-        artifacts_path.mkdir()
-        artifact_store = FileArtifactStore(artifacts_path)
-        executor = CodeExecutor(artifact_store=artifact_store)
+        artifacts_path.mkdir(parents=True, exist_ok=True)
 
-        if not executor.supports(Capability.NETWORK_ISOLATION):
-            pytest.skip("Backend doesn't support network isolation")
+        # Use container backend which should support network isolation
+        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
 
-        async with executor:
+        config = ContainerConfig(
+            host_artifacts_path=artifacts_path,
+        )
+        executor = ContainerExecutor(config)
+
+        try:
             # Network should fail (when isolation is enabled)
             result = await executor.run(
                 "import urllib.request; urllib.request.urlopen('https://example.com')"
@@ -42,12 +50,15 @@ class TestNetworkIsolationWithArtifacts:
             # But artifacts should still work
             result = await executor.run("artifacts.save('test.txt', b'works', 'test')")
             assert result.is_ok
+        finally:
+            await executor.close()
 
 
 class TestFilesystemIsolationWithArtifacts:
     """Test that filesystem isolation doesn't break artifact storage."""
 
     @pytest.mark.asyncio
+    @pytest.mark.xfail(reason="FILESYSTEM_ISOLATION capability not yet implemented")
     async def test_filesystem_isolated_but_artifacts_accessible(self, tmp_path: Path) -> None:
         """Host filesystem hidden but artifact store accessible.
 
@@ -55,14 +66,17 @@ class TestFilesystemIsolationWithArtifacts:
         but the artifact store should remain accessible.
         """
         artifacts_path = tmp_path / "artifacts"
-        artifacts_path.mkdir()
-        artifact_store = FileArtifactStore(artifacts_path)
-        executor = CodeExecutor(artifact_store=artifact_store)
+        artifacts_path.mkdir(parents=True, exist_ok=True)
 
-        if not executor.supports(Capability.FILESYSTEM_ISOLATION):
-            pytest.skip("Backend doesn't support filesystem isolation")
+        # Use container backend which should support filesystem isolation
+        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
 
-        async with executor:
+        config = ContainerConfig(
+            host_artifacts_path=artifacts_path,
+        )
+        executor = ContainerExecutor(config)
+
+        try:
             # Can't read host files
             result = await executor.run("open('/etc/passwd').read()")
             assert not result.is_ok
@@ -70,26 +84,129 @@ class TestFilesystemIsolationWithArtifacts:
             # Can use artifact store
             result = await executor.run("artifacts.save('secret.txt', b'safe', 'safe data')")
             assert result.is_ok
+        finally:
+            await executor.close()
+
+
+class TestContainerWithFileArtifacts:
+    """Test container backend with file-based artifact storage."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
+    async def test_file_artifacts_save_load(self, tmp_path: Path) -> None:
+        """Container with file artifacts can save and load data."""
+        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+
+        artifacts_path = tmp_path / "artifacts"
+        artifacts_path.mkdir(parents=True, exist_ok=True)
+
+        config = ContainerConfig(host_artifacts_path=artifacts_path)
+        async with ContainerExecutor(config) as executor:
+            # Save artifact
+            result = await executor.run("artifacts.save('report.txt', b'test data', 'Test report')")
+            assert result.is_ok, f"artifacts.save() failed: {result.error}"
+
+            # Load artifact
+            result = await executor.run("artifacts.load('report.txt')")
+            assert result.is_ok, f"artifacts.load() failed: {result.error}"
+            # Handle both bytes and string return types
+            if isinstance(result.value, bytes):
+                assert b"test data" in result.value
+            else:
+                assert "test data" in str(result.value)
+
+            # List artifacts
+            result = await executor.run("artifacts.list()")
+            assert result.is_ok, f"artifacts.list() failed: {result.error}"
+            assert result.value is not None, "artifacts.list() returned None"
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
+    async def test_file_artifacts_persist_on_host(self, tmp_path: Path) -> None:
+        """File artifacts written in container are visible on host filesystem."""
+        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+
+        artifacts_path = tmp_path / "artifacts"
+        artifacts_path.mkdir(parents=True, exist_ok=True)
+
+        config = ContainerConfig(host_artifacts_path=artifacts_path)
+        async with ContainerExecutor(config) as executor:
+            await executor.run("artifacts.save('host_visible.txt', b'from container', 'test')")
+
+        # Verify file exists on host (artifact store may create subdirectories)
+        found = list(artifacts_path.rglob("host_visible.txt"))
+        assert len(found) > 0, "Artifact not visible on host filesystem"
+
+
+def _redis_available() -> bool:
+    """Check if Redis is available for testing."""
+    try:
+        import os
+
+        import redis
+
+        url = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379")
+        client = redis.from_url(url)
+        client.ping()
+        return True
+    except Exception:
+        return False
+
+
+class TestContainerWithRedisArtifacts:
+    """Test container backend with Redis artifact storage."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
+    @pytest.mark.skipif(not _redis_available(), reason="Redis not available for testing")
+    async def test_redis_artifacts_save_load(self) -> None:
+        """Container with Redis artifacts can save and load data."""
+        import os
+
+        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+
+        redis_url = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379")
+
+        config = ContainerConfig(
+            artifact_backend="redis",
+            redis_url=redis_url,
+        )
+        async with ContainerExecutor(config) as executor:
+            # Save artifact
+            result = await executor.run(
+                "artifacts.save('redis_test.txt', b'redis data', 'Redis test')"
+            )
+            assert result.is_ok, f"artifacts.save() failed: {result.error}"
+
+            # Load artifact
+            result = await executor.run("artifacts.load('redis_test.txt')")
+            assert result.is_ok, f"artifacts.load() failed: {result.error}"
+            # Handle both bytes and string return types
+            if isinstance(result.value, bytes):
+                assert b"redis data" in result.value
+            else:
+                assert "redis data" in str(result.value)
 
 
 class TestResetWithStateAndArtifacts:
     """Test that reset clears namespace but preserves artifacts."""
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_reset_clears_namespace_preserves_artifacts(self, tmp_path: Path) -> None:
         """Reset clears Python state but keeps artifacts.
 
         After reset, variables should be gone but artifacts should persist.
+        Uses container backend which supports RESET capability.
         """
+        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+
         artifacts_path = tmp_path / "artifacts"
-        artifacts_path.mkdir()
-        artifact_store = FileArtifactStore(artifacts_path)
-        executor = CodeExecutor(artifact_store=artifact_store)
+        artifacts_path.mkdir(parents=True, exist_ok=True)
 
-        if not executor.supports(Capability.RESET):
-            pytest.skip("Backend doesn't support reset")
-
-        async with executor:
+        # Use container backend which supports RESET
+        config = ContainerConfig(host_artifacts_path=artifacts_path)
+        async with ContainerExecutor(config) as executor:
             # Set variable
             await executor.run("x = 42")
 

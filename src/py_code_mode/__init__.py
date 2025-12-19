@@ -15,7 +15,6 @@ from py_code_mode.artifacts import (
 from py_code_mode.backend import (
     Capability,
     Executor,
-    create_executor,
     get_backend,
     list_backends,
     register_backend,
@@ -24,6 +23,17 @@ from py_code_mode.backend import (
 # Import backends to trigger registration
 from py_code_mode.backends import InProcessExecutor
 from py_code_mode.backends.in_process import CodeExecutor  # Backward compat alias
+
+# Container backend is optional (requires docker, httpx, fastapi)
+try:
+    from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+
+    _CONTAINER_AVAILABLE = True
+except ImportError:
+    _CONTAINER_AVAILABLE = False
+    ContainerConfig = None  # type: ignore
+    ContainerExecutor = None  # type: ignore
+
 from py_code_mode.http_adapter import Endpoint, HTTPAdapter
 from py_code_mode.mcp_adapter import MCPAdapter
 from py_code_mode.redis_artifacts import RedisArtifactStore
@@ -78,6 +88,8 @@ from py_code_mode.errors import (
     ToolTimeoutError,
 )
 from py_code_mode.registry import ScopedToolRegistry, ToolRegistry
+from py_code_mode.session import Session
+from py_code_mode.storage import FileStorage, RedisStorage, StorageBackend
 from py_code_mode.types import JsonSchema, ToolDefinition
 
 __version__ = "0.1.0"
@@ -119,13 +131,14 @@ __all__ = [
     # Backend Protocol and Factory
     "Executor",
     "Capability",
-    "create_executor",
     "register_backend",
     "get_backend",
     "list_backends",
     # Executors
     "InProcessExecutor",
     "CodeExecutor",  # Backward compat alias for InProcessExecutor
+    "ContainerExecutor",
+    "ContainerConfig",
     # Skills
     "SkillMetadata",
     "SkillParameter",
@@ -144,4 +157,9 @@ __all__ = [
     "SkillLibrary",
     "resolve_model_name",
     "create_skill_library",
+    # Storage and Session
+    "StorageBackend",
+    "FileStorage",
+    "RedisStorage",
+    "Session",
 ]

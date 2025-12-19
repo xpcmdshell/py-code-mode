@@ -7,7 +7,9 @@ All backends must pass these tests to be considered compliant.
 import pytest
 
 # These imports will fail initially - that's expected (TDD red phase)
-from py_code_mode.backend import Capability, Executor, create_executor
+from py_code_mode.artifacts import FileArtifactStore
+from py_code_mode.backend import Capability, Executor
+from py_code_mode.backends.in_process import InProcessExecutor
 from py_code_mode.types import ExecutionResult
 
 
@@ -20,10 +22,10 @@ class TestExecutorProtocol:
         backend = request.param
 
         if backend == "in-process":
-            executor = await create_executor(
-                backend="in-process",
-                artifacts=str(tmp_path / "artifacts"),
-            )
+            artifacts_path = tmp_path / "artifacts"
+            artifacts_path.mkdir(parents=True, exist_ok=True)
+            artifact_store = FileArtifactStore(artifacts_path)
+            executor = InProcessExecutor(artifact_store=artifact_store)
         elif backend == "container":
             pytest.skip("Container backend not yet migrated")
         elif backend == "microsandbox":
@@ -91,10 +93,10 @@ class TestExecutorProtocol:
     @pytest.mark.asyncio
     async def test_context_manager_support(self, tmp_path) -> None:
         """Executor must support async context manager."""
-        async with await create_executor(
-            backend="in-process",
-            artifacts=str(tmp_path / "artifacts"),
-        ) as executor:
+        artifacts_path = tmp_path / "artifacts"
+        artifacts_path.mkdir(parents=True, exist_ok=True)
+        artifact_store = FileArtifactStore(artifacts_path)
+        async with InProcessExecutor(artifact_store=artifact_store) as executor:
             result = await executor.run("1 + 1")
             assert result.value == 2
         # After exit, resources should be released
@@ -226,91 +228,16 @@ class TestBackendRegistry:
         assert result is None
 
 
-class TestCreateExecutorFactory:
-    """Tests for the create_executor() factory function."""
-
-    @pytest.mark.asyncio
-    async def test_create_in_process_executor(self, tmp_path) -> None:
-        """create_executor() can create in-process executor."""
-        executor = await create_executor(
-            backend="in-process",
-            artifacts=str(tmp_path / "artifacts"),
-        )
-
-        result = await executor.run("1 + 1")
-        assert result.value == 2
-
-        await executor.close()
-
-    @pytest.mark.asyncio
-    async def test_create_with_tools_path(self, tmp_path) -> None:
-        """create_executor() accepts tools path."""
-        tools_dir = tmp_path / "tools"
-        tools_dir.mkdir()
-
-        executor = await create_executor(
-            backend="in-process",
-            tools=str(tools_dir),
-        )
-
-        # Should have tools namespace
-        result = await executor.run("'tools' in dir()")
-        assert result.value is True
-
-        await executor.close()
-
-    @pytest.mark.asyncio
-    async def test_create_with_skills_path(self, tmp_path) -> None:
-        """create_executor() accepts skills path."""
-        skills_dir = tmp_path / "skills"
-        skills_dir.mkdir()
-
-        executor = await create_executor(
-            backend="in-process",
-            skills=str(skills_dir),
-        )
-
-        # Should have skills namespace
-        result = await executor.run("'skills' in dir()")
-        assert result.value is True
-
-        await executor.close()
-
-    @pytest.mark.asyncio
-    async def test_create_unknown_backend_raises(self) -> None:
-        """create_executor() raises ValueError for unknown backend."""
-        with pytest.raises(ValueError, match="Unknown backend"):
-            await create_executor(backend="nonexistent")
-
-    @pytest.mark.asyncio
-    async def test_create_passes_security_config(self, tmp_path) -> None:
-        """create_executor() passes security config to backend."""
-        # Security config is accepted even if backend ignores it
-        executor = await create_executor(
-            backend="in-process",
-            network_policy="deny",
-            allowed_hosts=["example.com"],
-            filesystem_policy="readonly",
-            memory_limit_mb=256,
-        )
-
-        # In-process doesn't enforce these, but should accept them
-        result = await executor.run("1 + 1")
-        assert result.value == 2
-
-        await executor.close()
-
-
 class TestInProcessCapabilities:
     """Tests for in-process executor capabilities."""
 
     @pytest.fixture
     async def executor(self, tmp_path) -> Executor:
         """Create in-process executor."""
-        executor = await create_executor(
-            backend="in-process",
-            artifacts=str(tmp_path / "artifacts"),
-        )
+        artifacts_path = tmp_path / "artifacts"
+        artifacts_path.mkdir(parents=True, exist_ok=True)
+        artifact_store = FileArtifactStore(artifacts_path)
+        executor = InProcessExecutor(artifact_store=artifact_store)
         yield executor
         await executor.close()
 

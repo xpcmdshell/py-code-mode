@@ -219,3 +219,172 @@ class ControllableEmbedder:
 def controllable_embedder() -> ControllableEmbedder:
     """Create a controllable embedder for deterministic tests."""
     return ControllableEmbedder(dimension=4)
+
+
+# --- Storage and Session Test Fixtures ---
+
+
+def requires_redis(fn):
+    """Decorator to skip tests if Redis is not available."""
+    import functools
+    import os
+
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        try:
+            import redis
+
+            url = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379")
+            client = redis.from_url(url)
+            client.ping()
+        except Exception:
+            pytest.skip("Redis not available")
+        return await fn(*args, **kwargs)
+
+    return wrapper
+
+
+def requires_docker(fn):
+    """Decorator to skip tests if Docker is not available."""
+    import functools
+    import shutil
+
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        if shutil.which("docker") is None:
+            pytest.skip("Docker not available")
+        return await fn(*args, **kwargs)
+
+    return wrapper
+
+
+# Markers for parametrized skip conditions
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line("markers", "requires_redis: mark test as requiring Redis")
+    config.addinivalue_line("markers", "requires_docker: mark test as requiring Docker")
+
+
+class MockRedisClient:
+    """Mock Redis client for testing RedisStorage without actual Redis."""
+
+    def __init__(self) -> None:
+        self._data: dict[str, dict[str, bytes]] = {}
+        self._strings: dict[str, bytes] = {}
+
+    def hset(self, key: str, field: str, value: bytes) -> int:
+        if key not in self._data:
+            self._data[key] = {}
+        self._data[key][field] = value
+        return 1
+
+    def hget(self, key: str, field: str) -> bytes | None:
+        return self._data.get(key, {}).get(field)
+
+    def hdel(self, key: str, *fields: str) -> int:
+        count = 0
+        if key in self._data:
+            for field in fields:
+                if field in self._data[key]:
+                    del self._data[key][field]
+                    count += 1
+        return count
+
+    def hgetall(self, key: str) -> dict[str, bytes]:
+        return self._data.get(key, {})
+
+    def hexists(self, key: str, field: str) -> bool:
+        return field in self._data.get(key, {})
+
+    def hkeys(self, key: str) -> list[str]:
+        return list(self._data.get(key, {}).keys())
+
+    def set(self, key: str, value: bytes, ex: int | None = None) -> bool:
+        self._strings[key] = value
+        return True
+
+    def get(self, key: str) -> bytes | None:
+        return self._strings.get(key)
+
+    def delete(self, *keys: str) -> int:
+        count = 0
+        for key in keys:
+            if key in self._strings:
+                del self._strings[key]
+                count += 1
+            if key in self._data:
+                del self._data[key]
+                count += 1
+        return count
+
+    def exists(self, key: str) -> int:
+        if key in self._strings or key in self._data:
+            return 1
+        return 0
+
+    def keys(self, pattern: str = "*") -> list[str]:
+        """Simple pattern matching for keys."""
+        import fnmatch
+
+        all_keys = list(self._strings.keys()) + list(self._data.keys())
+        if pattern == "*":
+            return all_keys
+        return [k for k in all_keys if fnmatch.fnmatch(k, pattern)]
+
+
+@pytest.fixture
+def mock_redis() -> MockRedisClient:
+    """Create a mock Redis client for testing."""
+    return MockRedisClient()
+
+
+@pytest.fixture
+def temp_storage_dir(tmp_path: Any) -> Any:
+    """Create a temporary directory structure for storage tests."""
+    from pathlib import Path
+
+    storage_root = Path(tmp_path) / "storage"
+    storage_root.mkdir()
+
+    tools_dir = storage_root / "tools"
+    tools_dir.mkdir()
+
+    skills_dir = storage_root / "skills"
+    skills_dir.mkdir()
+
+    artifacts_dir = storage_root / "artifacts"
+    artifacts_dir.mkdir()
+
+    return storage_root
+
+
+@pytest.fixture
+def sample_tool_yaml() -> str:
+    """Sample tool YAML for testing."""
+    return """
+name: echo
+type: cli
+command: echo
+args: "{text}"
+description: Echo text back
+"""
+
+
+@pytest.fixture
+def sample_skill_source() -> str:
+    """Sample skill source code for testing."""
+    return '''"""Double a number."""
+
+def run(n: int) -> int:
+    return n * 2
+'''
+
+
+@pytest.fixture
+def sample_artifact_data() -> dict[str, Any]:
+    """Sample artifact data for testing."""
+    return {
+        "name": "test_artifact",
+        "data": {"key": "value", "count": 42},
+        "description": "Test artifact for unit tests",
+    }

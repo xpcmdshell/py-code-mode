@@ -13,18 +13,13 @@ import io
 import re
 import traceback
 from contextlib import redirect_stdout
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import yaml
-
-from py_code_mode.adapters import CLIAdapter, CLIToolSpec
-from py_code_mode.artifacts import ArtifactStore, FileArtifactStore
+from py_code_mode.artifacts import ArtifactStore
 from py_code_mode.backend import Capability, register_backend
 from py_code_mode.registry import ToolRegistry
-from py_code_mode.semantic import SkillLibrary, create_skill_library
-from py_code_mode.skill_store import FileSkillStore
-from py_code_mode.types import ExecutionResult, JsonSchema
+from py_code_mode.semantic import SkillLibrary
+from py_code_mode.types import ExecutionResult
 
 if TYPE_CHECKING:
     pass
@@ -165,14 +160,14 @@ class SkillsNamespace:
     def create(
         self,
         name: str,
-        code: str,
+        source: str,
         description: str = "",
     ) -> dict[str, Any]:
         """Create and save a new Python skill.
 
         Args:
             name: Skill name (must be valid Python identifier).
-            code: Python source code with def run(...) function.
+            source: Python source code with def run(...) function.
             description: What the skill does.
 
         Returns:
@@ -187,7 +182,7 @@ class SkillsNamespace:
         # PythonSkill.from_source handles all validation
         skill = PythonSkill.from_source(
             name=name,
-            source=code,
+            source=source,
             description=description,
         )
 
@@ -294,248 +289,6 @@ class InProcessExecutor:
     def supported_capabilities(self) -> set[str]:
         """Return set of all capabilities this backend supports."""
         return set(self._CAPABILITIES)
-
-    @classmethod
-    async def from_yaml(
-        cls,
-        path: str,
-        skills_path: str | None = None,
-        artifacts_path: str | None = None,
-        allowed_tags: set[str] | None = None,
-        default_timeout: float = 30.0,
-    ) -> InProcessExecutor:
-        """Create executor from YAML tools config.
-
-        Args:
-            path: Path to tools.yaml file.
-            skills_path: Optional path to skills directory.
-            artifacts_path: Optional path for artifact storage.
-            allowed_tags: Optional set of tags to filter tools.
-            default_timeout: Default execution timeout.
-
-        Returns:
-            Configured InProcessExecutor.
-
-        Example tools.yaml:
-            tools:
-              - name: nmap
-                description: Network scanner
-                args: "{flags} {target}"
-                tags: [recon, network]
-        """
-        config_path = Path(path)
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
-
-        # Build tool specs from YAML
-        cli_specs = []
-        for tool in config.get("tools", []):
-            tool_type = tool.get("type", "cli")
-
-            if tool_type == "cli":
-                args_template = tool.get("args", "")
-                params = _extract_template_params(args_template)
-
-                spec = CLIToolSpec(
-                    name=tool["name"],
-                    description=tool.get("description", ""),
-                    command=tool.get("command"),
-                    args_template=args_template,
-                    input_schema=JsonSchema(
-                        type="object",
-                        properties={p: JsonSchema(type="string") for p in params},
-                    ),
-                    tags=frozenset(tool.get("tags", [])),
-                    timeout_seconds=tool.get("timeout", 60.0),
-                )
-                cli_specs.append(spec)
-            elif tool_type == "mcp":
-                raise NotImplementedError(f"MCP tools not yet supported: {tool['name']}")
-            elif tool_type == "http":
-                raise NotImplementedError(f"HTTP tools not yet supported: {tool['name']}")
-            else:
-                raise ValueError(f"Unknown tool type: {tool_type}")
-
-        # Create registry and register tools
-        registry = ToolRegistry()
-        if cli_specs:
-            adapter = CLIAdapter(cli_specs)
-            await registry.register_adapter(adapter)
-
-        # Apply tag filtering if specified
-        if allowed_tags:
-            registry = registry.scoped_view(allowed_tags)
-
-        # Build skill library if path provided
-        skill_library = None
-        if skills_path:
-            skills_dir = Path(skills_path)
-            store = FileSkillStore(skills_dir)
-            skill_library = create_skill_library(store=store)
-
-        # Build artifact store if path provided
-        artifact_store = None
-        if artifacts_path:
-            artifact_store = FileArtifactStore(Path(artifacts_path))
-
-        return cls(
-            registry=registry,
-            skill_library=skill_library,
-            artifact_store=artifact_store,
-            default_timeout=default_timeout,
-        )
-
-    @classmethod
-    async def create(
-        cls,
-        tools: str | None = None,
-        skills: str | None = None,
-        artifacts: str | None = None,
-        allowed_tags: set[str] | None = None,
-        default_timeout: float = 30.0,
-        semantic_search: bool = True,
-        embedding_model: str | None = None,
-        **kwargs: Any,  # Accept extra config for backend-agnostic factory
-    ) -> InProcessExecutor:
-        """Create executor by specifying where your tools and skills are.
-
-        Args:
-            tools: Path to directory containing tool YAML files.
-            skills: Path to directory containing skill .py files.
-            artifacts: Path to directory for artifact storage.
-            allowed_tags: Optional set of tags to filter tools.
-            default_timeout: Default execution timeout.
-            semantic_search: Enable semantic search for tools and skills.
-            embedding_model: Model alias or full HuggingFace model name.
-            **kwargs: Additional options (ignored for compatibility).
-
-        Returns:
-            Configured InProcessExecutor.
-
-        Example:
-            executor = await InProcessExecutor.create(
-                tools="./my_tools/",
-                skills="./my_skills/",
-            )
-        """
-        # Create embedder for semantic search
-        embedder = None
-        if semantic_search:
-            try:
-                from py_code_mode.semantic import Embedder
-
-                embedder = Embedder(model_name=embedding_model)
-            except ImportError:
-                pass  # Embedder not available, fall back to substring search
-
-        # Load tools from directory (supports CLI and MCP tools)
-        if tools:
-            registry = await ToolRegistry.from_dir(tools, embedder=embedder)
-        else:
-            registry = ToolRegistry(embedder=embedder)
-
-        # Apply tag filtering if specified
-        if allowed_tags:
-            registry = registry.scoped_view(allowed_tags)
-
-        # Load skills from directory with semantic search
-        skill_library = None
-        if skills:
-            skills_path = Path(skills)
-            if skills_path.exists():
-                store = FileSkillStore(skills_path)
-                skill_library = create_skill_library(store=store, embedder=embedder)
-
-        # Build artifact store
-        artifact_store = None
-        if artifacts:
-            artifacts_path = Path(artifacts)
-            artifacts_path.mkdir(parents=True, exist_ok=True)
-            artifact_store = FileArtifactStore(artifacts_path)
-
-        return cls(
-            registry=registry,
-            skill_library=skill_library,
-            artifact_store=artifact_store,
-            default_timeout=default_timeout,
-        )
-
-    @classmethod
-    async def quick(
-        cls,
-        tools: dict[str, str | tuple[str, str]] | None = None,
-        skills: str | None = None,
-        artifacts: str | None = None,
-        default_timeout: float = 30.0,
-    ) -> InProcessExecutor:
-        """Create executor with inline tool definitions for quick prototyping.
-
-        Args:
-            tools: Dict of tools. Key is name, value is either:
-                - str: args template (e.g., "-s {url}")
-                - tuple: (args_template, description)
-            skills: Path to skills directory.
-            artifacts: Path for artifact storage.
-            default_timeout: Default execution timeout.
-
-        Returns:
-            Configured InProcessExecutor.
-
-        Example:
-            executor = await InProcessExecutor.quick(
-                tools={
-                    "curl": "-s {url}",
-                    "nmap": ("{flags} {target}", "Network scanner"),
-                },
-                skills="./skills/",
-            )
-        """
-        # Build tool specs
-        cli_specs = []
-        if tools:
-            for name, value in tools.items():
-                if isinstance(value, tuple):
-                    args_template, description = value
-                else:
-                    args_template = value
-                    description = ""
-
-                params = _extract_template_params(args_template)
-                spec = CLIToolSpec(
-                    name=name,
-                    description=description,
-                    args_template=args_template,
-                    input_schema=JsonSchema(
-                        type="object",
-                        properties={p: JsonSchema(type="string") for p in params},
-                    ),
-                )
-                cli_specs.append(spec)
-
-        # Create registry
-        registry = ToolRegistry()
-        if cli_specs:
-            adapter = CLIAdapter(cli_specs)
-            await registry.register_adapter(adapter)
-
-        # Load skills if path provided
-        skill_library = None
-        if skills:
-            skills_path = Path(skills)
-            store = FileSkillStore(skills_path)
-            skill_library = create_skill_library(store=store)
-
-        # Build artifact store if path provided
-        artifact_store = None
-        if artifacts:
-            artifact_store = FileArtifactStore(Path(artifacts))
-
-        return cls(
-            registry=registry,
-            skill_library=skill_library,
-            artifact_store=artifact_store,
-            default_timeout=default_timeout,
-        )
 
     async def run(self, code: str, timeout: float | None = None) -> ExecutionResult:
         """Run code and return result.

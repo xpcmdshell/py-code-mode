@@ -13,12 +13,203 @@ import pytest
 
 from py_code_mode import Capability, CodeExecutor
 from py_code_mode.artifacts import FileArtifactStore
+from py_code_mode.registry import ToolRegistry
 from py_code_mode.semantic import create_skill_library
 from py_code_mode.skill_store import FileSkillStore
 from py_code_mode.skills import PythonSkill
 
 if TYPE_CHECKING:
     pass
+
+
+class TestCreateExecutorIntegration:
+    """Test create_executor() factory with tools, skills, artifacts."""
+
+    @pytest.fixture
+    def tools_dir(self, tmp_path: Path) -> Path:
+        """Create a tools directory with a simple CLI tool."""
+        tools = tmp_path / "tools"
+        tools.mkdir()
+        (tools / "echo.yaml").write_text(
+            """
+name: echo
+type: cli
+command: echo
+args: "{text}"
+description: Echo text back
+"""
+        )
+        return tools
+
+    @pytest.fixture
+    def skills_dir(self, tmp_path: Path) -> Path:
+        """Create a skills directory with a simple skill."""
+        skills = tmp_path / "skills"
+        skills.mkdir()
+        (skills / "double.py").write_text(
+            '''"""Double a number."""
+
+def run(n: int) -> int:
+    return n * 2
+'''
+        )
+        return skills
+
+    @pytest.fixture
+    def artifacts_dir(self, tmp_path: Path) -> Path:
+        """Create an artifacts directory."""
+        artifacts = tmp_path / "artifacts"
+        # Don't create - let executor create it
+        return artifacts
+
+    @pytest.mark.asyncio
+    async def test_create_executor_with_tools(self, tools_dir: Path) -> None:
+        """Executor loads tools and makes them callable."""
+        registry = await ToolRegistry.from_dir(str(tools_dir))
+        executor = CodeExecutor(registry=registry)
+
+        try:
+            # Tool should be callable
+            result = await executor.run('tools.echo(text="hello")')
+            assert result.is_ok, f"Tool call failed: {result.error}"
+            assert "hello" in result.value
+        finally:
+            await executor.close()
+
+    @pytest.mark.asyncio
+    async def test_create_executor_tools_list(self, tools_dir: Path) -> None:
+        """Executor provides tools.list() that returns tool info."""
+        registry = await ToolRegistry.from_dir(str(tools_dir))
+        executor = CodeExecutor(registry=registry)
+
+        try:
+            result = await executor.run("tools.list()")
+            assert result.is_ok, f"tools.list() failed: {result.error}"
+            assert result.value is not None, "tools.list() returned None"
+            # Should contain our echo tool
+            tools_str = str(result.value)
+            assert "echo" in tools_str.lower(), f"echo not in {tools_str}"
+        finally:
+            await executor.close()
+
+    @pytest.mark.asyncio
+    async def test_create_executor_with_skills(self, skills_dir: Path) -> None:
+        """Executor loads skills and makes them callable."""
+        store = FileSkillStore(skills_dir)
+        skill_library = create_skill_library(store=store)
+        executor = CodeExecutor(skill_library=skill_library)
+
+        try:
+            # Skill should be callable
+            result = await executor.run("skills.double(n=21)")
+            assert result.is_ok, f"Skill call failed: {result.error}"
+            assert result.value == 42
+        finally:
+            await executor.close()
+
+    @pytest.mark.asyncio
+    async def test_create_executor_skills_list(self, skills_dir: Path) -> None:
+        """Executor provides skills.list() that returns skill info."""
+        store = FileSkillStore(skills_dir)
+        skill_library = create_skill_library(store=store)
+        executor = CodeExecutor(skill_library=skill_library)
+
+        try:
+            result = await executor.run("skills.list()")
+            assert result.is_ok, f"skills.list() failed: {result.error}"
+            assert result.value is not None, "skills.list() returned None"
+            # Should contain our double skill
+            skills_str = str(result.value)
+            assert "double" in skills_str.lower(), f"double not in {skills_str}"
+        finally:
+            await executor.close()
+
+    @pytest.mark.asyncio
+    async def test_create_executor_skills_search(self, skills_dir: Path) -> None:
+        """Executor provides skills.search() for semantic search."""
+        store = FileSkillStore(skills_dir)
+        skill_library = create_skill_library(store=store)
+        executor = CodeExecutor(skill_library=skill_library)
+
+        try:
+            result = await executor.run('skills.search("multiply number")')
+            assert result.is_ok, f"skills.search() failed: {result.error}"
+            assert result.value is not None
+            # Should find double skill (semantically similar to multiply)
+            assert len(result.value) > 0
+        finally:
+            await executor.close()
+
+    @pytest.mark.asyncio
+    async def test_create_executor_with_artifacts(self, artifacts_dir: Path) -> None:
+        """Executor sets up artifact storage."""
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        artifact_store = FileArtifactStore(artifacts_dir)
+        executor = CodeExecutor(artifact_store=artifact_store)
+
+        try:
+            # Should be able to save and load
+            result = await executor.run(
+                'artifacts.save("test.json", {"key": "value"}, "test data")'
+            )
+            assert result.is_ok, f"artifacts.save() failed: {result.error}"
+
+            result = await executor.run('artifacts.load("test.json")')
+            assert result.is_ok, f"artifacts.load() failed: {result.error}"
+            assert result.value == {"key": "value"}
+        finally:
+            await executor.close()
+
+    @pytest.mark.asyncio
+    async def test_create_executor_artifacts_list(self, artifacts_dir: Path) -> None:
+        """Executor provides artifacts.list()."""
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        artifact_store = FileArtifactStore(artifacts_dir)
+        executor = CodeExecutor(artifact_store=artifact_store)
+
+        try:
+            await executor.run('artifacts.save("a.json", {}, "first")')
+            await executor.run('artifacts.save("b.json", {}, "second")')
+
+            result = await executor.run("list(artifacts.list())")
+            assert result.is_ok, f"artifacts.list() failed: {result.error}"
+            assert len(result.value) == 2
+        finally:
+            await executor.close()
+
+    @pytest.mark.asyncio
+    async def test_create_executor_full_integration(
+        self, tools_dir: Path, skills_dir: Path, artifacts_dir: Path
+    ) -> None:
+        """Executor with all three: tools, skills, artifacts."""
+        registry = await ToolRegistry.from_dir(str(tools_dir))
+        store = FileSkillStore(skills_dir)
+        skill_library = create_skill_library(store=store)
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        artifact_store = FileArtifactStore(artifacts_dir)
+        executor = CodeExecutor(
+            registry=registry,
+            skill_library=skill_library,
+            artifact_store=artifact_store,
+        )
+
+        try:
+            # Tools work
+            result = await executor.run('tools.echo(text="test")')
+            assert result.is_ok, f"tools failed: {result.error}"
+
+            # Skills work
+            result = await executor.run("skills.double(n=5)")
+            assert result.is_ok, f"skills failed: {result.error}"
+            assert result.value == 10
+
+            # Artifacts work
+            result = await executor.run('artifacts.save("result.json", {"done": True}, "result")')
+            assert result.is_ok, f"artifacts.save failed: {result.error}"
+            result = await executor.run('artifacts.load("result.json")')
+            assert result.is_ok, f"artifacts.load failed: {result.error}"
+        finally:
+            await executor.close()
 
 
 class TestBackendArtifacts:
@@ -165,7 +356,6 @@ class TestBackendTools:
     async def test_tool_invocation(self, tmp_path: Path) -> None:
         """Tools can be invoked via tools namespace."""
         from py_code_mode.adapters import CLIAdapter, CLIToolSpec
-        from py_code_mode.registry import ToolRegistry
 
         # Create a simple echo tool
         specs = [
@@ -190,7 +380,6 @@ class TestBackendTools:
     async def test_tools_list(self, tmp_path: Path) -> None:
         """Can list available tools."""
         from py_code_mode.adapters import CLIAdapter, CLIToolSpec
-        from py_code_mode.registry import ToolRegistry
 
         specs = [
             CLIToolSpec(

@@ -197,8 +197,9 @@ class ContainerConfig:
     host: str = "localhost"
 
     # Volumes
-    host_artifacts_path: Path | None = None
+    host_tools_path: Path | None = None
     host_skills_path: Path | None = None
+    host_artifacts_path: Path | None = None
 
     # Artifact backend
     artifact_backend: str = "file"  # "file" or "redis"
@@ -231,15 +232,21 @@ class ContainerConfig:
 
         # Add volumes
         volumes = {}
-        if self.host_artifacts_path:
-            volumes[str(self.host_artifacts_path.absolute())] = {
-                "bind": "/workspace/artifacts",
-                "mode": "rw",
+        if self.host_tools_path:
+            volumes[str(self.host_tools_path.absolute())] = {
+                "bind": "/app/tools",
+                "mode": "ro",
             }
+            config["environment"]["TOOLS_PATH"] = "/app/tools"
         if self.host_skills_path:
             volumes[str(self.host_skills_path.absolute())] = {
                 "bind": "/app/skills",
                 "mode": "ro",
+            }
+        if self.host_artifacts_path:
+            volumes[str(self.host_artifacts_path.absolute())] = {
+                "bind": "/workspace/artifacts",
+                "mode": "rw",
             }
         if volumes:
             config["volumes"] = volumes

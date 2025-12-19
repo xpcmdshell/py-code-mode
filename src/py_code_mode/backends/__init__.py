@@ -3,7 +3,6 @@
 Available backends:
 - in-process: Fast, no isolation, runs in same process
 - container: Docker-based isolation with HTTP API
-- microsandbox: microVM-based isolation (future)
 """
 
 # Import backends to trigger registration

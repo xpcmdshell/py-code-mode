@@ -100,6 +100,17 @@ class Executor(Protocol):
         """Return set of all capabilities this backend supports."""
         ...
 
+    async def reset(self) -> None:
+        """Reset session state if supported.
+
+        Clears any persistent state from previous executions.
+        Only available if executor.supports(Capability.RESET) is True.
+
+        Raises:
+            NotImplementedError: If backend doesn't support reset
+        """
+        ...
+
 
 # Backend registry
 _backends: dict[str, type] = {}
@@ -134,70 +145,3 @@ def list_backends() -> list[str]:
         List of registered backend names
     """
     return list(_backends.keys())
-
-
-async def create_executor(
-    backend: str = "in-process",
-    *,
-    tools: str | None = None,
-    skills: str | None = None,
-    artifacts: str | None = None,
-    # Security policies
-    network_policy: str = "allow",
-    allowed_hosts: list[str] | None = None,
-    filesystem_policy: str = "allow",
-    allowed_paths: list[str] | None = None,
-    memory_limit_mb: int | None = None,
-    cpu_limit: float | None = None,
-    **kwargs: Any,
-) -> Executor:
-    """Create an executor for the specified backend.
-
-    This is the primary factory function for creating executors.
-    It handles backend lookup and passes configuration.
-
-    Args:
-        backend: Backend name ("in-process", "container", "microsandbox")
-        tools: Path to tools directory
-        skills: Path to skills directory
-        artifacts: Path to artifacts directory
-        network_policy: "allow", "deny", or "filtered"
-        allowed_hosts: Hosts to allow when network_policy="filtered"
-        filesystem_policy: "allow", "deny", or "readonly"
-        allowed_paths: Paths to allow when filesystem_policy="readonly"
-        memory_limit_mb: Memory limit in MB (if supported)
-        cpu_limit: CPU limit (if supported)
-        **kwargs: Additional backend-specific options
-
-    Returns:
-        An executor instance
-
-    Raises:
-        ValueError: If backend is not registered
-    """
-    executor_class = get_backend(backend)
-    if executor_class is None:
-        raise ValueError(f"Unknown backend: {backend}")
-
-    # Build config kwargs
-    config_kwargs = {
-        "tools": tools,
-        "skills": skills,
-        "artifacts": artifacts,
-        "network_policy": network_policy,
-        "allowed_hosts": allowed_hosts or [],
-        "filesystem_policy": filesystem_policy,
-        "allowed_paths": allowed_paths or [],
-        "memory_limit_mb": memory_limit_mb,
-        "cpu_limit": cpu_limit,
-        **kwargs,
-    }
-
-    # Remove None values for cleaner config
-    config_kwargs = {k: v for k, v in config_kwargs.items() if v is not None}
-
-    # Check if class has create() method or needs direct instantiation
-    if hasattr(executor_class, "create"):
-        return await executor_class.create(**config_kwargs)
-    else:
-        return executor_class(**config_kwargs)

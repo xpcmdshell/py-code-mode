@@ -63,24 +63,53 @@ CLIToolSpec(
 )
 ```
 
-### 2. Registry + Executor
+### 2. Storage + Session
 
-Tools are registered with a namespace, then passed to the executor:
+Tools and skills are loaded via storage abstraction:
 
 ```python
-registry = ToolRegistry()
-await registry.register("cli", cli_adapter)
+from pathlib import Path
+from py_code_mode import Session, FileStorage
 
-executor = CodeExecutor(registry=registry)
+# File-based storage
+storage = FileStorage(
+    tools_path=Path("./tools"),
+    skills_path=Path("./skills"),
+    artifacts_path=Path("./artifacts"),
+)
+
+# Create session (defaults to in-process execution)
+async with Session(storage=storage) as session:
+    result = await session.run('tools.curl(url="...")')
+```
+
+Or with Redis:
+
+```python
+from py_code_mode import Session, RedisStorage
+
+storage = RedisStorage(
+    redis_url="redis://localhost:6379",
+    tools_prefix="myapp:tools",
+    skills_prefix="myapp:skills",
+    artifacts_prefix="myapp:artifacts",
+)
+
+async with Session(storage=storage) as session:
+    result = await session.run('tools.curl(url="...")')
 ```
 
 ### 3. Agent Code Execution
 
-When the agent writes code, it has access to `tools.call()`:
+When the agent writes code, it has access to `tools`:
 
 ```python
-# Agent writes this
-response = tools.call("cli.curl", {"url": "https://api.example.com"})
+# Pythonic style (recommended)
+response = tools.curl(url="https://api.example.com")
+
+# Or dict-based style
+response = tools.call("curl", {"url": "https://api.example.com"})
+
 import json
 data = json.loads(response)
 data["field"]
@@ -90,7 +119,7 @@ The executor runs the code and returns the result of the last expression.
 
 ### 4. Persistent State
 
-Variables persist across executions, so the agent can build up state:
+Variables persist across executions within the same session, so the agent can build up state:
 
 ```python
 # First execution
@@ -98,6 +127,17 @@ users = []
 
 # Second execution (users still exists)
 users.append({"name": "Alice"})
+```
+
+Artifacts provide persistence across sessions:
+
+```python
+# Save data
+artifacts.save("users.json", json.dumps(users).encode(), "User list")
+
+# Load in another session
+users_json = artifacts.load("users.json")
+users = json.loads(users_json.decode())
 ```
 
 ## Customization
@@ -114,22 +154,29 @@ cli = CLIAdapter([
 
 ### Load Tools from YAML
 
-Instead of defining tools in code, you can load from YAML:
+Instead of defining tools in code, create individual YAML files per tool:
 
 ```yaml
-# tools.yaml
-cli_tools:
-  - name: curl
-    description: HTTP client
-    command: curl
-    args_template: "-s {url}"
+# tools/curl.yaml
+name: curl
+type: cli
+description: HTTP client
+args: "-s {url}"
 ```
 
 ```python
-from py_code_mode.backends.container.config import SessionConfig
+from pathlib import Path
+from py_code_mode import Session, FileStorage
 
-config = SessionConfig.from_yaml("tools.yaml")
-# config.cli_tools contains the parsed specs
+# Tools automatically loaded from directory
+storage = FileStorage(
+    tools_path=Path("./tools"),
+    skills_path=Path("./skills"),
+    artifacts_path=Path("./artifacts"),
+)
+
+async with Session(storage=storage) as session:
+    result = await session.run('tools.curl(url="...")')
 ```
 
 ### Add Skills (Code Recipes)
@@ -145,18 +192,22 @@ def run(url: str) -> dict:
     return json.loads(response)
 ```
 
+Skills are automatically loaded from the directory when using `FileStorage`:
+
 ```python
-from py_code_mode import CodeExecutor
-from py_code_mode.semantic import create_skill_library
-from py_code_mode.skill_store import FileSkillStore
+from pathlib import Path
+from py_code_mode import Session, FileStorage
 
-store = FileSkillStore("skills/")
-skill_library = create_skill_library(store=store)
+storage = FileStorage(
+    tools_path=Path("./tools"),
+    skills_path=Path("./skills"),  # Skills loaded from here
+    artifacts_path=Path("./artifacts"),
+)
 
-executor = CodeExecutor(registry=registry, skill_library=skill_library)
+async with Session(storage=storage) as session:
+    # Agent can use: skills.fetch_json(url="...")
+    result = await session.run('skills.fetch_json(url="https://api.example.com")')
 ```
-
-Agent can then use: `skills.fetch_json(url="https://api.example.com")`
 
 ## Next Steps
 

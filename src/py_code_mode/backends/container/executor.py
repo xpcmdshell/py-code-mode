@@ -76,6 +76,40 @@ class ContainerExecutor:
         self._client: SessionClient | None = None
         self._port: int | None = None
 
+    @classmethod
+    async def create(
+        cls,
+        artifacts: str | None = None,
+        skills: str | None = None,
+        image: str = "py-code-mode-tools:latest",
+        timeout: float = 30.0,
+        **kwargs: Any,
+    ) -> ContainerExecutor:
+        """Create container executor from factory kwargs.
+
+        Args:
+            artifacts: Path to artifacts directory on host.
+            skills: Path to skills directory on host.
+            image: Docker image to use.
+            timeout: Default execution timeout.
+            **kwargs: Additional options (ignored for compatibility).
+
+        Returns:
+            Started ContainerExecutor.
+        """
+        from pathlib import Path
+
+        config = ContainerConfig(
+            image=image,
+            host_artifacts_path=Path(artifacts) if artifacts else None,
+            host_skills_path=Path(skills) if skills else None,
+            timeout=timeout,
+        )
+
+        executor = cls(config)
+        await executor.start()
+        return executor
+
     def supports(self, capability: str) -> bool:
         """Check if this backend supports a capability."""
         return capability in self._CAPABILITIES
@@ -93,10 +127,43 @@ class ContainerExecutor:
         """Stop container and cleanup."""
         await self.close()
 
+    def _create_docker_client(self) -> Any:
+        """Create Docker client, trying multiple socket locations if needed."""
+        from pathlib import Path
+
+        # Try standard from_env first (respects DOCKER_HOST)
+        try:
+            client = docker.from_env()
+            client.ping()
+            return client
+        except Exception:
+            pass
+
+        # Common socket locations across platforms
+        socket_paths = [
+            Path.home() / ".docker" / "run" / "docker.sock",  # Docker Desktop (macOS/Windows)
+            Path("/var/run/docker.sock"),  # Linux default
+            Path("/run/docker.sock"),  # Some Linux distros
+        ]
+
+        for socket_path in socket_paths:
+            if socket_path.exists():
+                try:
+                    client = docker.DockerClient(base_url=f"unix://{socket_path}")
+                    client.ping()
+                    return client
+                except Exception:
+                    continue
+
+        raise RuntimeError(
+            "Could not connect to Docker. Make sure Docker is running.\n"
+            "Tried DOCKER_HOST env var and common socket locations."
+        )
+
     async def start(self) -> None:
         """Start the container and wait for it to be healthy."""
-        # Initialize Docker client
-        self._docker = docker.from_env()
+        # Initialize Docker client with fallback socket detection
+        self._docker = self._create_docker_client()
 
         # Prepare container config
         docker_config = self.config.to_docker_config()
@@ -108,17 +175,22 @@ class ContainerExecutor:
         # Start container
         self._container = self._docker.containers.run(**docker_config)
 
-        # Get assigned port
-        self._port = self._get_container_port()
+        try:
+            # Get assigned port
+            self._port = self._get_container_port()
 
-        # Create session client
-        self._client = SessionClient(
-            base_url=f"http://{self.config.host}:{self._port}",
-            timeout=self.config.timeout,
-        )
+            # Create session client
+            self._client = SessionClient(
+                base_url=f"http://{self.config.host}:{self._port}",
+                timeout=self.config.timeout,
+            )
 
-        # Wait for container to be healthy
-        await self._wait_for_healthy()
+            # Wait for container to be healthy
+            await self._wait_for_healthy()
+        except Exception:
+            # Clean up container on any startup failure
+            await self.stop()
+            raise
 
     async def stop(self) -> None:
         """Stop and remove the container."""
