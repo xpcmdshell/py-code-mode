@@ -52,7 +52,15 @@ def run(num_stories: int = 30) -> list:
     description="Extract top stories from Hacker News"
 )
 
-# Next time: no iteration needed
+```
+
+Next time the agent needs this:
+
+```python
+# Agent searches for a relevant skill
+results = skills.search("scrape hacker news")  # finds scrape_hn_stories
+
+# Found one - just call it, no iteration needed
 stories = skills.scrape_hn_stories(num_stories=10)
 ```
 
