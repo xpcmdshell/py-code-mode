@@ -18,7 +18,7 @@ py-code-mode fixes this. Agents write Python code that searches for tools, compo
 ## Installation
 
 ```bash
-pip install py-code-mode
+uv add git+https://github.com/xpcmdshell/py-code-mode.git
 ```
 
 ## Quick Start
