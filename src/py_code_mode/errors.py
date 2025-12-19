@@ -120,7 +120,8 @@ class StorageReadError(StorageError):
 
     def __init__(self, message: str, path: str | None = None) -> None:
         self.path = path
-        super().__init__(message)
+        full_message = f"{message} (path: {path})" if path else message
+        super().__init__(full_message)
 
 
 class StorageWriteError(StorageError):
@@ -128,7 +129,8 @@ class StorageWriteError(StorageError):
 
     def __init__(self, message: str, path: str | None = None) -> None:
         self.path = path
-        super().__init__(message)
+        full_message = f"{message} (path: {path})" if path else message
+        super().__init__(full_message)
 
 
 class ConfigurationError(CodeModeError):
