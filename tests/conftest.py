@@ -12,6 +12,13 @@ import redis
 
 from py_code_mode import JsonSchema, ToolDefinition
 
+# Configure DOCKER_HOST for Docker Desktop on macOS/Windows
+# This fixes socket path issues for both testcontainers and our ContainerExecutor
+if not os.environ.get("DOCKER_HOST"):
+    _docker_desktop_socket = Path.home() / ".docker" / "run" / "docker.sock"
+    if _docker_desktop_socket.exists():
+        os.environ["DOCKER_HOST"] = f"unix://{_docker_desktop_socket}"
+
 # Optional testcontainers import - only available if testcontainers[redis] installed
 try:
     from testcontainers.redis import RedisContainer
