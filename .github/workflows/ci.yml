@@ -26,4 +26,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - run: uv sync
-      - run: uv run pytest tests/ -v --ignore=tests/container/
+      - run: uv run pytest tests/ -v
