@@ -1,5 +1,49 @@
 name: jq
-type: cli
-args: "{filter}"
 description: Process JSON data
+command: jq
+timeout: 30
 tags: [json]
+
+schema:
+  options:
+    raw:
+      type: boolean
+      short: r
+      description: Output raw strings (no JSON quotes)
+    compact:
+      type: boolean
+      short: c
+      description: Compact output (no pretty print)
+    slurp:
+      type: boolean
+      short: s
+      description: Slurp input into array
+    null_input:
+      type: boolean
+      short: n
+      description: Use null as input (for generating JSON)
+  positional:
+    - name: filter
+      type: string
+      required: true
+      description: jq filter expression
+
+recipes:
+  query:
+    description: Query JSON with filter
+    params:
+      filter: {}
+
+  raw:
+    description: Query JSON and output raw strings
+    preset:
+      raw: true
+    params:
+      filter: {}
+
+  compact:
+    description: Query JSON with compact output
+    preset:
+      compact: true
+    params:
+      filter: {}

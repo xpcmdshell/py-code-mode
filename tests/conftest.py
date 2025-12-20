@@ -4,6 +4,8 @@ import fnmatch
 import functools
 import os
 import shutil
+import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +31,167 @@ except ImportError:
     TESTCONTAINERS_AVAILABLE = False
 
 
+# =============================================================================
+# Docker Image Staleness Check
+# =============================================================================
+
+DOCKER_IMAGE_NAME = "py-code-mode-tools:latest"
+PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def _get_docker_image_creation_time() -> datetime | None:
+    """Get the creation timestamp of the Docker image.
+
+    Returns None if:
+    - Docker is not available
+    - Docker daemon is not running
+    - Image does not exist
+    """
+    try:
+        import docker
+
+        client = docker.from_env()
+        image = client.images.get(DOCKER_IMAGE_NAME)
+        # Image.attrs['Created'] is ISO format string like '2024-01-15T10:30:00.123456789Z'
+        created_str = image.attrs["Created"]
+        # Parse ISO format, handling nanoseconds by truncating to microseconds
+        if "." in created_str:
+            base, frac = created_str.rsplit(".", 1)
+            # Remove trailing 'Z' and truncate to 6 digits (microseconds)
+            frac = frac.rstrip("Z")[:6]
+            created_str = f"{base}.{frac}+00:00"
+        else:
+            created_str = created_str.rstrip("Z") + "+00:00"
+        return datetime.fromisoformat(created_str)
+    except ImportError:
+        # Docker SDK not installed
+        return None
+    except Exception:
+        # Docker not running or image not found
+        return None
+
+
+def _get_source_modification_time() -> datetime:
+    """Get the most recent modification time of source files.
+
+    Checks:
+    - src/py_code_mode/**/*.py
+    - docker/*
+    - pyproject.toml
+    """
+    latest_mtime = 0.0
+
+    # Check source files
+    src_dir = PROJECT_ROOT / "src" / "py_code_mode"
+    if src_dir.exists():
+        for py_file in src_dir.rglob("*.py"):
+            mtime = py_file.stat().st_mtime
+            if mtime > latest_mtime:
+                latest_mtime = mtime
+
+    # Check docker directory
+    docker_dir = PROJECT_ROOT / "docker"
+    if docker_dir.exists():
+        for docker_file in docker_dir.iterdir():
+            if docker_file.is_file():
+                mtime = docker_file.stat().st_mtime
+                if mtime > latest_mtime:
+                    latest_mtime = mtime
+
+    # Check pyproject.toml
+    pyproject = PROJECT_ROOT / "pyproject.toml"
+    if pyproject.exists():
+        mtime = pyproject.stat().st_mtime
+        if mtime > latest_mtime:
+            latest_mtime = mtime
+
+    return datetime.fromtimestamp(latest_mtime, tz=UTC)
+
+
+def _check_docker_image_staleness() -> str | None:
+    """Check if Docker image is stale relative to source files.
+
+    Returns:
+        Error message if stale/missing, None if up-to-date
+    """
+    image_time = _get_docker_image_creation_time()
+
+    if image_time is None:
+        return f"Docker image '{DOCKER_IMAGE_NAME}' not found."
+
+    source_time = _get_source_modification_time()
+
+    if source_time > image_time:
+        return (
+            f"Docker image '{DOCKER_IMAGE_NAME}' is stale. "
+            f"Image built: {image_time.isoformat()}, "
+            f"Source modified: {source_time.isoformat()}."
+        )
+
+    return None
+
+
+def _rebuild_docker_image() -> None:
+    """Rebuild the Docker images from project root.
+
+    Raises:
+        pytest.fail: If either docker build command fails.
+    """
+    # Build base image first
+    result = subprocess.run(
+        ["docker", "build", "-f", "docker/Dockerfile.base", "-t", "py-code-mode:base", "."],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.fail(
+            f"Failed to build py-code-mode:base image.\n"
+            f"stdout: {result.stdout}\n"
+            f"stderr: {result.stderr}"
+        )
+
+    # Build tools image
+    result = subprocess.run(
+        ["docker", "build", "-f", "docker/Dockerfile.tools", "-t", DOCKER_IMAGE_NAME, "."],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.fail(
+            f"Failed to build {DOCKER_IMAGE_NAME} image.\n"
+            f"stdout: {result.stdout}\n"
+            f"stderr: {result.stderr}"
+        )
+
+
+@pytest.fixture(scope="session")
+def docker_image_check():
+    """Session-scoped fixture that rebuilds Docker image if stale.
+
+    This fixture is automatically used by container tests via the
+    pytest_collection_modifyitems hook below. If the image is missing
+    or stale, it will be rebuilt automatically.
+    """
+    staleness_reason = _check_docker_image_staleness()
+    if staleness_reason:
+        print(f"\n{staleness_reason} Rebuilding...")
+        _rebuild_docker_image()
+        print("Docker image rebuilt successfully.")
+
+
+def pytest_collection_modifyitems(config, items):  # noqa: ARG001
+    """Add docker_image_check fixture to all tests in xdist_group('docker')."""
+    for item in items:
+        # Check if test is in the docker xdist group
+        for marker in item.iter_markers("xdist_group"):
+            if marker.args and marker.args[0] == "docker":
+                # Add the fixture as a dependency
+                if "docker_image_check" not in item.fixturenames:
+                    item.fixturenames.insert(0, "docker_image_check")
+
+
 class MockAdapter:
     """Mock adapter for testing."""
 
@@ -37,33 +200,73 @@ class MockAdapter:
         tools: list[ToolDefinition] | list[str],
         call_results: dict[str, Any] | None = None,
     ) -> None:
-        # Support both ToolDefinition list and simple string list
-        if tools and isinstance(tools[0], str):
-            self._tools = {
-                name: ToolDefinition(
-                    name=name,
-                    description=f"Mock {name}",
-                    input_schema=JsonSchema(type="object"),
-                )
-                for name in tools
-            }
-        else:
-            self._tools = {t.name: t for t in tools}  # type: ignore[union-attr]
+        from py_code_mode.tool_types import Tool, ToolCallable
+
         self._call_log: list[tuple[str, dict[str, Any]]] = []
         self._responses: dict[str, Any] = call_results or {}
+
+        # Build Tool objects
+        self._tools: list[Tool] = []
+        if tools and isinstance(tools[0], str):
+            for name in tools:
+                callable_obj = ToolCallable(
+                    name=name,
+                    description=f"Mock {name}",
+                    parameters=(),
+                )
+                tool = Tool(
+                    name=name,
+                    description=f"Mock {name}",
+                    callables=(callable_obj,),
+                )
+                self._tools.append(tool)
+        else:
+            # tools is list[ToolDefinition]
+            for td in tools:  # type: ignore[union-attr]
+                callable_obj = ToolCallable(
+                    name=td.name,
+                    description=td.description,
+                    parameters=(),
+                )
+                tool = Tool(
+                    name=td.name,
+                    description=td.description,
+                    callables=(callable_obj,),
+                    tags=td.tags,
+                )
+                self._tools.append(tool)
 
     def set_response(self, tool_name: str, response: Any) -> None:
         """Set the response for a tool call."""
         self._responses[tool_name] = response
 
-    async def list_tools(self) -> list[ToolDefinition]:
-        return list(self._tools.values())
+    def list_tools(self) -> list:
+        """Return Tool objects."""
+        return self._tools
 
-    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
+    async def call_tool(
+        self,
+        name: str,
+        callable_name: str | None,
+        args: dict[str, Any],
+    ) -> Any:
+        """Call a tool."""
         self._call_log.append((name, args))
         if name in self._responses:
             return self._responses[name]
         return {"status": "ok", "tool": name, "args": args}
+
+    async def describe(self, tool_name: str, callable_name: str) -> dict[str, str]:
+        """Get parameter descriptions for a callable.
+
+        Args:
+            tool_name: Name of the tool.
+            callable_name: Name of the callable.
+
+        Returns:
+            Dict mapping parameter names to descriptions.
+        """
+        return {}
 
     async def close(self) -> None:
         self._closed = True
@@ -281,6 +484,49 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "requires_docker: mark test as requiring Docker")
 
 
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
+    """Clean up orphaned Docker containers after test session.
+
+    This hook runs after all tests complete (success, failure, or interruption).
+    It ensures that any py-code-mode-tools containers that weren't properly
+    cleaned up get stopped and removed.
+    """
+    try:
+        import logging  # noqa: PLC0415
+
+        import docker  # noqa: PLC0415
+
+        logger = logging.getLogger(__name__)
+        client = docker.from_env()
+
+        # Find all running containers with our test image
+        containers = client.containers.list(
+            filters={"ancestor": "py-code-mode-tools:latest", "status": "running"}
+        )
+
+        if containers:
+            logger.warning(
+                f"Found {len(containers)} orphaned py-code-mode-tools containers. Cleaning up..."
+            )
+
+            for container in containers:
+                container_id = container.id[:12]
+                try:
+                    logger.info(f"Stopping container {container_id}")
+                    container.stop(timeout=5)
+                    logger.info(f"Removing container {container_id}")
+                    container.remove()
+                except Exception as e:
+                    logger.error(f"Failed to clean up container {container_id}: {e}")
+
+    except ImportError:
+        # Docker not available, skip cleanup
+        pass
+    except Exception:  # noqa: BLE001
+        # Don't fail tests because of cleanup errors
+        pass
+
+
 class MockConnectionPool:
     """Mock connection pool to match redis.ConnectionPool interface."""
 
@@ -406,8 +652,20 @@ def sample_tool_yaml() -> str:
 name: echo
 type: cli
 command: echo
-args: "{text}"
 description: Echo text back
+
+schema:
+  positional:
+    - name: text
+      type: string
+      required: true
+      description: Text to echo
+
+recipes:
+  echo:
+    description: Echo text
+    params:
+      text: {}
 """
 
 
@@ -460,3 +718,78 @@ def redis_url(redis_container) -> str:
     host = redis_container.get_container_host_ip()
     port = redis_container.get_exposed_port(6379)
     return f"redis://{host}:{port}"
+
+
+@pytest.fixture
+def nmap_yaml(tmp_path: Path) -> Path:
+    """Create nmap.yaml with schema + recipes."""
+    content = """
+name: nmap
+description: Network scanner
+command: nmap
+timeout: 300
+
+schema:
+  options:
+    sS: {type: boolean, short: sS, description: TCP SYN scan}
+    sV: {type: boolean, short: sV, description: Version detection}
+    Pn: {type: boolean, short: Pn, description: Skip host discovery}
+    p: {type: string, short: p, description: Port ranges}
+    oX: {type: string, short: oX, description: XML output file}
+  positional:
+    - name: target
+      type: string
+      required: true
+      description: Target host or network
+
+recipes:
+  syn_scan:
+    description: Stealthy TCP SYN scan
+    preset:
+      sS: true
+      Pn: true
+    params:
+      target: {}
+      p: {default: "-"}
+
+  quick:
+    description: Fast scan of common ports
+    preset:
+      sS: true
+      p: "22,80,443,8080,8443"
+    params:
+      target: {}
+"""
+    file = tmp_path / "nmap.yaml"
+    file.write_text(content)
+    return file
+
+
+@pytest.fixture
+def simple_tool_yaml(tmp_path: Path) -> Path:
+    """Simple tool with one recipe."""
+    content = """
+name: ping
+description: ICMP ping
+command: ping
+timeout: 10
+
+schema:
+  options:
+    c: {type: integer, short: c, description: Count}
+  positional:
+    - name: host
+      type: string
+      required: true
+      description: Target host
+
+recipes:
+  ping:
+    description: Ping a host
+    params:
+      host: {}
+      c: {required: false}
+"""
+    file = tmp_path / "ping.yaml"
+    file.write_text(content)
+    return file

@@ -14,7 +14,7 @@ class TestToolRegistryBasics:
         self, network_adapter: MockAdapter, network_tools: list
     ) -> None:
         registry = ToolRegistry()
-        registered = await registry.register_adapter(network_adapter, tags={"cli"})
+        registered = registry.register_adapter(network_adapter, tags={"cli"})
 
         assert len(registered) == 2
         # Flat namespace - no prefix
@@ -25,8 +25,8 @@ class TestToolRegistryBasics:
         self, network_adapter: MockAdapter, web_adapter: MockAdapter
     ) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(network_adapter)
+        registry.register_adapter(web_adapter)
 
         tools = registry.list_tools()
         assert len(tools) == 4  # 2 network + 2 web
@@ -34,7 +34,7 @@ class TestToolRegistryBasics:
     @pytest.mark.asyncio
     async def test_get_tool(self, network_adapter: MockAdapter) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
+        registry.register_adapter(network_adapter)
 
         tool = registry.get_tool("nmap")
         assert tool.name == "nmap"
@@ -43,7 +43,7 @@ class TestToolRegistryBasics:
     @pytest.mark.asyncio
     async def test_get_tool_not_found(self, network_adapter: MockAdapter) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
+        registry.register_adapter(network_adapter)
 
         with pytest.raises(ToolNotFoundError) as exc_info:
             registry.get_tool("nonexistent")
@@ -53,11 +53,11 @@ class TestToolRegistryBasics:
     @pytest.mark.asyncio
     async def test_duplicate_tool_name_rejected(self, network_adapter: MockAdapter) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
+        registry.register_adapter(network_adapter)
 
         # Try to register another adapter with same tool names
         with pytest.raises(ValueError, match="already registered"):
-            await registry.register_adapter(network_adapter)
+            registry.register_adapter(network_adapter)
 
 
 class TestToolRegistryScoping:
@@ -68,8 +68,8 @@ class TestToolRegistryScoping:
         self, network_adapter: MockAdapter, web_adapter: MockAdapter
     ) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(network_adapter)
+        registry.register_adapter(web_adapter)
 
         # Only network tools
         network_tools = registry.list_tools(scope={"network"})
@@ -86,8 +86,8 @@ class TestToolRegistryScoping:
         self, network_adapter: MockAdapter, web_adapter: MockAdapter
     ) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(network_adapter)
+        registry.register_adapter(web_adapter)
 
         # Create scoped view for network tools only
         scoped = registry.scoped_view({"network"})
@@ -100,8 +100,8 @@ class TestToolRegistryScoping:
         self, network_adapter: MockAdapter, web_adapter: MockAdapter
     ) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(network_adapter)
+        registry.register_adapter(web_adapter)
 
         # Scoped to network only
         scoped = registry.scoped_view({"network"})
@@ -119,19 +119,19 @@ class TestToolRegistryScoping:
         self, network_adapter: MockAdapter, web_adapter: MockAdapter
     ) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(network_adapter)
+        registry.register_adapter(web_adapter)
 
         scoped = registry.scoped_view({"network"})
 
         # Cannot call out-of-scope tools
         with pytest.raises(ToolNotFoundError):
-            await scoped.call_tool("curl", {"url": "http://example.com"})
+            await scoped.call_tool("curl", None, {"url": "http://example.com"})
 
     @pytest.mark.asyncio
     async def test_empty_scope_blocks_all(self, network_adapter: MockAdapter) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
+        registry.register_adapter(network_adapter)
 
         scoped = registry.scoped_view(set())
         assert len(scoped.list_tools()) == 0
@@ -145,7 +145,7 @@ class TestToolRegistryTagMerging:
         registry = ToolRegistry()
 
         # Register with additional tags
-        registered = await registry.register_adapter(network_adapter, tags={"cli", "dangerous"})
+        registered = registry.register_adapter(network_adapter, tags={"cli", "dangerous"})
 
         # Original tags + new tags
         nmap = next(t for t in registered if t.name == "nmap")
@@ -163,19 +163,19 @@ class TestToolRegistryCallRouting:
         self, network_adapter: MockAdapter, web_adapter: MockAdapter
     ) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(network_adapter)
+        registry.register_adapter(web_adapter)
 
         # Set responses
         network_adapter.set_response("nmap", {"hosts": ["192.168.1.1"]})
         web_adapter.set_response("curl", {"status": 200})
 
         # Call network tool
-        result = await registry.call_tool("nmap", {"target": "192.168.1.0/24"})
+        result = await registry.call_tool("nmap", None, {"target": "192.168.1.0/24"})
         assert result == {"hosts": ["192.168.1.1"]}
 
         # Call web tool
-        result = await registry.call_tool("curl", {"url": "http://example.com"})
+        result = await registry.call_tool("curl", None, {"url": "http://example.com"})
         assert result == {"status": 200}
 
         # Verify routing
@@ -185,10 +185,10 @@ class TestToolRegistryCallRouting:
     @pytest.mark.asyncio
     async def test_call_not_found(self, network_adapter: MockAdapter) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
+        registry.register_adapter(network_adapter)
 
         with pytest.raises(ToolNotFoundError):
-            await registry.call_tool("nonexistent", {})
+            await registry.call_tool("nonexistent", None, {})
 
 
 class TestToolRegistrySearch:
@@ -199,8 +199,8 @@ class TestToolRegistrySearch:
         self, network_adapter: MockAdapter, web_adapter: MockAdapter
     ) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(network_adapter)
+        registry.register_adapter(web_adapter)
 
         results = registry.search("nmap")
         assert len(results) == 1
@@ -211,8 +211,8 @@ class TestToolRegistrySearch:
         self, network_adapter: MockAdapter, web_adapter: MockAdapter
     ) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(network_adapter)
+        registry.register_adapter(web_adapter)
 
         results = registry.search("scanner")
         assert len(results) == 1
@@ -223,8 +223,8 @@ class TestToolRegistrySearch:
         self, network_adapter: MockAdapter, web_adapter: MockAdapter
     ) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(network_adapter)
+        registry.register_adapter(web_adapter)
 
         # Search for common term
         results = registry.search("e", limit=2)  # Many tools have 'e'
@@ -235,8 +235,8 @@ class TestToolRegistrySearch:
         self, network_adapter: MockAdapter, web_adapter: MockAdapter
     ) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(network_adapter)
+        registry.register_adapter(web_adapter)
 
         scoped = registry.scoped_view({"network"})
 
@@ -256,85 +256,15 @@ class TestToolRegistryCleanup:
     @pytest.mark.asyncio
     async def test_close_all(self, network_adapter: MockAdapter, web_adapter: MockAdapter) -> None:
         registry = ToolRegistry()
-        await registry.register_adapter(network_adapter)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(network_adapter)
+        registry.register_adapter(web_adapter)
 
         await registry.close()
 
         assert len(registry.list_tools()) == 0
 
 
-class TestToolRegistryFromDir:
-    """Tests for ToolRegistry.from_dir() factory method."""
-
-    @pytest.mark.asyncio
-    async def test_from_dir_loads_cli_tools(self, tmp_path) -> None:
-        """from_dir() loads CLI tools from YAML files."""
-        tools_dir = tmp_path / "tools"
-        tools_dir.mkdir()
-
-        (tools_dir / "echo.yaml").write_text("""
-name: echo
-type: cli
-command: echo
-args: "{text}"
-description: Echo text back
-""")
-
-        (tools_dir / "cat.yaml").write_text("""
-name: cat
-type: cli
-args: "{file}"
-""")
-
-        registry = await ToolRegistry.from_dir(str(tools_dir))
-
-        tools = registry.list_tools()
-        names = {t.name for t in tools}
-        assert "echo" in names
-        assert "cat" in names
-
-    @pytest.mark.asyncio
-    async def test_from_dir_empty_directory(self, tmp_path) -> None:
-        """from_dir() handles empty directory."""
-        tools_dir = tmp_path / "tools"
-        tools_dir.mkdir()
-
-        registry = await ToolRegistry.from_dir(str(tools_dir))
-
-        assert len(registry.list_tools()) == 0
-
-    @pytest.mark.asyncio
-    async def test_from_dir_nonexistent_directory(self) -> None:
-        """from_dir() handles nonexistent directory."""
-        registry = await ToolRegistry.from_dir("/nonexistent/path")
-
-        assert len(registry.list_tools()) == 0
-
-    @pytest.mark.asyncio
-    async def test_from_dir_skips_invalid_yaml(self, tmp_path) -> None:
-        """from_dir() skips YAML files without name field."""
-        tools_dir = tmp_path / "tools"
-        tools_dir.mkdir()
-
-        # Valid tool
-        (tools_dir / "valid.yaml").write_text("""
-name: valid
-type: cli
-args: "{x}"
-""")
-
-        # Invalid - no name
-        (tools_dir / "invalid.yaml").write_text("""
-type: cli
-args: "{x}"
-""")
-
-        registry = await ToolRegistry.from_dir(str(tools_dir))
-
-        tools = registry.list_tools()
-        assert len(tools) == 1
-        assert tools[0].name == "valid"
+# TestToolRegistryFromDir removed - use CLIAdapter(tools_path=...) for loading tools
 
 
 class TestToolRegistrySemanticSearch:
@@ -353,7 +283,7 @@ class TestToolRegistrySemanticSearch:
         controllable_embedder.set_response("curl: HTTP client", [1.0, 0.0, 0.0, 0.0])
 
         registry = ToolRegistry(embedder=controllable_embedder)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(web_adapter)
 
         assert "curl" in registry._vectors
         assert len(registry._vectors["curl"]) == 4
@@ -368,7 +298,7 @@ class TestToolRegistrySemanticSearch:
         controllable_embedder.set_response("curl: HTTP client", [1.0, 0.0, 0.0, 0.0])
 
         registry = ToolRegistry(embedder=controllable_embedder)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(web_adapter)
 
         # Store reference to check it gets cleared
         assert "curl" in registry._vectors
@@ -394,8 +324,8 @@ class TestToolRegistrySemanticSearch:
         controllable_embedder.set_response("HTTP requests", [0.9, 0.1, 0.0, 0.0])
 
         registry = ToolRegistry(embedder=controllable_embedder)
-        await registry.register_adapter(web_adapter)
-        await registry.register_adapter(json_adapter)
+        registry.register_adapter(web_adapter)
+        registry.register_adapter(json_adapter)
 
         results = registry.search("HTTP requests")
 
@@ -410,7 +340,7 @@ class TestToolRegistrySemanticSearch:
     ) -> None:
         """Without embedder, falls back to substring search."""
         registry = ToolRegistry(embedder=None)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(web_adapter)
 
         # Substring "curl" matches
         results = registry.search("curl")
@@ -442,7 +372,7 @@ class TestToolRegistrySemanticSearch:
     ) -> None:
         """refresh() closes adapters before recreating."""
         registry = ToolRegistry(embedder=controllable_embedder)
-        await registry.register_adapter(web_adapter)
+        registry.register_adapter(web_adapter)
 
         assert not web_adapter.closed
         await registry.refresh()
@@ -464,8 +394,8 @@ class TestToolRegistrySemanticIntegration:
         from py_code_mode.semantic import Embedder
 
         registry = ToolRegistry(embedder=Embedder())
-        await registry.register_adapter(web_adapter)
-        await registry.register_adapter(json_adapter)
+        registry.register_adapter(web_adapter)
+        registry.register_adapter(json_adapter)
 
         # "process JSON data" should find jq
         results = registry.search("process JSON data")
@@ -489,8 +419,8 @@ class TestToolRegistrySemanticIntegration:
         controllable_embedder.set_response("HTTP client", [0.95, 0.05, 0.0, 0.0])
 
         registry = ToolRegistry(embedder=controllable_embedder)
-        await registry.register_adapter(web_adapter)
-        await registry.register_adapter(network_adapter)
+        registry.register_adapter(web_adapter)
+        registry.register_adapter(network_adapter)
 
         # "HTTP client" would normally find curl (web) first
         # But if we search in network scope, curl shouldn't appear

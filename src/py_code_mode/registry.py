@@ -3,28 +3,68 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Protocol
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from py_code_mode.adapters.base import ToolAdapter
-from py_code_mode.errors import ToolCallError, ToolNotFoundError
-from py_code_mode.types import ToolDefinition
+from py_code_mode.errors import CodeModeError, ToolCallError, ToolNotFoundError
+from py_code_mode.semantic import EmbeddingProvider, cosine_similarity
+from py_code_mode.tool_types import Tool
 
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    pass
+# Substring search scoring constants
+EXACT_NAME_MATCH_SCORE = 100
+PARTIAL_NAME_MATCH_SCORE = 50
+DESCRIPTION_MATCH_SCORE = 25
+
+T = TypeVar("T")
 
 
-class EmbeddingProvider(Protocol):
-    """Protocol for embedding providers."""
+def substring_search(
+    query: str,
+    items: list[T],
+    get_name: Callable[[T], str],
+    get_description: Callable[[T], str],
+    limit: int = 10,
+) -> list[T]:
+    """Search items by substring matching on name and description.
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        """Embed a list of texts (documents) into vectors."""
-        ...
+    Args:
+        query: Search query string.
+        items: List of items to search.
+        get_name: Function to extract name from an item.
+        get_description: Function to extract description from an item.
+        limit: Maximum number of results to return.
 
-    def embed_query(self, query: str) -> list[float]:
-        """Embed a query text into a vector (may use instruction prefix)."""
-        ...
+    Returns:
+        List of matching items, sorted by relevance score.
+    """
+    query_lower = query.lower()
+    matches: list[tuple[int, T]] = []
+
+    for item in items:
+        name = get_name(item)
+        description = get_description(item)
+
+        name_score = 0
+        desc_score = 0
+
+        if query_lower in name.lower():
+            if name.lower() == query_lower:
+                name_score = EXACT_NAME_MATCH_SCORE
+            else:
+                name_score = PARTIAL_NAME_MATCH_SCORE
+
+        if description and query_lower in description.lower():
+            desc_score = DESCRIPTION_MATCH_SCORE
+
+        total_score = name_score + desc_score
+        if total_score > 0:
+            matches.append((total_score, item))
+
+    matches.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in matches[:limit]]
 
 
 class ToolRegistry:
@@ -50,7 +90,7 @@ class ToolRegistry:
     ) -> None:
         self._embedder = embedder
         self._adapters: list[ToolAdapter] = []
-        self._tools: dict[str, ToolDefinition] = {}  # name -> definition
+        self._tools: dict[str, Tool] = {}  # name -> Tool
         self._tool_to_adapter: dict[str, ToolAdapter] = {}  # name -> adapter
         self._vectors: dict[str, list[float]] = {}  # name -> embedding vector
 
@@ -96,7 +136,6 @@ class ToolRegistry:
 
         import yaml
 
-        from py_code_mode.adapters import CLIAdapter
         from py_code_mode.mcp_adapter import MCPAdapter
 
         registry = cls(embedder=embedder)
@@ -106,8 +145,7 @@ class ToolRegistry:
             logger.warning("Tools path does not exist: %s", tools_path)
             return registry
 
-        # Separate CLI and MCP tools
-        cli_specs = []
+        # Load MCP tool configs (CLI tools loaded via CLIAdapter separately)
         mcp_configs = []
 
         for tool_file in sorted(tools_path.glob("*.yaml")):
@@ -117,22 +155,15 @@ class ToolRegistry:
                     if not tool or not tool.get("name"):
                         logger.warning("Tool file %s missing 'name' field, skipping", tool_file)
                         continue
-            except Exception as e:
+            except (OSError, yaml.YAMLError) as e:
                 logger.warning("Failed to load tool file %s: %s", tool_file, e)
                 continue
 
             tool_type = tool.get("type", "cli")
 
-            if tool_type == "cli":
-                cli_specs.append(tool_file)
-            elif tool_type == "mcp":
+            if tool_type == "mcp":
                 mcp_configs.append(tool)
-
-        # Load CLI tools
-        if cli_specs:
-            adapter = CLIAdapter.from_dir(path)
-            if await adapter.list_tools():
-                await registry.register_adapter(adapter)
+            # CLI tools are loaded via CLIAdapter, not here
 
         # Load MCP tools
         for mcp_config in mcp_configs:
@@ -163,11 +194,62 @@ class ToolRegistry:
 
         return registry
 
-    async def register_adapter(
+    def add_adapter(self, adapter: ToolAdapter) -> None:
+        """Add an adapter without registering its tools.
+
+        Use this when you want to add an adapter but handle tool registration
+        separately (e.g., when loading tools from a different source).
+
+        For normal use, prefer register_adapter() which also registers the
+        adapter's tools with conflict detection and tag merging.
+
+        Args:
+            adapter: The adapter to add.
+        """
+        self._adapters.append(adapter)
+
+    def get_adapters(self) -> list[ToolAdapter]:
+        """Get all registered adapters.
+
+        Returns:
+            List of adapters in registration order.
+        """
+        return list(self._adapters)
+
+    def get_all_tools(self) -> list[Tool]:
+        """Get all Tool objects from all adapters.
+
+        This method collects Tool objects (with callables) from all adapters.
+        Used by ToolsNamespace for agent-facing tool discovery.
+
+        Returns:
+            List of Tool objects from all adapters.
+        """
+        tools: list[Tool] = []
+        for adapter in self._adapters:
+            tools.extend(adapter.list_tools())
+        return tools
+
+    def find_adapter_for_tool(self, tool_name: str) -> ToolAdapter | None:
+        """Find the adapter that owns a tool by name.
+
+        Args:
+            tool_name: Name of the tool to find.
+
+        Returns:
+            The adapter that owns the tool, or None if not found.
+        """
+        for adapter in self._adapters:
+            tools = adapter.list_tools()
+            if any(t.name == tool_name for t in tools):
+                return adapter
+        return None
+
+    def register_adapter(
         self,
         adapter: ToolAdapter,
         tags: set[str] | None = None,
-    ) -> list[ToolDefinition]:
+    ) -> list[Tool]:
         """Register an adapter's tools.
 
         Args:
@@ -175,13 +257,13 @@ class ToolRegistry:
             tags: Tags to apply to all tools from this adapter.
 
         Returns:
-            List of registered tool definitions.
+            List of registered tools.
 
         Raises:
             ValueError: If a tool name conflicts with an existing tool.
         """
         self._adapters.append(adapter)
-        adapter_tools = await adapter.list_tools()
+        adapter_tools = adapter.list_tools()
         registered = []
 
         for tool in adapter_tools:
@@ -191,23 +273,20 @@ class ToolRegistry:
                     f"Use unique names or different tags for scoping."
                 )
 
-            # Merge tags
-            merged_tags = tool.tags | frozenset(tags or set())
+            # Merge tags if provided
+            if tags:
+                merged_tags = tool.tags | frozenset(tags)
+                # Create new Tool with merged tags
+                tool = Tool(
+                    name=tool.name,
+                    description=tool.description,
+                    callables=tool.callables,
+                    tags=merged_tags,
+                )
 
-            # Create definition with merged tags
-            registered_tool = ToolDefinition(
-                name=tool.name,
-                description=tool.description,
-                input_schema=tool.input_schema,
-                output_schema=tool.output_schema,
-                tags=merged_tags,
-                python_deps=tool.python_deps,
-                timeout_seconds=tool.timeout_seconds,
-            )
-
-            self._tools[tool.name] = registered_tool
+            self._tools[tool.name] = tool
             self._tool_to_adapter[tool.name] = adapter
-            registered.append(registered_tool)
+            registered.append(tool)
 
         # Embed tools if embedder is available
         if self._embedder and registered:
@@ -215,7 +294,7 @@ class ToolRegistry:
 
         return registered
 
-    def _embed_tools(self, tools: list[ToolDefinition]) -> None:
+    def _embed_tools(self, tools: list[Tool]) -> None:
         """Embed tools and store their vectors."""
         if not self._embedder:
             return
@@ -226,7 +305,7 @@ class ToolRegistry:
         for tool, vector in zip(tools, vectors, strict=True):
             self._vectors[tool.name] = vector
 
-    def list_tools(self, scope: set[str] | None = None) -> list[ToolDefinition]:
+    def list_tools(self, scope: set[str] | None = None) -> list[Tool]:
         """List all tools, optionally filtered by scope.
 
         Args:
@@ -234,15 +313,15 @@ class ToolRegistry:
                    A tool matches if any of its tags are in the scope.
 
         Returns:
-            List of matching tool definitions.
+            List of matching tools.
         """
         if scope is None:
             return list(self._tools.values())
 
-        return [tool for tool in self._tools.values() if tool.matches_scope(scope)]
+        return [tool for tool in self._tools.values() if tool.tags & scope]
 
-    def get_tool(self, name: str) -> ToolDefinition:
-        """Get a tool definition by name.
+    def get_tool(self, name: str) -> Tool:
+        """Get a tool by name.
 
         Raises:
             ToolNotFoundError: If tool not found.
@@ -251,11 +330,17 @@ class ToolRegistry:
             raise ToolNotFoundError(name, list(self._tools.keys()))
         return self._tools[name]
 
-    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
+    async def call_tool(
+        self,
+        name: str,
+        callable_name: str | None,
+        args: dict[str, Any],
+    ) -> Any:
         """Call a tool by name.
 
         Args:
             name: Tool name (e.g., "nmap", "curl").
+            callable_name: Callable/recipe name, or None for escape hatch.
             args: Arguments for the tool.
 
         Returns:
@@ -271,10 +356,12 @@ class ToolRegistry:
         adapter = self._tool_to_adapter[name]
 
         try:
-            return await adapter.call_tool(name, args)
-        except Exception as e:
-            if isinstance(e, ToolCallError):
-                raise
+            return await adapter.call_tool(name, callable_name, args)
+        except CodeModeError:
+            # Our error types (ToolCallError, ToolTimeoutError, etc.) pass through
+            raise
+        except (OSError, TimeoutError, ValueError, RuntimeError) as e:
+            # Known execution errors not caught by adapter
             raise ToolCallError(name, tool_args=args, cause=e) from e
 
     def scoped_view(self, scope: set[str]) -> ScopedToolRegistry:
@@ -291,7 +378,7 @@ class ToolRegistry:
         """
         return ScopedToolRegistry(self, scope)
 
-    def search(self, query: str, limit: int = 10) -> list[ToolDefinition]:
+    def search(self, query: str, limit: int = 10) -> list[Tool]:
         """Search tools by name, description, or semantic similarity.
 
         Uses semantic search when embedder is available, otherwise falls back
@@ -302,7 +389,7 @@ class ToolRegistry:
             limit: Maximum results to return.
 
         Returns:
-            Matching tool definitions, sorted by relevance.
+            Matching tools, sorted by relevance.
         """
         # Use semantic search if embedder and vectors available
         if self._embedder and self._vectors:
@@ -311,7 +398,7 @@ class ToolRegistry:
         # Fallback to substring search
         return self._substring_search(query, limit)
 
-    def _semantic_search(self, query: str, limit: int) -> list[ToolDefinition]:
+    def _semantic_search(self, query: str, limit: int) -> list[Tool]:
         """Search using cosine similarity with embeddings."""
         if not self._embedder or not self._vectors:
             return []
@@ -320,9 +407,9 @@ class ToolRegistry:
         query_vec = self._embedder.embed_query(query)
 
         # Compute cosine similarity with each tool
-        scores: list[tuple[float, ToolDefinition]] = []
+        scores: list[tuple[float, Tool]] = []
         for name, tool_vec in self._vectors.items():
-            similarity = self._cosine_similarity(query_vec, tool_vec)
+            similarity = cosine_similarity(query_vec, tool_vec)
             tool = self._tools.get(name)
             if tool:
                 scores.append((similarity, tool))
@@ -331,40 +418,15 @@ class ToolRegistry:
         scores.sort(key=lambda x: x[0], reverse=True)
         return [tool for _, tool in scores[:limit]]
 
-    def _substring_search(self, query: str, limit: int) -> list[ToolDefinition]:
+    def _substring_search(self, query: str, limit: int) -> list[Tool]:
         """Search using substring matching (fallback)."""
-        query_lower = query.lower()
-        matches = []
-
-        for tool in self._tools.values():
-            # Score based on where query appears
-            name_score = 0
-            desc_score = 0
-
-            if query_lower in tool.name.lower():
-                # Exact name match is best
-                name_score = 100 if tool.name.lower() == query_lower else 50
-
-            if tool.description and query_lower in tool.description.lower():
-                desc_score = 25
-
-            total_score = name_score + desc_score
-            if total_score > 0:
-                matches.append((total_score, tool))
-
-        # Sort by score descending
-        matches.sort(key=lambda x: x[0], reverse=True)
-        return [tool for _, tool in matches[:limit]]
-
-    @staticmethod
-    def _cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
-        """Compute cosine similarity between two vectors."""
-        dot_product = sum(a * b for a, b in zip(vec1, vec2, strict=True))
-        norm1 = sum(a * a for a in vec1) ** 0.5
-        norm2 = sum(b * b for b in vec2) ** 0.5
-        if norm1 == 0 or norm2 == 0:
-            return 0.0
-        return dot_product / (norm1 * norm2)
+        return substring_search(
+            query=query,
+            items=list(self._tools.values()),
+            get_name=lambda t: t.name,
+            get_description=lambda t: t.description or "",
+            limit=limit,
+        )
 
     async def refresh(self) -> None:
         """Refresh by closing adapters and clearing state.
@@ -405,22 +467,27 @@ class ScopedToolRegistry:
         self._registry = registry
         self._scope = scope
 
-    def list_tools(self) -> list[ToolDefinition]:
+    def list_tools(self) -> list[Tool]:
         """List tools matching this scope."""
         return self._registry.list_tools(self._scope)
 
-    def get_tool(self, name: str) -> ToolDefinition:
+    def get_tool(self, name: str) -> Tool:
         """Get a tool if it matches scope.
 
         Raises:
             ToolNotFoundError: If tool not found or not in scope.
         """
         tool = self._registry.get_tool(name)
-        if not tool.matches_scope(self._scope):
+        if not (tool.tags & self._scope):
             raise ToolNotFoundError(name, [t.name for t in self.list_tools()])
         return tool
 
-    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
+    async def call_tool(
+        self,
+        name: str,
+        callable_name: str | None,
+        args: dict[str, Any],
+    ) -> Any:
         """Call a tool if it matches scope.
 
         Raises:
@@ -429,14 +496,41 @@ class ScopedToolRegistry:
         """
         # Verify tool is in scope before calling
         self.get_tool(name)
-        return await self._registry.call_tool(name, args)
+        return await self._registry.call_tool(name, callable_name, args)
 
-    def search(self, query: str, limit: int = 10) -> list[ToolDefinition]:
+    def search(self, query: str, limit: int = 10) -> list[Tool]:
         """Search tools within scope."""
         all_matches = self._registry.search(query, limit=limit * 2)
-        return [t for t in all_matches if t.matches_scope(self._scope)][:limit]
+        return [t for t in all_matches if t.tags & self._scope][:limit]
 
     @property
     def scope(self) -> set[str]:
         """The scope (allowed tags) for this view."""
         return self._scope.copy()
+
+    def get_adapters(self) -> list[ToolAdapter]:
+        """Get all registered adapters from the underlying registry.
+
+        Returns:
+            List of adapters in registration order.
+        """
+        return self._registry.get_adapters()
+
+    def get_all_tools(self) -> list[Tool]:
+        """Get all Tool objects from the underlying registry.
+
+        Returns:
+            List of Tool objects from all adapters.
+        """
+        return self._registry.get_all_tools()
+
+    def find_adapter_for_tool(self, tool_name: str) -> ToolAdapter | None:
+        """Find the adapter that owns a tool by name.
+
+        Args:
+            tool_name: Name of the tool to find.
+
+        Returns:
+            The adapter that owns the tool, or None if not found.
+        """
+        return self._registry.find_adapter_for_tool(tool_name)

@@ -67,8 +67,21 @@ class TestRedisStorageTools:
             "name": "nmap",
             "type": "cli",
             "command": "nmap",
-            "args": "{flags} {target}",
             "description": "Network port scanner",
+            "schema": {
+                "positional": [
+                    {"name": "target", "type": "string", "required": True},
+                ],
+                "options": {
+                    "flags": {"type": "string", "short": "f"},
+                },
+            },
+            "recipes": {
+                "scan": {
+                    "description": "Run nmap scan",
+                    "params": {"target": {}},
+                },
+            },
         }
 
         storage.tools.save(tool)
@@ -83,8 +96,18 @@ class TestRedisStorageTools:
             "name": "curl",
             "type": "cli",
             "command": "curl",
-            "args": "{url}",
             "description": "HTTP client",
+            "schema": {
+                "positional": [
+                    {"name": "url", "type": "string", "required": True},
+                ],
+            },
+            "recipes": {
+                "get": {
+                    "description": "GET request",
+                    "params": {"url": {}},
+                },
+            },
         }
         storage.tools.save(tool)
 
@@ -103,8 +126,9 @@ class TestRedisStorageTools:
                 "name": "tool1",
                 "type": "cli",
                 "command": "echo",
-                "args": "test",
                 "description": "Tool 1",
+                "schema": {},
+                "recipes": {"run": {"description": "Run tool1", "params": {}}},
             }
         )
         storage.tools.save(
@@ -112,8 +136,9 @@ class TestRedisStorageTools:
                 "name": "tool2",
                 "type": "cli",
                 "command": "cat",
-                "args": "test",
                 "description": "Tool 2",
+                "schema": {},
+                "recipes": {"run": {"description": "Run tool2", "params": {}}},
             }
         )
 
@@ -129,8 +154,11 @@ class TestRedisStorageTools:
             "name": "nmap",
             "type": "cli",
             "command": "nmap",
-            "args": "{target}",
             "description": "Network scanner",
+            "schema": {
+                "positional": [{"name": "target", "type": "string", "required": True}],
+            },
+            "recipes": {"scan": {"description": "Run scan", "params": {"target": {}}}},
         }
         storage.tools.save(tool)
 
@@ -148,7 +176,14 @@ class TestRedisStorageTools:
     def test_exists_true_for_existing(self, storage: RedisStorage) -> None:
         """tools.exists(name) returns True for existing tool."""
         storage.tools.save(
-            {"name": "nmap", "type": "cli", "command": "nmap", "args": "", "description": "Scanner"}
+            {
+                "name": "nmap",
+                "type": "cli",
+                "command": "nmap",
+                "description": "Scanner",
+                "schema": {},
+                "recipes": {"run": {"description": "Run scan", "params": {}}},
+            }
         )
 
         assert storage.tools.exists("nmap") is True
@@ -164,8 +199,9 @@ class TestRedisStorageTools:
                 "name": "mytool",
                 "type": "cli",
                 "command": "v1",
-                "args": "",
                 "description": "Version 1",
+                "schema": {},
+                "recipes": {"run": {"description": "Run v1", "params": {}}},
             }
         )
         storage.tools.save(
@@ -173,8 +209,9 @@ class TestRedisStorageTools:
                 "name": "mytool",
                 "type": "cli",
                 "command": "v2",
-                "args": "",
                 "description": "Version 2",
+                "schema": {},
+                "recipes": {"run": {"description": "Run v2", "params": {}}},
             }
         )
 
@@ -188,8 +225,9 @@ class TestRedisStorageTools:
                 "name": "todelete",
                 "type": "cli",
                 "command": "rm",
-                "args": "",
                 "description": "Delete me",
+                "schema": {},
+                "recipes": {"run": {"description": "Run rm", "params": {}}},
             }
         )
 
@@ -431,7 +469,14 @@ class TestRedisStorageKeyStructure:
         storage = RedisStorage(mock_redis, prefix="myapp")
 
         storage.tools.save(
-            {"name": "test", "type": "cli", "command": "echo", "args": "", "description": "Test"}
+            {
+                "name": "test",
+                "type": "cli",
+                "command": "echo",
+                "description": "Test",
+                "schema": {},
+                "recipes": {"run": {"description": "Run test", "params": {}}},
+            }
         )
 
         # Check that mock_redis has keys with prefix
@@ -468,8 +513,9 @@ class TestRedisStorageKeyStructure:
                 "name": "tool1",
                 "type": "cli",
                 "command": "echo",
-                "args": "",
                 "description": "App 1 tool",
+                "schema": {},
+                "recipes": {"run": {"description": "Run tool1", "params": {}}},
             }
         )
         storage2.tools.save(
@@ -477,8 +523,9 @@ class TestRedisStorageKeyStructure:
                 "name": "tool2",
                 "type": "cli",
                 "command": "cat",
-                "args": "",
                 "description": "App 2 tool",
+                "schema": {},
+                "recipes": {"run": {"description": "Run tool2", "params": {}}},
             }
         )
 
@@ -544,8 +591,11 @@ class TestRedisStorageRealRedis:
             "name": "realtest",
             "type": "cli",
             "command": "echo",
-            "args": "{msg}",
             "description": "Real Redis test",
+            "schema": {
+                "positional": [{"name": "msg", "type": "string", "required": True}],
+            },
+            "recipes": {"run": {"description": "Run echo", "params": {"msg": {}}}},
         }
 
         real_redis_storage.tools.save(tool)

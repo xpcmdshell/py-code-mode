@@ -1,47 +1,23 @@
 """CLI adapter for wrapping command-line tools."""
 
 import asyncio
-import json
 import logging
-import re
-import shlex
-from dataclasses import dataclass, field
+import os
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from py_code_mode.adapters.cli_schema import (
+    CLICommandBuilder,
+    CLIToolDefinition,
+    parse_cli_tool_dict,
+    parse_cli_tool_yaml,
+)
 from py_code_mode.errors import ToolCallError, ToolNotFoundError, ToolTimeoutError
-from py_code_mode.types import JsonSchema, ToolDefinition
+from py_code_mode.tool_types import Tool, ToolCallable, ToolParameter
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class CLIToolSpec:
-    """Specification for a CLI tool.
-
-    Defines how to invoke a command-line tool and parse its output.
-    """
-
-    name: str
-    description: str = ""  # Auto-generated if empty
-    command: str | None = None  # Defaults to name if not specified
-    args_template: str = ""  # Template with {arg_name} placeholders
-    input_schema: JsonSchema = field(default_factory=lambda: JsonSchema(type="object"))
-    output_schema: JsonSchema | None = None
-    tags: frozenset[str] = field(default_factory=frozenset)
-    timeout_seconds: float = 60.0
-    parse_json: bool = False  # Whether to parse stdout as JSON
-    working_dir: str | None = None
-    env: dict[str, str] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        """Apply defaults after initialization."""
-        if self.command is None:
-            object.__setattr__(self, "command", self.name)
-        if not self.description:
-            object.__setattr__(self, "description", f"Run {self.name} command")
 
 
 class CLIAdapter:
@@ -50,183 +26,234 @@ class CLIAdapter:
     Wraps CLI tools and runs them via subprocess, capturing output.
 
     Usage:
-        specs = [
-            CLIToolSpec(
-                name="grep",
-                description="Search for pattern in files",
-                command="grep",
-                args_template="-r {pattern} {path}",
-                input_schema=JsonSchema(
-                    type="object",
-                    properties={
-                        "pattern": JsonSchema(type="string", description="Search pattern"),
-                        "path": JsonSchema(type="string", description="Path to search"),
-                    },
-                    required=["pattern", "path"],
-                ),
-                tags=frozenset({"search", "text"}),
-            ),
-        ]
-        adapter = CLIAdapter(specs)
-        result = await adapter.call_tool("grep", {"pattern": "error", "path": "."})
+        # Load tools from YAML directory (schema + recipes format)
+        adapter = CLIAdapter(tools_path=Path("./tools"))
+
+        # Call a recipe
+        result = await adapter.call_tool("grep", "search", {"pattern": "error", "path": "."})
+
+        # Escape hatch - direct call without recipe
+        result = await adapter.call_tool("grep", None, {"pattern": "error", "path": "."})
     """
 
-    def __init__(self, specs: list[CLIToolSpec]) -> None:
-        """Initialize with tool specifications.
+    def __init__(self, tools_path: Path | str | None = None) -> None:
+        """Initialize adapter with unified tools.
 
         Args:
-            specs: List of CLI tool specifications.
+            tools_path: Path to directory containing tool YAML files.
+                       If None, creates an empty adapter.
         """
-        self._specs: dict[str, CLIToolSpec] = {spec.name: spec for spec in specs}
-        self._tools: dict[str, ToolDefinition] = {}
+        self._unified_tools: dict[str, CLIToolDefinition] = {}
+        self._builders: dict[str, CLICommandBuilder] = {}
 
-        for spec in specs:
-            self._tools[spec.name] = ToolDefinition(
-                name=spec.name,
-                description=spec.description,
-                input_schema=spec.input_schema,
-                output_schema=spec.output_schema,
-                tags=spec.tags,
-                timeout_seconds=spec.timeout_seconds,
-            )
+        if tools_path is not None:
+            self._load_from_path(Path(tools_path))
+
+    def _load_from_path(self, tools_path: Path) -> None:
+        """Load tools from a directory path.
+
+        Args:
+            tools_path: Path to directory containing tool YAML files.
+        """
+        if not tools_path.exists():
+            logger.warning("Tools path does not exist: %s", tools_path)
+            return
+
+        for tool_file in sorted(tools_path.glob("*.yaml")):
+            try:
+                tool_def = parse_cli_tool_yaml(tool_file)
+                self._unified_tools[tool_def.name] = tool_def
+                self._builders[tool_def.name] = CLICommandBuilder(tool_def)
+            except (OSError, yaml.YAMLError, KeyError, ValueError) as e:
+                logger.warning("Failed to load tool file %s: %s", tool_file, e)
 
     @classmethod
-    def from_dir(cls, path: str) -> "CLIAdapter":
-        """Load CLI tools from a directory of YAML files.
-
-        Each *.yaml file defines one tool:
-            # nmap.yaml
-            name: nmap
-            args: "{flags} {target}"
-            description: Network scanner
-            tags: [recon, network]
-            timeout: 300
+    def from_configs(cls, configs: list[dict[str, Any]]) -> "CLIAdapter":
+        """Create adapter from a list of tool configuration dicts.
 
         Args:
-            path: Path to directory containing tool YAML files.
+            configs: List of tool config dicts (same format as YAML files).
+                    Each must have 'name', 'schema', and 'recipes' keys.
 
         Returns:
             CLIAdapter with loaded tools.
         """
-        specs = []
-        tools_path = Path(path)
-
-        if not tools_path.exists():
-            logger.warning("Tools path does not exist: %s", tools_path)
-            return cls([])
-
-        for tool_file in sorted(tools_path.glob("*.yaml")):
+        adapter = cls()
+        for config in configs:
             try:
-                with open(tool_file) as f:
-                    tool = yaml.safe_load(f)
-                    if not tool or not tool.get("name"):
-                        continue
+                tool_def = parse_cli_tool_dict(config)
+                adapter._unified_tools[tool_def.name] = tool_def
+                adapter._builders[tool_def.name] = CLICommandBuilder(tool_def)
+            except (KeyError, ValueError) as e:
+                logger.warning("Failed to load tool config '%s': %s", config.get("name", "?"), e)
+        return adapter
 
-                # Skip non-CLI tools (mcp, http, etc.)
-                tool_type = tool.get("type", "cli")
-                if tool_type != "cli":
-                    continue
+    def list_tools(self) -> list[Tool]:
+        """List tools as Tool objects with callables.
 
-                args_template = tool.get("args", "")
-                params = re.findall(r"\{(\w+)\}", args_template)
+        Returns:
+            List of Tool objects with ToolCallable entries.
+        """
+        tools = []
 
-                spec = CLIToolSpec(
-                    name=tool["name"],
-                    description=tool.get("description", ""),
-                    command=tool.get("command"),
-                    args_template=args_template,
-                    input_schema=JsonSchema(
-                        type="object",
-                        properties={p: JsonSchema(type="string") for p in params},
-                    ),
-                    tags=frozenset(tool.get("tags", [])),
-                    timeout_seconds=tool.get("timeout", 60.0),
+        for name, tool_def in self._unified_tools.items():
+            callables = []
+
+            # Add callables from recipes
+            for recipe_name, recipe_spec in tool_def.recipes.items():
+                params = []
+
+                # Get parameters from recipe, fall back to schema if not specified
+                recipe_params = recipe_spec.get("params", {})
+
+                # If recipe params is empty, inherit from schema
+                if not recipe_params:
+                    # Build params from schema positional and options
+                    schema = tool_def.schema
+
+                    # Add positional parameters
+                    for pos_param in schema.get("positional", []):
+                        params.append(
+                            ToolParameter(
+                                name=pos_param["name"],
+                                type=pos_param.get("type", "str"),
+                                required=pos_param.get("required", False),
+                                default=pos_param.get("default"),
+                                description=pos_param.get("description", ""),
+                            )
+                        )
+
+                    # Add option parameters
+                    for opt_name, opt_spec in schema.get("options", {}).items():
+                        params.append(
+                            ToolParameter(
+                                name=opt_name,
+                                type=opt_spec.get("type", "str"),
+                                required=opt_spec.get("required", False),
+                                default=opt_spec.get("default"),
+                                description=opt_spec.get("description", ""),
+                            )
+                        )
+                else:
+                    # Use recipe-specified params
+                    for param_name, param_spec in recipe_params.items():
+                        params.append(
+                            ToolParameter(
+                                name=param_name,
+                                type=param_spec.get("type", "str"),
+                                required=param_spec.get("required", False),
+                                default=param_spec.get("default"),
+                                description=param_spec.get("description", ""),
+                            )
+                        )
+
+                callables.append(
+                    ToolCallable(
+                        name=recipe_name,
+                        description=recipe_spec.get("description", ""),
+                        parameters=tuple(params),
+                    )
                 )
-                specs.append(spec)
-            except Exception as e:
-                logger.warning("Failed to load tool file %s: %s", tool_file, e)
 
-        return cls(specs)
+            if callables:
+                tools.append(
+                    Tool(
+                        name=name,
+                        description=tool_def.description,
+                        callables=tuple(callables),
+                    )
+                )
 
-    async def list_tools(self) -> list[ToolDefinition]:
-        """List all CLI tools."""
-        return list(self._tools.values())
+        return tools
 
-    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
-        """Run a CLI tool.
+    async def call_tool(
+        self,
+        name: str,
+        callable_name: str | None,
+        args: dict[str, Any],
+    ) -> Any:
+        """Run a CLI tool with specific callable (recipe).
 
         Args:
             name: Tool name.
-            args: Arguments to pass to the tool.
+            callable_name: Callable name (recipe) or None for escape hatch.
+            args: Arguments for the callable.
 
         Returns:
-            Tool output as string (or parsed JSON if parse_json=True).
+            Tool output as string.
 
         Raises:
             ToolNotFoundError: If tool not found.
             ToolCallError: If command fails.
             ToolTimeoutError: If command exceeds timeout.
         """
-        if name not in self._specs:
-            raise ToolNotFoundError(name, list(self._specs.keys()))
+        if name not in self._unified_tools:
+            raise ToolNotFoundError(name, list(self._unified_tools.keys()))
 
-        spec = self._specs[name]
+        tool_def = self._unified_tools[name]
+        builder = self._builders[name]
 
-        # Build command
-        cmd = self._build_command(spec, args)
+        # Build command - either recipe or direct
+        try:
+            if callable_name is None:
+                # Escape hatch - check if there's a default recipe with tool's name
+                if name in tool_def.recipes:
+                    cmd = builder.build_recipe(name, args)
+                else:
+                    # True escape hatch - direct invocation without recipe
+                    cmd = builder.build(args)
+            else:
+                # Normal recipe invocation
+                cmd = builder.build_recipe(callable_name, args)
+        except ValueError as e:
+            raise ToolCallError(name, tool_args=args, cause=e) from e
 
+        # Execute command
         try:
             result = await self._run_subprocess(
                 cmd,
-                timeout=spec.timeout_seconds,
-                cwd=spec.working_dir,
-                env=spec.env if spec.env else None,
+                timeout=tool_def.timeout,
             )
-
-            if spec.parse_json:
-                try:
-                    return json.loads(result)
-                except json.JSONDecodeError as e:
-                    raise ToolCallError(
-                        name,
-                        tool_args=args,
-                        cause=ValueError(f"Invalid JSON output: {e}"),
-                    ) from e
-
             return result
 
         except TimeoutError:
-            raise ToolTimeoutError(name, spec.timeout_seconds)
-        except Exception as e:
-            if isinstance(e, (ToolCallError, ToolTimeoutError)):
-                raise
+            raise ToolTimeoutError(name, tool_def.timeout)
+        except (OSError, RuntimeError) as e:
             raise ToolCallError(name, tool_args=args, cause=e) from e
 
-    def _build_command(self, spec: CLIToolSpec, args: dict[str, Any]) -> list[str]:
-        """Build command list from spec and arguments."""
-        # Start with base command
-        cmd_parts = shlex.split(spec.command)
+    async def describe(self, tool_name: str, callable_name: str) -> dict[str, str]:
+        """Get parameter descriptions for a callable.
 
-        if spec.args_template:
-            # Substitute arguments into template
-            try:
-                formatted = spec.args_template.format(**args)
-                cmd_parts.extend(shlex.split(formatted))
-            except KeyError as e:
-                raise ValueError(f"Missing required argument: {e}")
-        else:
-            # No template - pass args as --key=value or positional
-            for key, value in args.items():
-                if isinstance(value, bool):
-                    if value:
-                        cmd_parts.append(f"--{key}")
-                elif isinstance(value, list):
-                    for item in value:
-                        cmd_parts.append(str(item))
-                else:
-                    cmd_parts.append(f"--{key}={value}")
+        Args:
+            tool_name: Name of the tool.
+            callable_name: Name of the callable.
 
-        return cmd_parts
+        Returns:
+            Dict mapping parameter names to descriptions.
+
+        Raises:
+            ToolNotFoundError: If tool or callable not found.
+        """
+        if tool_name not in self._unified_tools:
+            raise ToolNotFoundError(tool_name, list(self._unified_tools.keys()))
+
+        tool_def = self._unified_tools[tool_name]
+
+        if callable_name not in tool_def.recipes:
+            available = list(tool_def.recipes.keys())
+            raise ValueError(
+                f"Callable '{callable_name}' not found in tool '{tool_name}'. "
+                f"Available: {available}"
+            )
+
+        recipe = tool_def.recipes[callable_name]
+        params = recipe.get("params", {})
+
+        descriptions = {}
+        for param_name, param_spec in params.items():
+            descriptions[param_name] = param_spec.get("description", "")
+
+        return descriptions
 
     async def _run_subprocess(
         self,
@@ -236,8 +263,6 @@ class CLIAdapter:
         env: dict[str, str] | None = None,
     ) -> str:
         """Run a subprocess and return its output."""
-        import os
-
         # Merge with current environment if env is provided
         full_env = None
         if env:

@@ -6,12 +6,11 @@ Usage:
     from py_code_mode.backends.container import ContainerExecutor, ContainerConfig
 
     config = ContainerConfig(
-        image="py-code-mode-tools:latest",
         host_artifacts_path=Path("./artifacts"),
     )
 
     async with ContainerExecutor(config) as executor:
-        result = await executor.run('tools.call("cli.nmap", {"target": "10.0.0.1"})')
+        result = await executor.run('tools.nmap(target="10.0.0.1")')
 """
 
 from py_code_mode.backends.container.client import (
@@ -22,7 +21,6 @@ from py_code_mode.backends.container.client import (
     SessionClient,
 )
 from py_code_mode.backends.container.config import (
-    CLIToolConfig,
     ContainerConfig,
     MCPServerConfig,
     SessionConfig,
@@ -32,7 +30,6 @@ from py_code_mode.types import ExecutionResult
 
 __all__ = [
     # Config
-    "CLIToolConfig",
     "ContainerConfig",
     "MCPServerConfig",
     "SessionConfig",

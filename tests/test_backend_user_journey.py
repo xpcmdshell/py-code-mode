@@ -44,10 +44,22 @@ def echo_tool_yaml() -> str:
     """Echo tool YAML config."""
     return """
 name: echo
-type: cli
-command: echo
-args: "{text}"
 description: Echo text back
+command: echo
+timeout: 10
+
+schema:
+  positional:
+    - name: text
+      type: string
+      required: true
+      description: Text to echo
+
+recipes:
+  echo:
+    description: Echo text
+    params:
+      text: {}
 """
 
 
@@ -96,11 +108,11 @@ class TestAgentFullWorkflow:
             result = await session.run("tools.list()")
             assert result.is_ok, f"tools.list() failed: {result.error}"
             assert isinstance(result.value, list)
-            tool_names = [t["name"] for t in result.value]
+            tool_names = [t.name if hasattr(t, "name") else t["name"] for t in result.value]
             assert "echo" in tool_names, f"echo not in tools: {tool_names}"
 
             # 2. Agent uses a tool
-            result = await session.run('tools.echo(text="hello world")')
+            result = await session.run('tools.echo.echo(text="hello world")')
             assert result.is_ok, f"tools.echo() failed: {result.error}"
             assert "hello world" in result.value
 
@@ -147,11 +159,11 @@ skills.create(
             result = await session.run("tools.list()")
             assert result.is_ok, f"tools.list() failed: {result.error}"
             assert isinstance(result.value, list)
-            tool_names = [t["name"] for t in result.value]
+            tool_names = [t.name if hasattr(t, "name") else t["name"] for t in result.value]
             assert "echo" in tool_names, f"echo not in tools: {tool_names}"
 
             # 2. Agent uses a tool
-            result = await session.run('tools.echo(text="container hello")')
+            result = await session.run('tools.echo.echo(text="container hello")')
             assert result.is_ok, f"tools.echo() failed: {result.error}"
             assert "container hello" in result.value
 
@@ -203,7 +215,7 @@ class TestContainerToolsInvocation:
             assert result.is_ok, f"tools.list() failed: {result.error}"
             assert isinstance(result.value, list)
             assert len(result.value) >= 1
-            assert any(t["name"] == "echo" for t in result.value)
+            assert any(t.name if hasattr(t, "name") else t["name"] == "echo" for t in result.value)
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
@@ -213,7 +225,7 @@ class TestContainerToolsInvocation:
         executor = ContainerExecutor(ContainerConfig(timeout=30.0))
 
         async with Session(storage=storage, executor=executor) as session:
-            result = await session.run('tools.echo(text="container test")')
+            result = await session.run('tools.echo.echo(text="container test")')
             assert result.is_ok, f"tools.echo() failed: {result.error}"
             assert "container test" in result.value
 
@@ -265,7 +277,7 @@ skills.create(
             # 3. List shows new skill
             result = await session.run("skills.list()")
             assert result.is_ok
-            names = [s["name"] for s in result.value]
+            names = [s.name if hasattr(s, "name") else s["name"] for s in result.value]
             assert "add_numbers" in names
 
             # 4. Invoke skill
@@ -280,7 +292,7 @@ skills.create(
             # 6. Verify deletion
             result = await session.run("skills.list()")
             assert result.is_ok
-            names = [s["name"] for s in result.value]
+            names = [s.name if hasattr(s, "name") else s["name"] for s in result.value]
             assert "add_numbers" not in names
 
     @pytest.mark.asyncio
@@ -297,7 +309,7 @@ skills.create(
     name="loud_echo",
     description="Echo text and uppercase it",
     source="""def run(text: str) -> str:
-    result = tools.echo(text=text)
+    result = tools.echo.echo(text=text)
     return result.strip().upper()
 """
 )
@@ -348,7 +360,7 @@ skills.create(
         async with Session(storage=storage2, executor=executor2) as session:
             result = await session.run("skills.list()")
             assert result.is_ok
-            names = [s["name"] for s in result.value]
+            names = [s.name if hasattr(s, "name") else s["name"] for s in result.value]
             assert "persistent_skill" in names, f"Skill not persisted: {names}"
 
             result = await session.run("skills.persistent_skill()")
@@ -357,7 +369,6 @@ skills.create(
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    @pytest.mark.skip(reason="BUG: Container artifact persistence issue")
     async def test_artifact_persists_across_container_sessions(self, empty_storage: Path) -> None:
         """Artifacts saved in one container session are loadable in next."""
         # Session 1: Save artifact
@@ -455,7 +466,7 @@ skills.create(
         async with Session(storage=storage2, executor=executor2) as session:
             result = await session.run("skills.list()")
             assert result.is_ok
-            names = [s["name"] for s in result.value]
+            names = [s.name if hasattr(s, "name") else s["name"] for s in result.value]
             assert "redis_persistent" in names
 
             result = await session.run("skills.redis_persistent()")

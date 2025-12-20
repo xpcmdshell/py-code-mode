@@ -34,7 +34,6 @@ class Session:
         self,
         storage: StorageBackend | None = None,
         executor: Executor | None = None,
-        **executor_kwargs: Any,
     ) -> None:
         """Initialize session.
 
@@ -43,10 +42,9 @@ class Session:
                     Required (cannot be None).
             executor: Executor instance (InProcessExecutor, ContainerExecutor).
                      Default: InProcessExecutor()
-            **executor_kwargs: Deprecated. Reserved for future use.
 
         Raises:
-            TypeError: If executor is a string (deprecated API).
+            TypeError: If executor is a string (unsupported).
             ValueError: If storage is None.
         """
         # Validate storage
@@ -71,7 +69,6 @@ class Session:
 
         self._storage = storage
         self._executor_spec = executor  # Store the instance directly
-        self._executor_kwargs = executor_kwargs
         self._executor: Executor | None = None
         self._started = False
         self._closed = False

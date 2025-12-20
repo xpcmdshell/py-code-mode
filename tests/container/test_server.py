@@ -2,7 +2,7 @@
 
 import pytest
 
-from py_code_mode.backends.container.config import CLIToolConfig, SessionConfig
+from py_code_mode.backends.container.config import SessionConfig
 
 
 class TestSessionConfig:
@@ -21,20 +21,12 @@ class TestSessionConfig:
         """Can load config from YAML file."""
         config_file = tmp_path / "config.yaml"
         config_file.write_text("""
-cli_tools:
-  - name: echo
-    description: Echo text
-    command: echo
-    args_template: "{text}"
-
 default_timeout: 60.0
 port: 9000
 """)
 
         config = SessionConfig.from_yaml(config_file)
 
-        assert len(config.cli_tools) == 1
-        assert config.cli_tools[0].name == "echo"
         assert config.default_timeout == 60.0
         assert config.port == 9000
 
@@ -164,42 +156,23 @@ class TestSessionServer:
 
 
 class TestSessionServerWithTools:
-    """Tests for session server with CLI tools configured."""
+    """Tests for session server with tools loaded from TOOLS_PATH."""
 
     @pytest.fixture
-    def config_with_tools(self, tmp_path):
-        """Create config with CLI tools."""
+    def config_with_artifacts(self, tmp_path):
+        """Create config for artifacts."""
         return SessionConfig(
-            cli_tools=[
-                CLIToolConfig(
-                    name="echo",
-                    description="Echo text",
-                    command="echo",
-                    args_template="{text}",
-                )
-            ],
             artifacts_path=tmp_path / "artifacts",
         )
 
-    @pytest.mark.asyncio
-    async def test_build_tool_registry(self, config_with_tools) -> None:
-        """Builds tool registry from config."""
-        from py_code_mode.backends.container.server import build_tool_registry
-
-        registry = await build_tool_registry(config_with_tools)
-        tools = registry.list_tools()
-
-        assert len(tools) == 1
-        assert tools[0].name == "echo"
-
-    def test_session_creates_isolated_artifact_store(self, config_with_tools) -> None:
+    def test_session_creates_isolated_artifact_store(self, config_with_artifacts) -> None:
         """Sessions have isolated artifact directories."""
         import asyncio
 
         from py_code_mode.backends.container.server import initialize_server
 
         # Initialize server
-        asyncio.run(initialize_server(config_with_tools))
+        asyncio.run(initialize_server(config_with_artifacts))
 
         from py_code_mode.backends.container.server import create_session
 

@@ -3,10 +3,9 @@
 Tools exposed as Python SDK bindings callable via Jupyter execution.
 """
 
-from py_code_mode.adapters import CLIAdapter, CLIToolSpec, ToolAdapter
+from py_code_mode.adapters import CLIAdapter, ToolAdapter
 from py_code_mode.artifacts import (
     Artifact,
-    ArtifactStore,
     ArtifactStoreProtocol,
     FileArtifactStore,
 )
@@ -22,7 +21,6 @@ from py_code_mode.backend import (
 
 # Import backends to trigger registration
 from py_code_mode.backends import InProcessExecutor
-from py_code_mode.backends.in_process import CodeExecutor  # Backward compat alias
 
 # Container backend is optional (requires docker, httpx, fastapi)
 try:
@@ -101,7 +99,6 @@ __version__ = "0.1.0"
 __all__ = [
     # Artifacts
     "Artifact",
-    "ArtifactStore",
     "ArtifactStoreProtocol",
     "FileArtifactStore",
     "RedisArtifactStore",
@@ -129,7 +126,6 @@ __all__ = [
     # Adapters
     "ToolAdapter",
     "CLIAdapter",
-    "CLIToolSpec",
     "MCPAdapter",
     "HTTPAdapter",
     "Endpoint",
@@ -144,7 +140,6 @@ __all__ = [
     "list_backends",
     # Executors
     "InProcessExecutor",
-    "CodeExecutor",  # Backward compat alias for InProcessExecutor
     "ContainerExecutor",
     "ContainerConfig",
     # Skills

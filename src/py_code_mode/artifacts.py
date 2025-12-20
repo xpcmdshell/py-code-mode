@@ -296,7 +296,3 @@ class FileArtifactStore:
             metadata=metadata or {},
             created_at=now,
         )
-
-
-# Backwards compatibility alias
-ArtifactStore = FileArtifactStore

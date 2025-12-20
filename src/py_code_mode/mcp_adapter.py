@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from py_code_mode.errors import ToolCallError, ToolNotFoundError
-from py_code_mode.types import JsonSchema, ToolDefinition
+from py_code_mode.tool_types import Tool, ToolCallable, ToolParameter
+
+logger = logging.getLogger(__name__)
+
+# MCP SDK exception types (optional dependency)
+try:
+    from mcp import JSONRPCError, McpError
+
+    MCP_ERRORS: tuple[type[Exception], ...] = (McpError, JSONRPCError)
+except ImportError:
+    MCP_ERRORS = ()
 
 if TYPE_CHECKING:
     from contextlib import AsyncExitStack
@@ -54,7 +65,7 @@ class MCPAdapter:
         """
         self._session = session
         self._exit_stack = exit_stack
-        self._tools_cache: list[ToolDefinition] | None = None
+        self._tools_cache: list[Tool] | None = None
 
     @classmethod
     async def connect_stdio(
@@ -148,37 +159,80 @@ class MCPAdapter:
 
         return cls(session=session, exit_stack=exit_stack)
 
-    async def list_tools(self) -> list[ToolDefinition]:
+    def list_tools(self) -> list[Tool]:
         """List all tools from the MCP server.
 
         Returns:
-            List of ToolDefinition objects.
+            List of Tool objects.
+
+        Note: Tools are cached after first async fetch. Call _refresh_tools()
+        to update the cache if the server adds new tools.
         """
         if self._tools_cache is not None:
             return self._tools_cache
+        # Return empty list if not yet fetched - call _refresh_tools() first
+        return []
 
+    async def _refresh_tools(self) -> list[Tool]:
+        """Fetch tools from MCP server and update cache.
+
+        Returns:
+            List of Tool objects.
+        """
         response = await self._session.list_tools()
 
         tools = []
         for mcp_tool in response.tools:
-            # Convert MCP inputSchema to our JsonSchema
-            input_schema = self._convert_schema(mcp_tool.inputSchema)
+            # Build parameters from MCP input schema
+            params = self._extract_parameters(mcp_tool.inputSchema)
 
-            tool_def = ToolDefinition(
+            # Create a single callable for the tool (MCP tools don't have recipes)
+            callable_obj = ToolCallable(
                 name=mcp_tool.name,
                 description=mcp_tool.description or "",
-                input_schema=input_schema,
+                parameters=tuple(params),
             )
-            tools.append(tool_def)
+
+            tool = Tool(
+                name=mcp_tool.name,
+                description=mcp_tool.description or "",
+                callables=(callable_obj,),
+            )
+            tools.append(tool)
 
         self._tools_cache = tools
         return tools
 
-    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
+    def _extract_parameters(self, schema: dict[str, Any]) -> list[ToolParameter]:
+        """Extract ToolParameter list from MCP input schema."""
+        params = []
+        properties = schema.get("properties", {})
+        required = set(schema.get("required", []))
+
+        for prop_name, prop_def in properties.items():
+            params.append(
+                ToolParameter(
+                    name=prop_name,
+                    type=prop_def.get("type", "string"),
+                    required=prop_name in required,
+                    default=prop_def.get("default"),
+                    description=prop_def.get("description", ""),
+                )
+            )
+
+        return params
+
+    async def call_tool(
+        self,
+        name: str,
+        callable_name: str | None,
+        args: dict[str, Any],
+    ) -> Any:
         """Call a tool on the MCP server.
 
         Args:
             name: Tool name.
+            callable_name: Ignored for MCP (no recipes). Kept for interface compatibility.
             args: Tool arguments.
 
         Returns:
@@ -188,10 +242,11 @@ class MCPAdapter:
             ToolNotFoundError: If tool not found.
             ToolCallError: If tool execution fails.
         """
+        # MCP tools don't have recipes - callable_name is ignored
         try:
             result = await self._session.call_tool(name, args)
         except Exception as e:
-            # Check if it's a "not found" type error
+            # MCP SDK errors, I/O errors, and timeouts from tool execution
             error_msg = str(e).lower()
             if "not found" in error_msg or "unknown" in error_msg:
                 raise ToolNotFoundError(name) from e
@@ -204,6 +259,24 @@ class MCPAdapter:
 
         # Extract text content from response
         return self._extract_text(result)
+
+    async def describe(self, tool_name: str, callable_name: str) -> dict[str, str]:
+        """Get parameter descriptions for a callable.
+
+        Args:
+            tool_name: Name of the tool.
+            callable_name: Ignored for MCP (no recipes).
+
+        Returns:
+            Dict mapping parameter names to descriptions.
+        """
+        tools = self.list_tools()
+        for tool in tools:
+            if tool.name == tool_name:
+                # MCP tools have one callable with same name as tool
+                for c in tool.callables:
+                    return {p.name: p.description for p in c.parameters}
+        return {}
 
     def _extract_text(self, result: Any) -> str:
         """Extract text content from MCP tool result."""
@@ -220,25 +293,6 @@ class MCPAdapter:
 
         return "\n".join(texts) if texts else str(result)
 
-    def _convert_schema(self, mcp_schema: dict[str, Any]) -> JsonSchema:
-        """Convert MCP input schema to JsonSchema."""
-        schema_type = mcp_schema.get("type", "object")
-
-        properties = {}
-        if "properties" in mcp_schema:
-            for prop_name, prop_def in mcp_schema["properties"].items():
-                properties[prop_name] = JsonSchema(
-                    type=prop_def.get("type", "string"),
-                    description=prop_def.get("description"),
-                )
-
-        return JsonSchema(
-            type=schema_type,
-            properties=properties if properties else None,
-            required=mcp_schema.get("required"),
-            description=mcp_schema.get("description"),
-        )
-
     async def close(self) -> None:
         """Clean up resources.
 
@@ -251,6 +305,8 @@ class MCPAdapter:
         if self._exit_stack is not None:
             try:
                 await self._exit_stack.aclose()
-            except Exception:
-                pass
+            except (RuntimeError, OSError) as e:
+                # RuntimeError from anyio TaskGroup in threaded context
+                # OSError from subprocess/pipe issues
+                logger.debug("MCP cleanup failed (expected in threaded context): %s", e)
         self._tools_cache = None

@@ -67,7 +67,10 @@ def _extract_parameters(func: Callable[..., Any], name: str) -> list[SkillParame
     sig = inspect.signature(func)
     try:
         type_hints = get_type_hints(func)
-    except Exception as e:
+    except (NameError, AttributeError, TypeError) as e:
+        # NameError: unresolved forward references
+        # AttributeError: issues accessing type attributes
+        # TypeError: invalid type annotations
         logger.debug(f"Type hint extraction failed for {name}: {type(e).__name__}: {e}")
         type_hints = {}
 

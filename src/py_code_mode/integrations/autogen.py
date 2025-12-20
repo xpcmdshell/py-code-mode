@@ -22,6 +22,7 @@ Usage (remote session server):
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -97,8 +98,10 @@ def _create_local_tool(
                 return output
             else:
                 return f"Error: {result.error}"
-        except Exception as e:
-            return f"Error: {e}"
+        except TimeoutError as e:
+            return f"Error: Execution timed out: {e}"
+        except RuntimeError as e:
+            return f"Error: Executor error: {e}"
 
     return run_code
 
@@ -122,8 +125,8 @@ def _create_remote_tool(
         """Execute Python code with access to tools.*, skills.*, and artifacts.*.
 
         The code runs on a remote session server where:
-        - tools.call("namespace.name", {"arg": value}) invokes registered tools
-        - skills.run("skill_name", arg=value) runs registered skills
+        - tools.name(arg=value) invokes registered tools
+        - skills.invoke("skill_name", arg=value) runs registered skills
         - artifacts.save(name, data) persists data across executions
         - artifacts.load(name) retrieves previously saved data
         - Variables persist across calls
@@ -154,7 +157,7 @@ def _create_remote_tool(
 
         except httpx.HTTPError as e:
             return f"Error: HTTP request failed: {e}"
-        except Exception as e:
+        except (TimeoutError, json.JSONDecodeError) as e:
             return f"Error: {e}"
 
     return run_code
@@ -181,17 +184,17 @@ def get_tools_description(
                 response.raise_for_status()
                 info = response.json()
                 tools = info.get("tools", [])
-        except Exception:
-            return "Tools available via tools.call()"
+        except (httpx.HTTPError, TimeoutError, json.JSONDecodeError):
+            return "Tools available via tools.name(arg=value)"
     elif executor and executor._registry:
-        tools = []
-        for ns, adapter in executor._registry._adapters.items():
-            for tool in adapter.list_tools():
-                tools.append({"name": f"{ns}.{tool.name}", "description": tool.description})
+        tools = [
+            {"name": tool.name, "description": tool.description}
+            for tool in executor._registry.list_tools()
+        ]
     else:
-        return "Tools available via tools.call()"
+        return "Tools available via tools.name(arg=value)"
 
-    lines = ['Available tools (use via tools.call("name", {args})):']
+    lines = ["Available tools (use via tools.name(arg=value)):"]
     for t in tools:
         lines.append(f"  - {t['name']}: {t['description']}")
     return "\n".join(lines)

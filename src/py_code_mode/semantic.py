@@ -18,6 +18,16 @@ if TYPE_CHECKING:
     from py_code_mode.skills import PythonSkill
 
 
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors."""
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
 @runtime_checkable
 class EmbeddingProvider(Protocol):
     """Protocol for embedding providers."""
@@ -239,10 +249,6 @@ class SkillLibrary:
         # Index locally for semantic search
         self._index_skill(skill)
 
-    def _has_code_index(self, name: str) -> bool:
-        """Check if skill has code indexed."""
-        return name in self._code_vectors
-
     def list(self) -> list[PythonSkill]:
         """List all skills."""
         return list(self._skills.values())
@@ -292,11 +298,11 @@ class SkillLibrary:
         scored: list[tuple[float, str]] = []
         for name, skill in self._skills.items():
             # Cosine similarity with description
-            desc_sim = self._cosine_similarity(query_vec, self._description_vectors[name])
+            desc_sim = cosine_similarity(query_vec, self._description_vectors[name])
 
             # Cosine similarity with code (if code is substantial enough)
             if len(skill.source) >= self.ranking.code_min_length and self.ranking.code_weight > 0:
-                code_sim = self._cosine_similarity(query_vec, self._code_vectors[name])
+                code_sim = cosine_similarity(query_vec, self._code_vectors[name])
                 score = (
                     self.ranking.description_weight * desc_sim + self.ranking.code_weight * code_sim
                 )
@@ -317,16 +323,6 @@ class SkillLibrary:
     def get(self, name: str) -> PythonSkill | None:
         """Get skill by exact name."""
         return self._skills.get(name)
-
-    @staticmethod
-    def _cosine_similarity(a: list[float], b: list[float]) -> float:
-        """Compute cosine similarity between two vectors."""
-        dot = sum(x * y for x, y in zip(a, b))
-        norm_a = sum(x * x for x in a) ** 0.5
-        norm_b = sum(x * x for x in b) ** 0.5
-        if norm_a == 0 or norm_b == 0:
-            return 0.0
-        return dot / (norm_a * norm_b)
 
 
 def create_skill_library(

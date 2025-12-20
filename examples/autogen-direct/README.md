@@ -94,12 +94,12 @@ uv run python -m py_code_mode.store pull \
 - `curl.yaml` - HTTP requests
 - `jq.yaml` - JSON processing
 
-### MCP Tools (`../shared/tools/`)
+### MCP Tools (`../shared/mcp-tools/`)
 
 - `fetch.yaml` - Web page fetching via `mcp-server-fetch`
 - `time.yaml` - Timezone queries via `mcp-server-time`
 
-MCP tools are launched via `uvx` (no pre-installation needed).
+MCP tools are launched via `uvx` (no pre-installation needed). They live in a separate directory from CLI tools because they use a different adapter.
 
 ### Skills (`../shared/skills/`)
 

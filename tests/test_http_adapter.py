@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from py_code_mode.types import JsonSchema, ToolDefinition
+from py_code_mode.tool_types import Tool
+from py_code_mode.types import JsonSchema
 
 
 class TestHTTPAdapterInterface:
@@ -17,16 +18,6 @@ class TestHTTPAdapterInterface:
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
         assert isinstance(adapter, ToolAdapter)
-
-    def test_has_required_methods(self) -> None:
-        """HTTPAdapter has list_tools and call_tool methods."""
-        from py_code_mode.http_adapter import HTTPAdapter
-
-        adapter = HTTPAdapter(base_url="http://api.example.com")
-
-        assert hasattr(adapter, "list_tools")
-        assert hasattr(adapter, "call_tool")
-        assert hasattr(adapter, "close")
 
 
 class TestHTTPAdapterConfiguration:
@@ -118,8 +109,8 @@ class TestHTTPAdapterListTools:
     """Tests for listing tools from HTTP endpoints."""
 
     @pytest.mark.asyncio
-    async def test_list_tools_returns_tool_definitions(self) -> None:
-        """list_tools() returns ToolDefinition for each endpoint."""
+    async def test_list_tools_returns_tool_objects(self) -> None:
+        """list_tools() returns Tool objects for each endpoint."""
         from py_code_mode.http_adapter import Endpoint, HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
@@ -130,10 +121,10 @@ class TestHTTPAdapterListTools:
             Endpoint(name="create_user", method="POST", path="/users", description="Create user")
         )
 
-        tools = await adapter.list_tools()
+        tools = adapter.list_tools()
 
         assert len(tools) == 2
-        assert all(isinstance(t, ToolDefinition) for t in tools)
+        assert all(isinstance(t, Tool) for t in tools)
 
     @pytest.mark.asyncio
     async def test_list_tools_maps_names(self) -> None:
@@ -145,7 +136,7 @@ class TestHTTPAdapterListTools:
             Endpoint(name="get_user", method="GET", path="/users/{id}", description="Get user")
         )
 
-        tools = await adapter.list_tools()
+        tools = adapter.list_tools()
         assert tools[0].name == "get_user"
 
     @pytest.mark.asyncio
@@ -163,7 +154,7 @@ class TestHTTPAdapterListTools:
             )
         )
 
-        tools = await adapter.list_tools()
+        tools = adapter.list_tools()
         assert tools[0].description == "List all users in the system"
 
 
@@ -215,7 +206,7 @@ class TestHTTPAdapterCallTool:
 
             mock_client_session.return_value = mock_session
 
-            await adapter.call_tool("get_user", {"user_id": 42})
+            await adapter.call_tool("get_user", None, {"user_id": 42})
 
             mock_session.request.assert_called_once()
             call_args = mock_session.request.call_args
@@ -237,7 +228,7 @@ class TestHTTPAdapterCallTool:
 
             mock_client_session.return_value = mock_session
 
-            await adapter.call_tool("create_user", {"name": "Bob", "email": "bob@example.com"})
+            await adapter.call_tool("create_user", None, {"name": "Bob", "email": "bob@example.com"})
 
             mock_session.request.assert_called_once()
             call_args = mock_session.request.call_args
@@ -259,7 +250,7 @@ class TestHTTPAdapterCallTool:
 
             mock_client_session.return_value = mock_session
 
-            result = await adapter.call_tool("get_user", {"user_id": 42})
+            result = await adapter.call_tool("get_user", None, {"user_id": 42})
 
             assert result == {"id": 42, "name": "Alice"}
 
@@ -269,7 +260,7 @@ class TestHTTPAdapterCallTool:
         from py_code_mode.errors import ToolNotFoundError
 
         with pytest.raises(ToolNotFoundError):
-            await adapter.call_tool("nonexistent", {})
+            await adapter.call_tool("nonexistent", None, {})
 
     @pytest.mark.asyncio
     async def test_call_tool_handles_http_error(self, adapter) -> None:
@@ -289,7 +280,7 @@ class TestHTTPAdapterCallTool:
             mock_client_session.return_value = mock_session
 
             with pytest.raises(ToolCallError):
-                await adapter.call_tool("get_user", {"user_id": 42})
+                await adapter.call_tool("get_user", None, {"user_id": 42})
 
 
 class TestHTTPAdapterWithRegistry:
@@ -307,7 +298,7 @@ class TestHTTPAdapterWithRegistry:
         )
 
         registry = ToolRegistry()
-        await registry.register_adapter(adapter)
+        registry.register_adapter(adapter)
 
         tools = registry.list_tools()
         assert any(t.name == "get_status" for t in tools)

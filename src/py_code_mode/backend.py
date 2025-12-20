@@ -10,11 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from py_code_mode.types import ExecutionResult
-
+from py_code_mode.types import ExecutionResult
 
 # =============================================================================
 # Storage Access Descriptors
