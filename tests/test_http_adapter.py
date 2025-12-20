@@ -228,7 +228,9 @@ class TestHTTPAdapterCallTool:
 
             mock_client_session.return_value = mock_session
 
-            await adapter.call_tool("create_user", None, {"name": "Bob", "email": "bob@example.com"})
+            await adapter.call_tool(
+                "create_user", None, {"name": "Bob", "email": "bob@example.com"}
+            )
 
             mock_session.request.assert_called_once()
             call_args = mock_session.request.call_args
