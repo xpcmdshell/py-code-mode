@@ -114,9 +114,7 @@ class RedisArtifactStore:
             try:
                 return json.loads(content)
             except (json.JSONDecodeError, TypeError) as e:
-                raise ValueError(
-                    f"Failed to parse JSON artifact '{name}': {e}"
-                ) from e
+                raise ValueError(f"Failed to parse JSON artifact '{name}': {e}") from e
 
         return content
 
