@@ -1,6 +1,7 @@
 # py-code-mode
 
 [![CI](https://github.com/xpcmdshell/py-code-mode/actions/workflows/ci.yml/badge.svg)](https://github.com/xpcmdshell/py-code-mode/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/xpcmdshell/py-code-mode)](https://github.com/xpcmdshell/py-code-mode/releases)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
