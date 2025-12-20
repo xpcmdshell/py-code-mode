@@ -109,24 +109,71 @@ Three namespaces injected into their execution environment:
 
 Wrap external capabilities as YAML. Three types supported:
 
-**CLI tools** - wrap command-line programs:
+**CLI tools** - wrap command-line programs with schema + recipes:
 
 ```yaml
-# tools/ffmpeg.yaml
-name: ffmpeg
-type: cli
-args: "-i {input_path} {flags} {output_path}"
-description: Run ffmpeg with input file, flags, and output path
-timeout: 300
+# tools/curl.yaml
+name: curl
+description: Make HTTP requests
+command: curl
+timeout: 60
+
+schema:
+  options:
+    silent:
+      type: boolean
+      short: s
+      description: Silent mode
+    location:
+      type: boolean
+      short: L
+      description: Follow redirects
+    header:
+      type: array
+      short: H
+      description: HTTP headers
+    data:
+      type: string
+      short: d
+      description: POST data
+  positional:
+    - name: url
+      type: string
+      required: true
+
+recipes:
+  get:
+    description: Simple GET request
+    preset:
+      silent: true
+      location: true
+    params:
+      url: {}
+
+  post:
+    description: POST request with data
+    preset:
+      silent: true
+      location: true
+    params:
+      url: {}
+      data: {}
 ```
 
-```yaml
-# tools/extract_audio.yaml
-name: extract_audio
-type: cli
-command: ffmpeg
-args: "-i {video_path} -vn -q:a 0 {audio_output_path}"
-description: Extract audio track from video file as MP3
+Agent invocation:
+
+```python
+# Recipe invocation (recommended)
+tools.curl.get(url="https://example.com")
+tools.curl.post(url="https://api.example.com/data", data='{"key": "value"}')
+
+# Escape hatch - raw tool invocation (all options available)
+tools.curl(url="https://example.com", silent=True, location=True, header=["Accept: application/json"])
+
+# Discovery
+tools.list()                    # List all tools
+tools.search("http")            # Search tools by name/description
+tools.curl.list()               # List recipes for a tool
 ```
 
 **MCP tools** - connect to MCP servers:
