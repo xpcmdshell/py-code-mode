@@ -73,7 +73,7 @@ Skills accumulate. Your agents get more reliable over time.
 ## Installation
 
 ```bash
-uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.2.0
+uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.2.1
 ```
 
 ## Quick Start
