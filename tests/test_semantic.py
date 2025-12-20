@@ -559,22 +559,22 @@ class TestSkillLibraryWithRealEmbedder:
             _make_skill(
                 name="port_scan",
                 description="Scan network ports using nmap to find open services",
-                code="result = tools.call('nmap', {'target': target, 'ports': '1-1000'})",
+                code="result = tools.nmap(target=target, ports='1-1000')",
             ),
             _make_skill(
                 name="web_screenshot",
                 description="Capture a screenshot of a webpage using headless browser",
-                code="tools.call('chromium', {'url': url, 'screenshot': output_path})",
+                code="tools.chromium(url=url, screenshot=output_path)",
             ),
             _make_skill(
                 name="dir_bruteforce",
                 description="Bruteforce web directories to find hidden paths",
-                code="tools.call('ffuf', {'url': url, 'wordlist': wordlist})",
+                code="tools.ffuf(url=url, wordlist=wordlist)",
             ),
             _make_skill(
                 name="dns_enum",
                 description="Enumerate DNS records for a domain",
-                code="tools.call('dig', {'domain': domain, 'type': 'ANY'})",
+                code="tools.dig(domain=domain, type='ANY')",
             ),
         ]
 

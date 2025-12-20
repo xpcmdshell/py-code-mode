@@ -109,12 +109,12 @@ class RedisArtifactStore:
         if content is None:
             raise ArtifactNotFoundError(f"Artifact not found: {name}")
 
-        # Try JSON deserialization for .json files
+        # Deserialize JSON files - raise on parse failure (no silent fallback)
         if name.endswith(".json"):
             try:
                 return json.loads(content)
-            except (json.JSONDecodeError, TypeError):
-                pass
+            except (json.JSONDecodeError, TypeError) as e:
+                raise ValueError(f"Failed to parse JSON artifact '{name}': {e}") from e
 
         return content
 

@@ -52,15 +52,14 @@ Agent: The GitHub user "octocat" has 8 public repositories.
 
 ### 1. Tool Definition
 
-Tools are defined as `CLIToolSpec` objects that describe how to invoke CLI commands:
+Tools are defined in YAML files that describe how to invoke CLI commands:
 
-```python
-CLIToolSpec(
-    name="curl",
-    description="HTTP client for making requests",
-    command="curl",
-    args_template="-s {url}",  # {placeholders} filled from args dict
-)
+```yaml
+# configs/tools/curl.yaml
+name: curl
+type: cli
+description: HTTP client for making requests
+args: "-s {url}"
 ```
 
 ### 2. Storage + Session
@@ -137,12 +136,22 @@ users = json.loads(users_json.decode())
 
 ### Add More Tools
 
-```python
-cli = CLIAdapter([
-    CLIToolSpec(name="curl", description="...", command="curl", args_template="-s {url}"),
-    CLIToolSpec(name="dig", description="DNS lookup", command="dig", args_template="+short {domain}"),
-    CLIToolSpec(name="whois", description="Domain info", command="whois", args_template="{domain}"),
-])
+Create additional YAML files in your tools directory:
+
+```yaml
+# configs/tools/dig.yaml
+name: dig
+type: cli
+description: DNS lookup
+args: "+short {domain}"
+```
+
+```yaml
+# configs/tools/whois.yaml
+name: whois
+type: cli
+description: Domain info
+args: "{domain}"
 ```
 
 ### Load Tools from YAML

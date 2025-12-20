@@ -427,17 +427,18 @@ Combine:
 ### Tool Execution
 
 ```
-Agent writes: "tools.curl(url='...')"
+Agent writes: "tools.curl.get(url='...')"
         │
         ▼
 ┌───────────────────────┐
 │ ToolsNamespace        │
 │                       │
-│ tools.curl(url=...)   │──▶ ToolRegistry.call_tool("curl", {...})
-│ tools.call("curl",...)│                │
-│ tools.search(...)     │                ▼
-│ tools.list()          │         ┌────────────┐
-└───────────────────────┘         │ CLIAdapter │ → subprocess
+│ tools.curl(url=...)   │──▶ Escape hatch (direct invocation)
+│ tools.curl.get(...)   │──▶ Recipe invocation
+│ tools.search(...)     │                │
+│ tools.list()          │                ▼
+└───────────────────────┘         ┌────────────┐
+                                  │ CLIAdapter │ → subprocess
                                   │ MCPAdapter │ → MCP server
                                   │ HTTPAdapter│ → HTTP request
                                   └────────────┘
@@ -482,6 +483,162 @@ Agent writes: "artifacts.save('data.json', b'...', 'description')"
 │ artifacts.list()      │    RedisArtifactStore.save() → Redis
 └───────────────────────┘
 ```
+
+---
+
+## CLI Tool Interface
+
+The unified CLI tool interface provides two invocation patterns:
+
+| Pattern | Example | Use Case |
+|---------|---------|----------|
+| **Escape Hatch** | `tools.curl(silent=True, url="...")` | Full control over all options |
+| **Recipe** | `tools.curl.get(url="...")` | Pre-configured for common use cases |
+
+### Tool YAML Schema
+
+```yaml
+name: curl                        # Tool identifier
+description: Make HTTP requests   # Human-readable description
+command: curl                     # Actual CLI command
+timeout: 60                       # Execution timeout in seconds
+tags: [http]                      # Searchable tags
+
+schema:
+  options:                        # Named flags (--flag / -f)
+    silent:
+      type: boolean
+      short: s                    # -s instead of --silent
+      description: Silent mode
+    header:
+      type: array                 # Repeatable: -H val1 -H val2
+      short: H
+      description: HTTP headers
+  positional:                     # Positional arguments
+    - name: url
+      type: string
+      required: true
+
+recipes:                          # Named presets
+  get:
+    description: Simple GET request
+    preset:                       # Pre-filled options
+      silent: true
+      location: true
+    params:                       # Exposed to agent
+      url: {}
+```
+
+### Data Flow
+
+```
+                        DEVELOPER WRITES
+--------------------------------------------------------------------------------
+
+  tools/curl.yaml
+  +------------------------------------------------------+
+  | name: curl                                           |
+  | command: curl                                        |
+  | schema:                                              |
+  |   options:                                           |
+  |     silent: {type: boolean, short: s}                |
+  |   positional:                                        |
+  |     - {name: url, required: true}                    |
+  | recipes:                                             |
+  |   get:                                               |
+  |     preset: {silent: true, location: true}           |
+  |     params: {url: {}}                                |
+  +------------------------------------------------------+
+                          |
+                          v
+                     LOADING PHASE
+--------------------------------------------------------------------------------
+
+  cli_schema.py: parse_cli_tool_yaml()
+  +------------------------------------------------------+
+  | CLIToolDefinition(                                   |
+  |   name="curl",                                       |
+  |   command="curl",                                    |
+  |   schema={options: {...}, positional: [...]},        |
+  |   recipes={"get": {preset: ..., params: ...}}        |
+  | )                                                    |
+  +------------------------------------------------------+
+                          |
+                          v
+  cli.py: CLIAdapter.list_tools()
+  +------------------------------------------------------+
+  | Tool(                                                |
+  |   name="curl",                                       |
+  |   description="Make HTTP requests",                  |
+  |   callables=(                                        |
+  |     ToolCallable(name="get", params=(...)),          |
+  |     ToolCallable(name="post", params=(...)),         |
+  |   )                                                  |
+  | )                                                    |
+  +------------------------------------------------------+
+
+                       AGENT CALLS
+--------------------------------------------------------------------------------
+
+  tools.curl.get(url="https://example.com")
+        |    |           |
+        |    |           +--- kwargs passed to CallableProxy.__call__
+        |    |
+        |    +--- ToolProxy.__getattr__("get") -> CallableProxy
+        |
+        +--- ToolsNamespace.__getattr__("curl") -> ToolProxy
+
+                          |
+                          v
+  CallableProxy.__call__(url="https://example.com")
+        |
+        +--- adapter.call_tool("curl", "get", {"url": "..."})
+                          |
+                          v
+                    COMMAND BUILDING
+--------------------------------------------------------------------------------
+
+  CLICommandBuilder.build_recipe("get", {"url": "..."})
+        |
+        +--- 1. Get recipe preset: {silent: true, location: true}
+        |
+        +--- 2. Merge with user args: {silent: true, location: true,
+        |                              url: "https://example.com"}
+        |
+        +--- 3. Build command array:
+                 ["curl", "-s", "-L", "https://example.com"]
+                          |
+                          v
+                       EXECUTION
+--------------------------------------------------------------------------------
+
+  asyncio.create_subprocess_exec(
+    "curl", "-s", "-L", "https://example.com",
+    stdout=PIPE, stderr=PIPE
+  )
+        |
+        +--- Returns: stdout content (HTML/JSON response)
+```
+
+### Key Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `adapters/cli_schema.py` | YAML parsing, command building |
+| `adapters/cli.py` | CLIAdapter with `call_tool()` execution |
+| `namespace.py` | ToolsNamespace, ToolProxy, CallableProxy |
+| `tool_types.py` | Tool, ToolCallable, ToolParameter dataclasses |
+
+### Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| **Proxies use `__getattr__`** | Enables `tools.X.Y` syntax without pre-defining every method |
+| **`frozen=True` dataclasses** | Immutable types are safer and can be cached/hashed |
+| **Recipes merge presets + args** | Agent provides only what varies; preset handles boilerplate |
+| **`asyncio.create_subprocess_exec`** | Avoids shell injection - args passed as list, not string |
+| **Escape hatch (`ToolProxy.__call__`)** | Experts can bypass recipes when full control is needed |
+| **No backward compatibility** | Clean interface, no legacy code paths to maintain |
 
 ---
 

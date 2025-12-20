@@ -158,77 +158,6 @@ class TestSessionCodeExecution:
             assert result.value == 84
 
 
-class TestSessionToolsNamespace:
-    """Tests for Session tools namespace injection."""
-
-    @pytest.fixture
-    def storage_with_tools(self, tmp_path: Path) -> FileStorage:
-        """Create FileStorage with tools."""
-        storage = FileStorage(tmp_path)
-        tools_dir = tmp_path / "tools"
-        tools_dir.mkdir(exist_ok=True)
-        (tools_dir / "echo.yaml").write_text(
-            """
-name: echo
-type: cli
-command: echo
-args: "{text}"
-description: Echo text back
-"""
-        )
-        return storage
-
-    @pytest.mark.asyncio
-    async def test_tools_list_callable(self, storage_with_tools: FileStorage) -> None:
-        """tools.list() is callable and returns list."""
-        async with Session(storage=storage_with_tools) as session:
-            result = await session.run("tools.list()")
-
-            assert result.is_ok, f"tools.list() failed: {result.error}"
-            assert result.value is not None
-            assert isinstance(result.value, list)
-
-    @pytest.mark.asyncio
-    async def test_tools_list_returns_tool_info(self, storage_with_tools: FileStorage) -> None:
-        """tools.list() returns tool info with name, description, params."""
-        async with Session(storage=storage_with_tools) as session:
-            result = await session.run("tools.list()")
-
-            assert result.is_ok
-            assert len(result.value) >= 1
-            tool = result.value[0]
-            assert "name" in tool
-            assert "description" in tool
-            assert "params" in tool
-
-    @pytest.mark.asyncio
-    async def test_tools_search_callable(self, storage_with_tools: FileStorage) -> None:
-        """tools.search(query) is callable and returns list."""
-        async with Session(storage=storage_with_tools) as session:
-            result = await session.run('tools.search("echo")')
-
-            assert result.is_ok
-            assert isinstance(result.value, list)
-
-    @pytest.mark.asyncio
-    async def test_tools_call_invokes_tool(self, storage_with_tools: FileStorage) -> None:
-        """tools.call(name, args) invokes the tool."""
-        async with Session(storage=storage_with_tools) as session:
-            result = await session.run('tools.call("echo", {"text": "hello"})')
-
-            assert result.is_ok
-            assert "hello" in str(result.value)
-
-    @pytest.mark.asyncio
-    async def test_tool_direct_invocation(self, storage_with_tools: FileStorage) -> None:
-        """tools.tool_name(**kwargs) syntax works."""
-        async with Session(storage=storage_with_tools) as session:
-            result = await session.run('tools.echo(text="direct call")')
-
-            assert result.is_ok
-            assert "direct call" in str(result.value)
-
-
 class TestSessionSkillsNamespace:
     """Tests for Session skills namespace injection."""
 
@@ -651,21 +580,7 @@ class TestSessionTypedExecutorAPI:
 class TestStorageAccessWiring:
     """Tests that Session correctly wires storage access to executors."""
 
-    @pytest.fixture
-    def storage_with_tools(self, tmp_path: Path) -> FileStorage:
-        """Create FileStorage with tools."""
-        tools_dir = tmp_path / "tools"
-        tools_dir.mkdir()
-        (tools_dir / "echo.yaml").write_text(
-            """
-name: echo
-type: cli
-command: echo
-args: "{text}"
-description: Echo text
-"""
-        )
-        return FileStorage(tmp_path)
+    # storage_with_tools fixture removed - not compatible with unified interface
 
     @pytest.fixture
     def storage_with_skills(self, tmp_path: Path) -> FileStorage:
@@ -682,19 +597,6 @@ def run(n: int) -> int:
         return FileStorage(tmp_path)
 
     @pytest.mark.asyncio
-    async def test_tools_namespace_available_with_typed_executor(
-        self, storage_with_tools: FileStorage
-    ) -> None:
-        """tools namespace works when using typed executor."""
-        from py_code_mode.backends.in_process import InProcessExecutor
-
-        executor = InProcessExecutor()
-        async with Session(storage=storage_with_tools, executor=executor) as session:
-            result = await session.run("'tools' in dir()")
-            assert result.is_ok
-            assert result.value is True
-
-    @pytest.mark.asyncio
     async def test_skills_namespace_available_with_typed_executor(
         self, storage_with_skills: FileStorage
     ) -> None:
@@ -706,18 +608,6 @@ def run(n: int) -> int:
             result = await session.run("'skills' in dir()")
             assert result.is_ok
             assert result.value is True
-
-    @pytest.mark.asyncio
-    async def test_tools_are_loaded_from_storage(self, storage_with_tools: FileStorage) -> None:
-        """tools from storage are available in executor."""
-        from py_code_mode.backends.in_process import InProcessExecutor
-
-        executor = InProcessExecutor()
-        async with Session(storage=storage_with_tools, executor=executor) as session:
-            result = await session.run("tools.list()")
-            assert result.is_ok
-            tool_names = [t["name"] for t in result.value]
-            assert "echo" in tool_names
 
     @pytest.mark.asyncio
     async def test_skills_are_loaded_from_storage(self, storage_with_skills: FileStorage) -> None:

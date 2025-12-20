@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from py_code_mode import Capability, CodeExecutor
+from py_code_mode import Capability, InProcessExecutor
+from py_code_mode.adapters.cli import CLIAdapter
 from py_code_mode.artifacts import FileArtifactStore
 from py_code_mode.registry import ToolRegistry
 from py_code_mode.semantic import create_skill_library
@@ -33,10 +34,22 @@ class TestCreateExecutorIntegration:
         (tools / "echo.yaml").write_text(
             """
 name: echo
-type: cli
-command: echo
-args: "{text}"
 description: Echo text back
+command: echo
+timeout: 10
+
+schema:
+  positional:
+    - name: text
+      type: string
+      required: true
+      description: Text to echo
+
+recipes:
+  echo:
+    description: Echo text
+    params:
+      text: {}
 """
         )
         return tools
@@ -65,12 +78,14 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_create_executor_with_tools(self, tools_dir: Path) -> None:
         """Executor loads tools and makes them callable."""
-        registry = await ToolRegistry.from_dir(str(tools_dir))
-        executor = CodeExecutor(registry=registry)
+        adapter = CLIAdapter(tools_path=tools_dir)
+        registry = ToolRegistry()
+        registry._adapters.append(adapter)
+        executor = InProcessExecutor(registry=registry)
 
         try:
             # Tool should be callable
-            result = await executor.run('tools.echo(text="hello")')
+            result = await executor.run('tools.echo.echo(text="hello")')
             assert result.is_ok, f"Tool call failed: {result.error}"
             assert "hello" in result.value
         finally:
@@ -79,8 +94,10 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_create_executor_tools_list(self, tools_dir: Path) -> None:
         """Executor provides tools.list() that returns tool info."""
-        registry = await ToolRegistry.from_dir(str(tools_dir))
-        executor = CodeExecutor(registry=registry)
+        adapter = CLIAdapter(tools_path=tools_dir)
+        registry = ToolRegistry()
+        registry._adapters.append(adapter)
+        executor = InProcessExecutor(registry=registry)
 
         try:
             result = await executor.run("tools.list()")
@@ -97,7 +114,7 @@ def run(n: int) -> int:
         """Executor loads skills and makes them callable."""
         store = FileSkillStore(skills_dir)
         skill_library = create_skill_library(store=store)
-        executor = CodeExecutor(skill_library=skill_library)
+        executor = InProcessExecutor(skill_library=skill_library)
 
         try:
             # Skill should be callable
@@ -112,7 +129,7 @@ def run(n: int) -> int:
         """Executor provides skills.list() that returns skill info."""
         store = FileSkillStore(skills_dir)
         skill_library = create_skill_library(store=store)
-        executor = CodeExecutor(skill_library=skill_library)
+        executor = InProcessExecutor(skill_library=skill_library)
 
         try:
             result = await executor.run("skills.list()")
@@ -129,7 +146,7 @@ def run(n: int) -> int:
         """Executor provides skills.search() for semantic search."""
         store = FileSkillStore(skills_dir)
         skill_library = create_skill_library(store=store)
-        executor = CodeExecutor(skill_library=skill_library)
+        executor = InProcessExecutor(skill_library=skill_library)
 
         try:
             result = await executor.run('skills.search("multiply number")')
@@ -145,7 +162,7 @@ def run(n: int) -> int:
         """Executor sets up artifact storage."""
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         artifact_store = FileArtifactStore(artifacts_dir)
-        executor = CodeExecutor(artifact_store=artifact_store)
+        executor = InProcessExecutor(artifact_store=artifact_store)
 
         try:
             # Should be able to save and load
@@ -165,7 +182,7 @@ def run(n: int) -> int:
         """Executor provides artifacts.list()."""
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         artifact_store = FileArtifactStore(artifacts_dir)
-        executor = CodeExecutor(artifact_store=artifact_store)
+        executor = InProcessExecutor(artifact_store=artifact_store)
 
         try:
             await executor.run('artifacts.save("a.json", {}, "first")')
@@ -182,12 +199,14 @@ def run(n: int) -> int:
         self, tools_dir: Path, skills_dir: Path, artifacts_dir: Path
     ) -> None:
         """Executor with all three: tools, skills, artifacts."""
-        registry = await ToolRegistry.from_dir(str(tools_dir))
+        adapter = CLIAdapter(tools_path=tools_dir)
+        registry = ToolRegistry()
+        registry._adapters.append(adapter)
         store = FileSkillStore(skills_dir)
         skill_library = create_skill_library(store=store)
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         artifact_store = FileArtifactStore(artifacts_dir)
-        executor = CodeExecutor(
+        executor = InProcessExecutor(
             registry=registry,
             skill_library=skill_library,
             artifact_store=artifact_store,
@@ -195,7 +214,7 @@ def run(n: int) -> int:
 
         try:
             # Tools work
-            result = await executor.run('tools.echo(text="test")')
+            result = await executor.run('tools.echo.echo(text="test")')
             assert result.is_ok, f"tools failed: {result.error}"
 
             # Skills work
@@ -216,16 +235,16 @@ class TestBackendArtifacts:
     """Test artifact handling works consistently across backends."""
 
     @pytest.fixture
-    def executor_with_artifacts(self, tmp_path: Path) -> CodeExecutor:
+    def executor_with_artifacts(self, tmp_path: Path) -> InProcessExecutor:
         """Create executor with artifact store."""
         artifacts_path = tmp_path / "artifacts"
         artifacts_path.mkdir()
         artifact_store = FileArtifactStore(artifacts_path)
-        return CodeExecutor(artifact_store=artifact_store)
+        return InProcessExecutor(artifact_store=artifact_store)
 
     @pytest.mark.asyncio
     async def test_artifact_save_load_roundtrip(
-        self, executor_with_artifacts: CodeExecutor
+        self, executor_with_artifacts: InProcessExecutor
     ) -> None:
         """Artifacts can be saved and loaded back."""
         async with executor_with_artifacts as executor:
@@ -240,7 +259,7 @@ class TestBackendArtifacts:
 
     @pytest.mark.asyncio
     async def test_artifacts_persist_across_runs(
-        self, executor_with_artifacts: CodeExecutor
+        self, executor_with_artifacts: InProcessExecutor
     ) -> None:
         """Artifacts saved in one run are available in subsequent runs."""
         async with executor_with_artifacts as executor:
@@ -251,7 +270,7 @@ class TestBackendArtifacts:
             assert "persistent data" in str(result.value)
 
     @pytest.mark.asyncio
-    async def test_artifact_list(self, executor_with_artifacts: CodeExecutor) -> None:
+    async def test_artifact_list(self, executor_with_artifacts: InProcessExecutor) -> None:
         """Can list saved artifacts."""
         async with executor_with_artifacts as executor:
             await executor.run("artifacts.save('file1.txt', b'one', 'first')")
@@ -263,7 +282,7 @@ class TestBackendArtifacts:
             assert "file2.txt" in str(result.value)
 
     @pytest.mark.asyncio
-    async def test_artifact_delete(self, executor_with_artifacts: CodeExecutor) -> None:
+    async def test_artifact_delete(self, executor_with_artifacts: InProcessExecutor) -> None:
         """Can delete artifacts."""
         async with executor_with_artifacts as executor:
             await executor.run("artifacts.save('to_delete.txt', b'temp', 'temporary')")
@@ -279,7 +298,7 @@ class TestBackendSkills:
     """Test skills invocation across backends."""
 
     @pytest.fixture
-    def executor_with_skills(self, tmp_path: Path) -> CodeExecutor:
+    def executor_with_skills(self, tmp_path: Path) -> InProcessExecutor:
         """Create executor with skills."""
         skills_path = tmp_path / "skills"
         skills_path.mkdir()
@@ -295,10 +314,10 @@ class TestBackendSkills:
         store.save(skill)
 
         library = create_skill_library(store=store)
-        return CodeExecutor(skill_library=library)
+        return InProcessExecutor(skill_library=library)
 
     @pytest.mark.asyncio
-    async def test_skill_invocation(self, executor_with_skills: CodeExecutor) -> None:
+    async def test_skill_invocation(self, executor_with_skills: InProcessExecutor) -> None:
         """Skills can be invoked via skills namespace."""
         async with executor_with_skills as executor:
             result = await executor.run("skills.double(n=21)")
@@ -307,7 +326,7 @@ class TestBackendSkills:
             assert result.value == 42
 
     @pytest.mark.asyncio
-    async def test_skills_list(self, executor_with_skills: CodeExecutor) -> None:
+    async def test_skills_list(self, executor_with_skills: InProcessExecutor) -> None:
         """Can list available skills."""
         async with executor_with_skills as executor:
             result = await executor.run("skills.list()")
@@ -337,7 +356,7 @@ class TestBackendSkills:
         store.save(skill)
         library = create_skill_library(store=store)
 
-        async with CodeExecutor(skill_library=library) as executor:
+        async with InProcessExecutor(skill_library=library) as executor:
             # With default
             result = await executor.run("skills.greet()")
             assert result.is_ok
@@ -352,48 +371,60 @@ class TestBackendSkills:
 class TestBackendTools:
     """Test tools invocation across backends."""
 
+    @pytest.fixture
+    def echo_tool_yaml(self) -> str:
+        """Echo tool YAML in new schema + recipes format."""
+        return """
+name: echo
+description: Echo text back
+command: echo
+timeout: 10
+
+schema:
+  positional:
+    - name: text
+      type: string
+      required: true
+      description: Text to echo
+
+recipes:
+  echo:
+    description: Echo text
+    params:
+      text: {}
+"""
+
     @pytest.mark.asyncio
-    async def test_tool_invocation(self, tmp_path: Path) -> None:
+    async def test_tool_invocation(self, tmp_path: Path, echo_tool_yaml: str) -> None:
         """Tools can be invoked via tools namespace."""
-        from py_code_mode.adapters import CLIAdapter, CLIToolSpec
+        # Create a tools directory with echo tool
+        tools_dir = tmp_path / "tools"
+        tools_dir.mkdir()
+        (tools_dir / "echo.yaml").write_text(echo_tool_yaml)
 
-        # Create a simple echo tool
-        specs = [
-            CLIToolSpec(
-                name="echo",
-                description="Echo text",
-                command="echo",
-                args_template="{text}",
-            )
-        ]
-        adapter = CLIAdapter(specs)
+        adapter = CLIAdapter(tools_path=tools_dir)
         registry = ToolRegistry()
-        await registry.register_adapter(adapter)
+        registry._adapters.append(adapter)
 
-        async with CodeExecutor(registry=registry) as executor:
-            result = await executor.run('tools.echo(text="hello")')
+        async with InProcessExecutor(registry=registry) as executor:
+            result = await executor.run('tools.echo.echo(text="hello")')
 
             assert result.is_ok, f"Tool invocation failed: {result.error}"
             assert "hello" in result.value
 
     @pytest.mark.asyncio
-    async def test_tools_list(self, tmp_path: Path) -> None:
+    async def test_tools_list(self, tmp_path: Path, echo_tool_yaml: str) -> None:
         """Can list available tools."""
-        from py_code_mode.adapters import CLIAdapter, CLIToolSpec
+        # Create a tools directory with echo tool
+        tools_dir = tmp_path / "tools"
+        tools_dir.mkdir()
+        (tools_dir / "echo.yaml").write_text(echo_tool_yaml)
 
-        specs = [
-            CLIToolSpec(
-                name="echo",
-                description="Echo text",
-                command="echo",
-                args_template="{text}",
-            )
-        ]
-        adapter = CLIAdapter(specs)
+        adapter = CLIAdapter(tools_path=tools_dir)
         registry = ToolRegistry()
-        await registry.register_adapter(adapter)
+        registry._adapters.append(adapter)
 
-        async with CodeExecutor(registry=registry) as executor:
+        async with InProcessExecutor(registry=registry) as executor:
             result = await executor.run("tools.list()")
 
             assert result.is_ok
@@ -407,7 +438,7 @@ class TestBackendStateIsolation:
     @pytest.mark.asyncio
     async def test_variables_persist_within_session(self) -> None:
         """Variables set in one run persist to subsequent runs in same session."""
-        async with CodeExecutor() as executor:
+        async with InProcessExecutor() as executor:
             await executor.run("x = 42")
             result = await executor.run("x * 2")
 
@@ -417,10 +448,10 @@ class TestBackendStateIsolation:
     @pytest.mark.asyncio
     async def test_state_isolation_between_executors(self) -> None:
         """Different executor instances have isolated state."""
-        async with CodeExecutor() as executor1:
+        async with InProcessExecutor() as executor1:
             await executor1.run("shared_var = 'executor1'")
 
-            async with CodeExecutor() as executor2:
+            async with InProcessExecutor() as executor2:
                 # executor2 should not see executor1's variable
                 result = await executor2.run("shared_var")
                 assert not result.is_ok
@@ -433,14 +464,14 @@ class TestBackendCapabilities:
     @pytest.mark.asyncio
     async def test_in_process_supports_timeout(self) -> None:
         """In-process executor supports timeout capability."""
-        executor = CodeExecutor()
+        executor = InProcessExecutor()
         assert executor.supports(Capability.TIMEOUT)
         assert Capability.TIMEOUT in executor.supported_capabilities()
 
     @pytest.mark.asyncio
     async def test_in_process_capabilities_are_minimal(self) -> None:
         """In-process executor has minimal capabilities (no isolation)."""
-        executor = CodeExecutor()
+        executor = InProcessExecutor()
         caps = executor.supported_capabilities()
 
         # Should have timeout
@@ -458,7 +489,7 @@ class TestBackendContextManager:
     @pytest.mark.asyncio
     async def test_executor_as_context_manager(self) -> None:
         """Executor works as async context manager."""
-        async with CodeExecutor() as executor:
+        async with InProcessExecutor() as executor:
             result = await executor.run("1 + 1")
             assert result.is_ok
             assert result.value == 2
@@ -466,7 +497,7 @@ class TestBackendContextManager:
     @pytest.mark.asyncio
     async def test_close_can_be_called_directly(self) -> None:
         """Close method can be called explicitly."""
-        executor = CodeExecutor()
+        executor = InProcessExecutor()
         result = await executor.run("1 + 1")
         assert result.is_ok
 

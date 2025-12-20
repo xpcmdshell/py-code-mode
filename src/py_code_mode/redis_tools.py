@@ -155,7 +155,7 @@ async def registry_from_redis(
     Returns:
         ToolRegistry with tools from Redis.
     """
-    from py_code_mode.adapters import CLIAdapter, CLIToolSpec
+    from py_code_mode.adapters import CLIAdapter
     from py_code_mode.mcp_adapter import MCPAdapter
     from py_code_mode.registry import ToolRegistry
 
@@ -166,30 +166,22 @@ async def registry_from_redis(
         return registry
 
     # Separate CLI and MCP tools
-    cli_specs: list[CLIToolSpec] = []
+    cli_configs: list[dict[str, Any]] = []
     mcp_configs: list[dict[str, Any]] = []
 
     for name, config in tools.items():
         tool_type = config.get("type", "cli")
 
         if tool_type == "cli":
-            # Build CLIToolSpec from config
-            spec = CLIToolSpec(
-                name=config["name"],
-                args_template=config.get("args", ""),
-                description=config.get("description", ""),
-                timeout_seconds=config.get("timeout", 60.0),
-                tags=frozenset(config.get("tags", [])),
-            )
-            cli_specs.append(spec)
+            cli_configs.append(config)
         elif tool_type == "mcp":
             mcp_configs.append(config)
 
-    # Register CLI tools
-    if cli_specs:
-        adapter = CLIAdapter(cli_specs)
-        if await adapter.list_tools():
-            await registry.register_adapter(adapter)
+    # Register CLI tools using new unified interface
+    if cli_configs:
+        adapter = CLIAdapter.from_configs(cli_configs)
+        if adapter.list_tools():
+            registry._adapters.append(adapter)
 
     # Register MCP tools
     for mcp_config in mcp_configs:
@@ -197,24 +189,25 @@ async def registry_from_redis(
         tool_name = mcp_config.get("name", "unknown")
         try:
             if transport == "stdio":
-                adapter = await MCPAdapter.connect_stdio(
+                mcp_adapter = await MCPAdapter.connect_stdio(
                     command=mcp_config["command"],
                     args=mcp_config.get("args", []),
                     env=mcp_config.get("env", {}),
                 )
             elif transport == "sse":
-                adapter = await MCPAdapter.connect_sse(
+                mcp_adapter = await MCPAdapter.connect_sse(
                     url=mcp_config["url"],
                     headers=mcp_config.get("headers"),
                 )
             else:
                 raise ValueError(f"Unknown MCP transport: {transport}")
 
-            await registry.register_adapter(adapter)
-            print(f"  MCP tool loaded: {tool_name}")
+            await mcp_adapter._refresh_tools()
+            registry.register_adapter(mcp_adapter)
+            logger.info("MCP tool loaded: %s", tool_name)
         except ImportError:
-            print(f"  MCP tool skipped (mcp package not installed): {tool_name}")
-        except Exception as e:
-            print(f"  MCP tool failed: {tool_name} - {type(e).__name__}: {e}")
+            logger.info("MCP tool skipped (mcp package not installed): %s", tool_name)
+        except (OSError, ValueError, KeyError, TimeoutError, ConnectionError) as e:
+            logger.warning("MCP tool failed: %s - %s: %s", tool_name, type(e).__name__, e)
 
     return registry

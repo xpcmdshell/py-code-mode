@@ -9,9 +9,9 @@ Capabilities:
 - RESET: Yes (can reset session state)
 
 Usage:
-    config = ContainerConfig(image="py-code-mode-tools:latest")
+    config = ContainerConfig()  # Uses DEFAULT_IMAGE
     async with ContainerExecutor(config) as executor:
-        result = await executor.run('tools.call("cli.nmap", {"target": "10.0.0.1"})')
+        result = await executor.run('tools.nmap(target="10.0.0.1")')
 """
 
 from __future__ import annotations
@@ -34,6 +34,14 @@ except ImportError:
     docker = None  # type: ignore
     Container = None  # type: ignore
 
+try:
+    import httpx
+
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+    httpx = None  # type: ignore
+
 from py_code_mode.backend import (
     Capability,
     FileStorageAccess,
@@ -42,7 +50,7 @@ from py_code_mode.backend import (
     register_backend,
 )
 from py_code_mode.backends.container.client import SessionClient
-from py_code_mode.backends.container.config import ContainerConfig
+from py_code_mode.backends.container.config import DEFAULT_IMAGE, ContainerConfig
 from py_code_mode.types import ExecutionResult
 
 
@@ -115,7 +123,7 @@ class ContainerExecutor:
         artifacts: str | None = None,
         skills: str | None = None,
         tools: str | None = None,
-        image: str = "py-code-mode-tools:latest",
+        image: str = DEFAULT_IMAGE,
         timeout: float = 30.0,
         **kwargs: Any,
     ) -> ContainerExecutor:
@@ -170,13 +178,17 @@ class ContainerExecutor:
 
     def _create_docker_client(self) -> Any:
         """Create Docker client, trying multiple socket locations if needed."""
+        logger = logging.getLogger(__name__)
+        last_error: Exception | None = None
+
         # Try standard from_env first (respects DOCKER_HOST)
         try:
             client = docker.from_env()
             client.ping()
             return client
-        except Exception:
-            pass
+        except docker.errors.DockerException as e:
+            logger.debug(f"docker.from_env() failed: {e}")
+            last_error = e
 
         # Common socket locations across platforms
         socket_paths = [
@@ -191,13 +203,18 @@ class ContainerExecutor:
                     client = docker.DockerClient(base_url=f"unix://{socket_path}")
                     client.ping()
                     return client
-                except Exception:
+                except docker.errors.DockerException as e:
+                    logger.debug(f"Failed to connect via {socket_path}: {e}")
+                    last_error = e
                     continue
 
-        raise RuntimeError(
+        error_msg = (
             "Could not connect to Docker. Make sure Docker is running.\n"
             "Tried DOCKER_HOST env var and common socket locations."
         )
+        if last_error:
+            error_msg += f"\nLast error: {last_error}"
+        raise RuntimeError(error_msg)
 
     def _find_project_root(self) -> Path:
         """Find project root by looking for docker/ directory.
@@ -277,7 +294,7 @@ class ContainerExecutor:
                     rm=True,
                 )
                 logger.info("Successfully built py-code-mode:base")
-            except Exception as e:
+            except docker.errors.BuildError as e:
                 raise RuntimeError(f"Failed to build base image: {e}") from e
 
         # Build tools image
@@ -290,7 +307,7 @@ class ContainerExecutor:
                 rm=True,
             )
             logger.info(f"Successfully built {self.config.image}")
-        except Exception as e:
+        except docker.errors.BuildError as e:
             raise RuntimeError(f"Failed to build tools image: {e}") from e
 
     async def start(
@@ -337,12 +354,24 @@ class ContainerExecutor:
             if redis_url:
                 redis_url = _transform_localhost_for_docker(redis_url)
 
+        # Extract Redis prefixes if available
+        tools_prefix = None
+        skills_prefix = None
+        artifacts_prefix = None
+        if isinstance(storage_access, RedisStorageAccess):
+            tools_prefix = storage_access.tools_prefix
+            skills_prefix = storage_access.skills_prefix
+            artifacts_prefix = storage_access.artifacts_prefix
+
         # Prepare container config with storage access
         docker_config = self.config.to_docker_config(
             tools_path=tools_path,
             skills_path=skills_path,
             artifacts_path=artifacts_path,
             redis_url=redis_url,
+            tools_prefix=tools_prefix,
+            skills_prefix=skills_prefix,
+            artifacts_prefix=artifacts_prefix,
         )
 
         # Start container
@@ -360,26 +389,45 @@ class ContainerExecutor:
 
             # Wait for container to be healthy
             await self._wait_for_healthy()
-        except Exception:
-            # Clean up container on any startup failure
+        except (RuntimeError, TimeoutError, OSError, docker.errors.DockerException):
+            # Clean up container on startup failure
+            # RuntimeError: port detection failed
+            # TimeoutError: health check timeout
+            # OSError/DockerException: Docker communication errors
             await self.stop()
             raise
 
     async def stop(self) -> None:
         """Stop and remove the container."""
+        logger = logging.getLogger(__name__)
+
         if self._client:
             await self._client.close()
             self._client = None
 
         if self._container:
+            container_id = self._container.id if hasattr(self._container, "id") else "unknown"
+
+            # Try graceful stop first
             try:
+                logger.debug(f"Stopping container {container_id}")
                 self._container.stop(timeout=10)
-            except Exception:
-                pass
+                logger.debug(f"Stopped container {container_id}")
+            except docker.errors.APIError as e:
+                # Not fatal - container might already be stopped or not running
+                logger.debug(f"Container stop failed (may be already stopped): {e}")
+
+            # Remove container (force=True handles both stopped and running containers)
             try:
-                self._container.remove()
-            except Exception:
-                pass
+                logger.debug(f"Removing container {container_id}")
+                self._container.remove(force=True)
+                logger.debug(f"Removed container {container_id}")
+            except docker.errors.APIError as e:
+                # This is a real problem - log as error
+                logger.error(f"Failed to remove container {container_id}: {e}")
+                # But still clear the reference to avoid retrying on next cleanup attempt
+
+            # Always clear reference to avoid leaving stale handles
             self._container = None
 
     async def close(self) -> None:
@@ -443,20 +491,30 @@ class ContainerExecutor:
         if self._client is None:
             raise RuntimeError("Client not initialized")
 
+        logger = logging.getLogger(__name__)
+        last_error: Exception | None = None
+
         start_time = time.time()
         while time.time() - start_time < self.config.startup_timeout:
             try:
                 health = await self._client.health()
                 if health.status == "healthy":
                     return
-            except Exception:
-                pass
+            except (OSError, ConnectionError, TimeoutError) as e:
+                # Expected during startup - container not ready yet
+                logger.debug(f"Health check failed (container starting): {e}")
+                last_error = e
+            except httpx.HTTPError as e:
+                # HTTP-level errors also expected during startup
+                logger.debug(f"Health check failed (HTTP error): {e}")
+                last_error = e
 
             await asyncio.sleep(self.config.health_check_interval)
 
-        raise TimeoutError(
-            f"Container did not become healthy within {self.config.startup_timeout}s"
-        )
+        error_msg = f"Container did not become healthy within {self.config.startup_timeout}s"
+        if last_error:
+            error_msg += f"\nLast health check error: {last_error}"
+        raise TimeoutError(error_msg)
 
     @property
     def container_id(self) -> str | None:

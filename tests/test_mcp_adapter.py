@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from py_code_mode.types import ToolDefinition
+from py_code_mode.tool_types import Tool
 
 
 # Mock MCP types for testing without the mcp package installed
@@ -38,17 +38,6 @@ class TestMCPAdapterInterface:
         adapter = MCPAdapter(session=mock_session)
 
         assert isinstance(adapter, ToolAdapter)
-
-    def test_has_required_methods(self) -> None:
-        """MCPAdapter has list_tools and call_tool methods."""
-        from py_code_mode.mcp_adapter import MCPAdapter
-
-        mock_session = MagicMock()
-        adapter = MCPAdapter(session=mock_session)
-
-        assert hasattr(adapter, "list_tools")
-        assert hasattr(adapter, "call_tool")
-        assert hasattr(adapter, "close")
 
 
 class TestMCPAdapterListTools:
@@ -88,23 +77,25 @@ class TestMCPAdapterListTools:
         return session
 
     @pytest.fixture
-    def adapter(self, mock_session):
+    async def adapter(self, mock_session):
         from py_code_mode.mcp_adapter import MCPAdapter
 
-        return MCPAdapter(session=mock_session)
+        adapter = MCPAdapter(session=mock_session)
+        await adapter._refresh_tools()  # Populate the cache
+        return adapter
 
     @pytest.mark.asyncio
-    async def test_list_tools_returns_tool_definitions(self, adapter) -> None:
-        """list_tools() returns list of ToolDefinition."""
-        tools = await adapter.list_tools()
+    async def test_list_tools_returns_tool_objects(self, adapter) -> None:
+        """list_tools() returns list of Tool objects."""
+        tools = adapter.list_tools()
 
         assert len(tools) == 2
-        assert all(isinstance(t, ToolDefinition) for t in tools)
+        assert all(isinstance(t, Tool) for t in tools)
 
     @pytest.mark.asyncio
     async def test_list_tools_maps_names(self, adapter) -> None:
         """Tool names are preserved from MCP."""
-        tools = await adapter.list_tools()
+        tools = adapter.list_tools()
         names = {t.name for t in tools}
 
         assert names == {"read_file", "write_file"}
@@ -112,19 +103,21 @@ class TestMCPAdapterListTools:
     @pytest.mark.asyncio
     async def test_list_tools_maps_descriptions(self, adapter) -> None:
         """Tool descriptions are preserved from MCP."""
-        tools = await adapter.list_tools()
+        tools = adapter.list_tools()
         tool = next(t for t in tools if t.name == "read_file")
 
         assert tool.description == "Read contents of a file"
 
     @pytest.mark.asyncio
-    async def test_list_tools_maps_input_schema(self, adapter) -> None:
-        """Input schemas are converted to JsonSchema."""
-        tools = await adapter.list_tools()
+    async def test_list_tools_has_callable_with_parameters(self, adapter) -> None:
+        """Tools have callables with parameters from input schema."""
+        tools = adapter.list_tools()
         tool = next(t for t in tools if t.name == "read_file")
 
-        assert tool.input_schema.type == "object"
-        assert "path" in tool.input_schema.properties
+        assert len(tool.callables) == 1
+        callable_obj = tool.callables[0]
+        param_names = {p.name for p in callable_obj.parameters}
+        assert "path" in param_names
 
 
 class TestMCPAdapterCallTool:
@@ -163,14 +156,14 @@ class TestMCPAdapterCallTool:
     @pytest.mark.asyncio
     async def test_call_tool_invokes_session(self, adapter, mock_session) -> None:
         """call_tool() calls session.call_tool with correct args."""
-        await adapter.call_tool("echo", {"text": "hello"})
+        await adapter.call_tool("echo", None, {"text": "hello"})
 
         mock_session.call_tool.assert_called_once_with("echo", {"text": "hello"})
 
     @pytest.mark.asyncio
     async def test_call_tool_returns_text_content(self, adapter) -> None:
         """call_tool() extracts text from MCP response."""
-        result = await adapter.call_tool("echo", {"text": "hello"})
+        result = await adapter.call_tool("echo", None, {"text": "hello"})
 
         assert result == "hello back"
 
@@ -182,7 +175,7 @@ class TestMCPAdapterCallTool:
         mock_session.call_tool.side_effect = Exception("Tool not found")
 
         with pytest.raises(ToolNotFoundError):
-            await adapter.call_tool("nonexistent", {})
+            await adapter.call_tool("nonexistent", None, {})
 
     @pytest.mark.asyncio
     async def test_call_tool_handles_error_response(self, adapter, mock_session) -> None:
@@ -195,7 +188,7 @@ class TestMCPAdapterCallTool:
         mock_session.call_tool.return_value = mock_result
 
         with pytest.raises(ToolCallError):
-            await adapter.call_tool("echo", {"text": "hello"})
+            await adapter.call_tool("echo", None, {"text": "hello"})
 
 
 class TestMCPAdapterConnection:
@@ -354,9 +347,10 @@ class TestMCPAdapterWithRegistry:
         )
 
         adapter = MCPAdapter(session=mock_session)
+        await adapter._refresh_tools()  # Populate the cache
         registry = ToolRegistry()
 
-        await registry.register_adapter(adapter)
+        registry.register_adapter(adapter)
 
         tools = registry.list_tools()
         assert any(t.name == "test" for t in tools)
@@ -382,8 +376,9 @@ class TestMCPAdapterWithRegistry:
         mock_session.call_tool = AsyncMock(return_value=mock_result)
 
         adapter = MCPAdapter(session=mock_session)
+        await adapter._refresh_tools()  # Populate the cache
         registry = ToolRegistry()
-        await registry.register_adapter(adapter)
+        registry.register_adapter(adapter)
 
-        result = await registry.call_tool("greet", {})
+        result = await registry.call_tool("greet", None, {})
         assert result == "Hello!"

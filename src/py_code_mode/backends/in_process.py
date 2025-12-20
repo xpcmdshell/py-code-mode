@@ -10,120 +10,34 @@ import ast
 import asyncio
 import builtins
 import io
-import re
 import traceback
 from contextlib import redirect_stdout
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from py_code_mode.artifacts import ArtifactStore
+from py_code_mode.adapters.cli import CLIAdapter
+from py_code_mode.artifacts import ArtifactStoreProtocol, FileArtifactStore
 from py_code_mode.backend import (
     Capability,
+    FileStorageAccess,
+    RedisStorageAccess,
     StorageAccess,
     register_backend,
 )
+from py_code_mode.namespace import ToolsNamespace
+from py_code_mode.redis_artifacts import RedisArtifactStore
+from py_code_mode.redis_tools import RedisToolStore, registry_from_redis
 from py_code_mode.registry import ToolRegistry
-from py_code_mode.semantic import SkillLibrary
+from py_code_mode.semantic import (
+    MockEmbedder,
+    SkillLibrary,
+    create_skill_library,
+)
+from py_code_mode.skill_store import FileSkillStore, MemorySkillStore, RedisSkillStore
 from py_code_mode.types import ExecutionResult
-
-if TYPE_CHECKING:
-    pass
 
 # Use builtins to avoid security hook false positive on Python's code execution
 _run_code = getattr(builtins, "exec")
 _eval_code = getattr(builtins, "eval")
-
-
-def _extract_template_params(args_template: str) -> list[str]:
-    """Extract parameter names from args template.
-
-    Args:
-        args_template: Template like "{flags} {target}"
-
-    Returns:
-        List of parameter names like ["flags", "target"]
-    """
-    return re.findall(r"\{(\w+)\}", args_template)
-
-
-class ToolsNamespace:
-    """Namespace object for tools.* access in executed code.
-
-    Supports two calling styles:
-    - tools.call("nmap", {"target": "10.0.0.1"})  # dict args
-    - tools.nmap(target="10.0.0.1")               # pythonic kwargs
-    """
-
-    def __init__(self, registry: ToolRegistry) -> None:
-        self._registry = registry
-        self._loop: asyncio.AbstractEventLoop | None = None
-
-    def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Set the event loop to use for async tool calls."""
-        self._loop = loop
-
-    def __getattr__(self, name: str) -> ToolCaller:
-        """Enable tools.nmap(...) syntax."""
-        # Don't intercept private attributes or special methods
-        if name.startswith("_"):
-            raise AttributeError(name)
-        return ToolCaller(self, name)
-
-    def call(self, name: str, args: dict[str, Any] | None = None) -> Any:
-        """Call a tool by name. Sync wrapper for async registry."""
-        args = args or {}
-
-        coro = self._registry.call_tool(name, args)
-
-        # When called from a thread (via executor.run -> to_thread), use
-        # the stored loop with run_coroutine_threadsafe to schedule on main loop.
-        # This keeps MCP adapters working since they're bound to the main loop.
-        if self._loop is not None:
-            future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-            return future.result()
-
-        # Fallback: try running loop, then create new one (standalone usage)
-        try:
-            loop = asyncio.get_running_loop()
-            return loop.run_until_complete(coro)
-        except RuntimeError:
-            return asyncio.run(coro)
-
-    def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
-        """Search for tools matching query. Returns simplified tool info."""
-        tools = self._registry.search(query, limit)
-        return [self._simplify(t) for t in tools]
-
-    def list(self) -> list[dict[str, Any]]:
-        """List all available tools. Returns simplified tool info."""
-        tools = self._registry.list_tools()
-        return [self._simplify(t) for t in tools]
-
-    def _simplify(self, tool: Any) -> dict[str, Any]:
-        """Simplify tool definition for agent readability."""
-        params = {}
-        if tool.input_schema and tool.input_schema.properties:
-            for name, schema in tool.input_schema.properties.items():
-                params[name] = schema.description or schema.type
-        return {
-            "name": tool.name,
-            "description": tool.description,
-            "params": params,
-        }
-
-
-class ToolCaller:
-    """Callable wrapper for pythonic tool invocation."""
-
-    def __init__(self, namespace: ToolsNamespace, name: str) -> None:
-        self._namespace = namespace
-        self._name = name
-
-    def __call__(self, **kwargs: Any) -> Any:
-        """Call the tool with kwargs."""
-        return self._namespace.call(self._name, kwargs)
-
-    def __repr__(self) -> str:
-        return f"<Tool: {self._name}>"
 
 
 class SkillsNamespace:
@@ -264,7 +178,7 @@ class InProcessExecutor:
         self,
         registry: ToolRegistry | None = None,
         skill_library: SkillLibrary | None = None,
-        artifact_store: ArtifactStore | None = None,
+        artifact_store: ArtifactStoreProtocol | None = None,
         default_timeout: float = 30.0,
     ) -> None:
         self._registry = registry
@@ -331,9 +245,6 @@ class InProcessExecutor:
                 error=f"Execution timeout after {timeout} seconds",
             )
 
-    # Alias for test compatibility
-    execute = run
-
     def _run_sync(self, code: str) -> ExecutionResult:
         """Run code synchronously, capturing output."""
         stdout_capture = io.StringIO()
@@ -373,6 +284,8 @@ class InProcessExecutor:
             )
 
         except Exception:
+            # Intentionally broad: user code can throw any exception.
+            # Does not catch KeyboardInterrupt/SystemExit (BaseException, not Exception).
             return ExecutionResult(
                 value=None,
                 stdout=stdout_capture.getvalue(),
@@ -418,8 +331,6 @@ class InProcessExecutor:
                            If provided, loads tools/skills/artifacts from paths.
                            If None, uses whatever was passed to __init__.
         """
-        from py_code_mode.backend import FileStorageAccess, RedisStorageAccess
-
         if storage_access is None:
             return  # Use __init__ configuration
 
@@ -427,25 +338,21 @@ class InProcessExecutor:
             # Load from file paths
             # Always inject tools namespace (empty if no path/directory)
             if storage_access.tools_path and storage_access.tools_path.exists():
-                self._registry = await ToolRegistry.from_dir(str(storage_access.tools_path))
+                adapter = CLIAdapter(tools_path=storage_access.tools_path)
+                self._registry = ToolRegistry()
+                self._registry.add_adapter(adapter)
             else:
                 self._registry = ToolRegistry()
             self._namespace["tools"] = ToolsNamespace(self._registry)
 
             # Always inject skills namespace
             if storage_access.skills_path:
-                from py_code_mode.semantic import create_skill_library
-                from py_code_mode.skill_store import FileSkillStore
-
                 # Create directory if it doesn't exist (same as artifacts behavior)
                 storage_access.skills_path.mkdir(parents=True, exist_ok=True)
                 store = FileSkillStore(storage_access.skills_path)
                 self._skill_library = create_skill_library(store=store)
             else:
                 # Only use memory store if NO path configured (explicit choice)
-                from py_code_mode.semantic import MockEmbedder, SkillLibrary
-                from py_code_mode.skill_store import MemorySkillStore
-
                 self._skill_library = SkillLibrary(
                     embedder=MockEmbedder(), store=MemorySkillStore()
                 )
@@ -453,8 +360,6 @@ class InProcessExecutor:
 
             # Always inject artifacts namespace
             if storage_access.artifacts_path:
-                from py_code_mode.artifacts import FileArtifactStore
-
                 storage_access.artifacts_path.mkdir(parents=True, exist_ok=True)
                 self._artifact_store = FileArtifactStore(storage_access.artifacts_path)
                 self._namespace["artifacts"] = self._artifact_store
@@ -470,17 +375,17 @@ class InProcessExecutor:
 
             client = redis.from_url(storage_access.redis_url)
 
-            # TODO: Load tools from Redis (not yet implemented)
+            # Tools from Redis
+            tool_store = RedisToolStore(client, prefix=storage_access.tools_prefix)
+            self._registry = await registry_from_redis(tool_store)
+            self._namespace["tools"] = ToolsNamespace(self._registry)
 
-            from py_code_mode.semantic import create_skill_library
-            from py_code_mode.skill_store import RedisSkillStore
-
+            # Skills from Redis with semantic search
             skill_store = RedisSkillStore(client, prefix=storage_access.skills_prefix)
             self._skill_library = create_skill_library(store=skill_store)
             self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
 
-            from py_code_mode.redis_artifacts import RedisArtifactStore
-
+            # Artifacts from Redis
             self._artifact_store = RedisArtifactStore(
                 client, prefix=storage_access.artifacts_prefix
             )
@@ -495,6 +400,3 @@ class InProcessExecutor:
 
 # Register this backend
 register_backend("in-process", InProcessExecutor)
-
-# Backward compatibility alias
-CodeExecutor = InProcessExecutor

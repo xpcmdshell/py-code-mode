@@ -139,10 +139,10 @@ description: Echo text back
                 assert result.error is not None
 
     @pytest.mark.asyncio
-    async def test_tools_call_nonexistent_error(self, storage: FileStorage) -> None:
-        """tools.call() with nonexistent tool gives error."""
+    async def test_tools_escape_hatch_nonexistent_error(self, storage: FileStorage) -> None:
+        """Escape hatch with nonexistent tool gives error."""
         async with Session(storage=storage) as session:
-            result = await session.run('tools.call("nonexistent", {})')
+            result = await session.run("tools.nonexistent()")
 
             assert not result.is_ok
             assert result.error is not None

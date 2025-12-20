@@ -2,7 +2,7 @@
 
 from typing import Any, Protocol, runtime_checkable
 
-from py_code_mode.types import ToolDefinition
+from py_code_mode.tool_types import Tool
 
 
 @runtime_checkable
@@ -18,34 +18,52 @@ class ToolAdapter(Protocol):
     - HTTPAdapter: Calls REST APIs
 
     Usage:
-        adapter = CLIAdapter(tool_definitions)
-        tools = await adapter.list_tools()
-        result = await adapter.call_tool("grep", {"pattern": "error", "file": "log.txt"})
+        adapter = CLIAdapter(tools_path=Path("./tools"))
+        tools = adapter.list_tools()
+        result = await adapter.call_tool("grep", "search", {"pattern": "error"})
         await adapter.close()
     """
 
-    async def list_tools(self) -> list[ToolDefinition]:
+    def list_tools(self) -> list[Tool]:
         """List all tools available from this adapter.
 
         Returns:
-            List of tool definitions with schemas and metadata.
+            List of Tool objects with callables and metadata.
         """
         ...
 
-    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
-        """Call a tool by name with the given arguments.
+    async def call_tool(
+        self,
+        name: str,
+        callable_name: str | None,
+        args: dict[str, Any],
+    ) -> Any:
+        """Call a tool with optional callable specification.
 
         Args:
-            name: The tool name (without namespace prefix).
-            args: Arguments matching the tool's input schema.
+            name: Tool name.
+            callable_name: Callable name (recipe) or None for escape hatch.
+            args: Arguments for the callable.
 
         Returns:
-            Tool result, typically a dict matching the output schema.
+            Tool result.
 
         Raises:
-            ToolNotFoundError: If tool name not recognized by this adapter.
+            ToolNotFoundError: If tool not found.
             ToolCallError: If tool execution fails.
             ToolTimeoutError: If tool exceeds timeout.
+        """
+        ...
+
+    async def describe(self, tool_name: str, callable_name: str) -> dict[str, str]:
+        """Get parameter descriptions for a callable.
+
+        Args:
+            tool_name: Name of the tool.
+            callable_name: Name of the callable.
+
+        Returns:
+            Dict mapping parameter names to descriptions.
         """
         ...
 

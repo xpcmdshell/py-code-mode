@@ -10,65 +10,523 @@ tools:
   # Network scanning
   - name: nmap
     description: Network scanner for port discovery and service detection
-    args: "{flags} {target}"
+    command: nmap
     timeout: 300
     tags: [network, recon, scanning]
 
+    schema:
+      options:
+        sV:
+          type: boolean
+          description: Service/version detection
+        sC:
+          type: boolean
+          description: Run default scripts
+        sS:
+          type: boolean
+          description: TCP SYN scan
+        sU:
+          type: boolean
+          description: UDP scan
+        sn:
+          type: boolean
+          description: Ping scan (no port scan)
+        Pn:
+          type: boolean
+          description: Skip host discovery
+        O:
+          type: boolean
+          description: OS detection
+        A:
+          type: boolean
+          description: Aggressive scan (OS, version, scripts, traceroute)
+        p:
+          type: string
+          description: Port specification (e.g., "22,80,443" or "1-1000")
+        T:
+          type: integer
+          description: Timing template (0-5, higher is faster)
+        oN:
+          type: string
+          description: Normal output file
+        oX:
+          type: string
+          description: XML output file
+      positional:
+        - name: target
+          type: string
+          required: true
+          description: Target host or network
+
+    recipes:
+      quick:
+        description: Quick scan of common ports
+        preset:
+          T: 4
+        params:
+          target: {}
+
+      full:
+        description: Full port scan with version detection
+        preset:
+          sV: true
+          sC: true
+          p: "1-65535"
+        params:
+          target: {}
+
+      stealth:
+        description: Stealthy SYN scan
+        preset:
+          sS: true
+          T: 2
+        params:
+          target: {}
+
+      discovery:
+        description: Host discovery (ping scan)
+        preset:
+          sn: true
+        params:
+          target: {}
+
   - name: ping
     description: Test network connectivity to a host
-    args: "-c {count} {target}"
+    command: ping
     timeout: 30
     tags: [network, connectivity]
+
+    schema:
+      options:
+        c:
+          type: integer
+          description: Number of packets to send
+        W:
+          type: integer
+          description: Timeout in seconds
+        i:
+          type: string
+          description: Interval between packets
+      positional:
+        - name: target
+          type: string
+          required: true
+          description: Target host
+
+    recipes:
+      default:
+        description: Ping with 4 packets
+        preset:
+          c: 4
+        params:
+          target: {}
+
+      quick:
+        description: Single ping with short timeout
+        preset:
+          c: 1
+          W: 2
+        params:
+          target: {}
 
   # DNS
   - name: dig
     description: DNS lookup utility
-    args: "{type} {domain} +short"
+    command: dig
     timeout: 30
     tags: [network, dns]
 
+    schema:
+      options:
+        short:
+          type: boolean
+          flag: "+short"
+          description: Terse output
+        trace:
+          type: boolean
+          flag: "+trace"
+          description: Trace delegation path
+      positional:
+        - name: domain
+          type: string
+          required: true
+          description: Domain name to query
+        - name: type
+          type: string
+          required: false
+          description: Record type (A, AAAA, MX, NS, TXT, etc.)
+
+    recipes:
+      lookup:
+        description: Simple DNS lookup
+        preset:
+          short: true
+        params:
+          domain: {}
+
+      mx:
+        description: MX record lookup
+        preset:
+          short: true
+        params:
+          domain: {}
+          type:
+            default: MX
+
+      ns:
+        description: NS record lookup
+        preset:
+          short: true
+        params:
+          domain: {}
+          type:
+            default: NS
+
+      txt:
+        description: TXT record lookup
+        preset:
+          short: true
+        params:
+          domain: {}
+          type:
+            default: TXT
+
   - name: whois
     description: Domain/IP registration lookup
-    args: "{target}"
+    command: whois
     timeout: 30
     tags: [network, recon]
+
+    schema:
+      positional:
+        - name: target
+          type: string
+          required: true
+          description: Domain or IP to look up
+
+    recipes:
+      lookup:
+        description: WHOIS lookup
+        params:
+          target: {}
 
   # HTTP
   - name: curl
     description: HTTP client for fetching URLs
-    args: "-s {flags} {url}"
+    command: curl
     timeout: 60
     tags: [http, web]
 
+    schema:
+      options:
+        silent:
+          type: boolean
+          short: s
+          description: Silent mode (no progress output)
+        location:
+          type: boolean
+          short: L
+          description: Follow redirects
+        output:
+          type: string
+          short: o
+          description: Output file
+        header:
+          type: array
+          short: H
+          description: HTTP headers
+        data:
+          type: string
+          short: d
+          description: POST data
+        request:
+          type: string
+          short: X
+          description: HTTP method
+        insecure:
+          type: boolean
+          short: k
+          description: Skip TLS verification
+        include:
+          type: boolean
+          short: i
+          description: Include response headers
+      positional:
+        - name: url
+          type: string
+          required: true
+          description: Target URL
+
+    recipes:
+      get:
+        description: Simple GET request (silent, follow redirects)
+        preset:
+          silent: true
+          location: true
+        params:
+          url: {}
+
+      post:
+        description: POST request with data
+        preset:
+          silent: true
+          location: true
+          request: POST
+        params:
+          url: {}
+          data: {}
+
+      download:
+        description: Download file to disk
+        preset:
+          silent: true
+          location: true
+        params:
+          url: {}
+          output: {}
+
+      headers:
+        description: GET with response headers
+        preset:
+          silent: true
+          location: true
+          include: true
+        params:
+          url: {}
+
   - name: httpie
     description: User-friendly HTTP client (http command)
-    command: http  # command differs from name
-    args: "{method} {url} {params}"
+    command: http
     timeout: 60
     tags: [http, web]
+
+    schema:
+      options:
+        follow:
+          type: boolean
+          short: F
+          description: Follow redirects
+        headers:
+          type: boolean
+          short: h
+          description: Print only headers
+        body:
+          type: boolean
+          short: b
+          description: Print only body
+        verbose:
+          type: boolean
+          short: v
+          description: Verbose output
+        json:
+          type: boolean
+          short: j
+          description: JSON mode
+      positional:
+        - name: method
+          type: string
+          required: false
+          description: HTTP method (GET, POST, etc.)
+        - name: url
+          type: string
+          required: true
+          description: Target URL
+        - name: params
+          type: string
+          required: false
+          description: Request parameters (key=value or key:=json)
+
+    recipes:
+      get:
+        description: Simple GET request
+        preset:
+          follow: true
+          body: true
+        params:
+          url: {}
+
+      post:
+        description: POST with JSON data
+        preset:
+          json: true
+        params:
+          method:
+            default: POST
+          url: {}
+          params: {}
 
   # File analysis
   - name: file
     description: Determine file type
-    args: "{path}"
+    command: file
     timeout: 10
     tags: [file, analysis]
 
+    schema:
+      options:
+        brief:
+          type: boolean
+          short: b
+          description: Brief output (no filename)
+        mime:
+          type: boolean
+          short: i
+          description: Output MIME type
+      positional:
+        - name: path
+          type: string
+          required: true
+          description: File path
+
+    recipes:
+      type:
+        description: Determine file type
+        params:
+          path: {}
+
+      mime:
+        description: Get MIME type
+        preset:
+          brief: true
+          mime: true
+        params:
+          path: {}
+
   - name: xxd
     description: Hexdump utility
-    args: "{flags} {path}"
+    command: xxd
     timeout: 30
     tags: [file, binary]
 
+    schema:
+      options:
+        l:
+          type: integer
+          description: Length (number of bytes)
+        s:
+          type: string
+          description: Seek offset
+        c:
+          type: integer
+          description: Columns per line
+        p:
+          type: boolean
+          description: Plain hexdump (no address/ASCII)
+        r:
+          type: boolean
+          description: Reverse (hex to binary)
+      positional:
+        - name: path
+          type: string
+          required: true
+          description: File path
+
+    recipes:
+      dump:
+        description: Hexdump file
+        params:
+          path: {}
+
+      head:
+        description: Hexdump first 256 bytes
+        preset:
+          l: 256
+        params:
+          path: {}
+
+      plain:
+        description: Plain hex output
+        preset:
+          p: true
+        params:
+          path: {}
+
   - name: strings
     description: Extract printable strings from binary
-    args: "{path}"
+    command: strings
     timeout: 30
     tags: [file, binary, analysis]
+
+    schema:
+      options:
+        n:
+          type: integer
+          description: Minimum string length
+        a:
+          type: boolean
+          description: Scan entire file
+        e:
+          type: string
+          description: Encoding (s=7-bit, S=8-bit, b=big-endian, l=little-endian)
+      positional:
+        - name: path
+          type: string
+          required: true
+          description: File path
+
+    recipes:
+      extract:
+        description: Extract strings from binary
+        preset:
+          a: true
+        params:
+          path: {}
+
+      long:
+        description: Extract only longer strings (10+ chars)
+        preset:
+          a: true
+          n: 10
+        params:
+          path: {}
 
   # JSON
   - name: jq
     description: JSON processor and query tool
-    args: "{filter}"
+    command: jq
     timeout: 30
     tags: [json, data]
+
+    schema:
+      options:
+        raw:
+          type: boolean
+          short: r
+          description: Output raw strings (no JSON quotes)
+        compact:
+          type: boolean
+          short: c
+          description: Compact output (no pretty print)
+        slurp:
+          type: boolean
+          short: s
+          description: Slurp input into array
+        null_input:
+          type: boolean
+          short: n
+          description: Use null as input (for generating JSON)
+      positional:
+        - name: filter
+          type: string
+          required: true
+          description: jq filter expression
+
+    recipes:
+      query:
+        description: Query JSON with filter
+        params:
+          filter: {}
+
+      raw:
+        description: Query JSON and output raw strings
+        preset:
+          raw: true
+        params:
+          filter: {}
+
+      compact:
+        description: Query JSON with compact output
+        preset:
+          compact: true
+        params:
+          filter: {}

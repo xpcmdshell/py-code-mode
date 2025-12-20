@@ -1,5 +1,65 @@
 name: curl
-type: cli
-args: "-sL {url}"
 description: Make HTTP requests
+command: curl
+timeout: 60
 tags: [http]
+
+schema:
+  options:
+    silent:
+      type: boolean
+      short: s
+      description: Silent mode (no progress output)
+    location:
+      type: boolean
+      short: L
+      description: Follow redirects
+    output:
+      type: string
+      short: o
+      description: Output file
+    header:
+      type: array
+      short: H
+      description: HTTP headers
+    data:
+      type: string
+      short: d
+      description: POST data
+    request:
+      type: string
+      short: X
+      description: HTTP method
+  positional:
+    - name: url
+      type: string
+      required: true
+      description: Target URL
+
+recipes:
+  get:
+    description: Simple GET request (silent, follow redirects)
+    preset:
+      silent: true
+      location: true
+    params:
+      url: {}
+
+  post:
+    description: POST request with data
+    preset:
+      silent: true
+      location: true
+      request: POST
+    params:
+      url: {}
+      data: {}
+
+  download:
+    description: Download file to disk
+    preset:
+      silent: true
+      location: true
+    params:
+      url: {}
+      output: {}

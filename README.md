@@ -45,7 +45,7 @@ matches = re.findall(r'class="titleline"><a href="([^"]+)".*?>([^<]+)</a>', cont
 # Now save the working solution
 skills.create(
     name="scrape_hn_stories",
-    code='''
+    source='''
 def run(num_stories: int = 30) -> list:
     import re
     content = tools.fetch(url="https://news.ycombinator.com")

@@ -100,7 +100,7 @@ class FileSkillStore:
             return PythonSkill.from_file(path)
         except FileNotFoundError:
             return None
-        except Exception as e:
+        except (OSError, SyntaxError, ValueError) as e:
             logger.error(f"Failed to load skill '{name}' from {path}: {type(e).__name__}: {e}")
             raise StorageReadError(f"Failed to load skill '{name}' from {path}: {e}") from e
 
@@ -122,7 +122,7 @@ class FileSkillStore:
             try:
                 skill = PythonSkill.from_file(path)
                 skills.append(skill)
-            except Exception as e:
+            except (OSError, SyntaxError, ValueError) as e:
                 logger.warning(f"Failed to load skill from {path}: {type(e).__name__}: {e}")
                 continue
         return skills
@@ -232,7 +232,7 @@ class RedisSkillStore:
                     name = name.decode()
                 data = json.loads(value)
                 skills.append(self._deserialize_skill(data))
-            except Exception as e:
+            except (json.JSONDecodeError, ValueError, SyntaxError, KeyError) as e:
                 logger.warning(f"Failed to deserialize skill '{name}': {type(e).__name__}: {e}")
                 continue
 

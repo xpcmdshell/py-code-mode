@@ -12,6 +12,7 @@ Usage:
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import logging
 import os
@@ -20,6 +21,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -38,7 +40,7 @@ except ImportError:
     HTTPException = Exception  # type: ignore
     Header = None  # type: ignore
 
-from py_code_mode.adapters import CLIAdapter, CLIToolSpec  # noqa: E402
+from py_code_mode.adapters.cli import CLIAdapter  # noqa: E402
 from py_code_mode.artifacts import (  # noqa: E402
     ArtifactStoreProtocol,
     FileArtifactStore,
@@ -53,6 +55,27 @@ from py_code_mode.skill_store import FileSkillStore  # noqa: E402
 
 # Session expiration (seconds)
 SESSION_EXPIRY = 3600  # 1 hour
+
+
+def serialize_value(value: Any) -> Any:
+    """Serialize a value for JSON response.
+
+    Recursively converts dataclasses and frozensets to JSON-serializable types.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {k: serialize_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [serialize_value(v) for v in value]
+    if isinstance(value, frozenset):
+        return list(value)
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {k: serialize_value(v) for k, v in dataclasses.asdict(value).items()}
+    # Fallback to string representation
+    return str(value)
 
 
 # Pydantic models for API (only if FastAPI available)
@@ -131,34 +154,6 @@ class ServerState:
 _state = ServerState()
 
 
-async def build_tool_registry(config: SessionConfig) -> ToolRegistry:
-    """Build tool registry from configuration.
-
-    Tools are registered without namespace prefix - access as tools.nmap(), not tools.cli.nmap().
-    """
-    registry = ToolRegistry()
-
-    if config.cli_tools:
-        # Convert CLIToolConfig to CLIToolSpec
-        specs = [
-            CLIToolSpec(
-                name=t.name,
-                description=t.description,
-                command=t.command,
-                args_template=t.args_template,
-                timeout_seconds=t.timeout_seconds,
-                working_dir=t.working_dir,
-                env=t.env,
-            )
-            for t in config.cli_tools
-        ]
-
-        adapter = CLIAdapter(specs)
-        await registry.register_adapter(adapter)
-
-    return registry
-
-
 def build_skill_library(config: SessionConfig) -> SkillLibrary | None:
     """Build skill library from configuration with semantic search."""
     # Create directory if it doesn't exist (same as artifacts behavior)
@@ -180,13 +175,10 @@ def create_session(session_id: str) -> Session:
     if _state.config is None:
         raise RuntimeError("Server not initialized")
 
-    # Use shared Redis artifact store or create session-specific file store
-    if _state.redis_mode and _state.artifact_store:
-        artifact_store = _state.artifact_store
-    else:
-        session_artifacts_path = _state.config.artifacts_path / session_id
-        session_artifacts_path.mkdir(parents=True, exist_ok=True)
-        artifact_store = FileArtifactStore(session_artifacts_path)
+    # Use shared artifact store (already initialized at startup for both modes)
+    if _state.artifact_store is None:
+        raise RuntimeError("Artifact store not initialized")
+    artifact_store = _state.artifact_store
 
     # Create executor with shared registries but isolated namespace/artifacts
     executor = CodeExecutor(
@@ -280,18 +272,24 @@ async def initialize_server(config: SessionConfig) -> None:
         logger.info("Using Redis backend: %s...", redis_url[:50])
         r = redis_lib.from_url(redis_url)
 
+        # Get prefixes from environment (set by ContainerExecutor), with defaults
+        tools_prefix = os.environ.get("REDIS_TOOLS_PREFIX", "tools")
+        skills_prefix = os.environ.get("REDIS_SKILLS_PREFIX", "skills")
+        artifacts_prefix = os.environ.get("REDIS_ARTIFACTS_PREFIX", "artifacts")
+
         # Tools from Redis
-        tool_store = RedisToolStore(r, prefix="agent-tools")
+        tool_store = RedisToolStore(r, prefix=tools_prefix)
         registry = await registry_from_redis(tool_store)
-        logger.info("  Tools in Redis: %d", len(tool_store))
+        logger.info("  Tools in Redis (%s): %d", tools_prefix, len(tool_store))
 
         # Skills from Redis with semantic search
-        redis_store = RedisSkillStore(r, prefix="agent-skills")
+        redis_store = RedisSkillStore(r, prefix=skills_prefix)
         skill_library = create_skill_library(store=redis_store)
-        logger.info("  Skills in Redis: %d (semantic search enabled)", len(redis_store))
+        skill_count = len(redis_store)
+        logger.info("  Skills in Redis (%s): %d (semantic)", skills_prefix, skill_count)
 
         # Artifacts in Redis (shared across sessions)
-        artifact_store = RedisArtifactStore(r, prefix="agent-artifacts")
+        artifact_store = RedisArtifactStore(r, prefix=artifacts_prefix)
 
         _state = ServerState(
             config=config,
@@ -306,26 +304,40 @@ async def initialize_server(config: SessionConfig) -> None:
         # File mode: load from config paths
         logger.info("Using file-based backend (set REDIS_URL for Redis mode)")
 
-        # Load tools from mounted directory if TOOLS_PATH is set, otherwise from config
+        # Load tools from mounted directory if TOOLS_PATH is set
         tools_path = os.environ.get("TOOLS_PATH")
         if tools_path:
             logger.info("  Loading tools from directory: %s", tools_path)
-            registry = await ToolRegistry.from_dir(tools_path)
+            tools_dir = Path(tools_path)
+
+            # Load CLI tools from YAML files
+            cli_adapter = CLIAdapter(tools_path=tools_dir)
+            registry = ToolRegistry()
+            if cli_adapter.list_tools():
+                registry.add_adapter(cli_adapter)
+
+            # Also load MCP tools from the same directory
+            mcp_registry = await ToolRegistry.from_dir(tools_path)
+            for adapter in mcp_registry.get_adapters():
+                registry.add_adapter(adapter)
+
             logger.info("  Tools in directory: %d", len(registry.list_tools()))
         else:
-            # No TOOLS_PATH - use tools from config (baked into image)
-            registry = await build_tool_registry(config)
-            logger.info("  Tools from config: %d", len(registry.list_tools()))
+            # No TOOLS_PATH - no tools available
+            logger.info("  TOOLS_PATH not set, no tools available")
+            registry = ToolRegistry()
 
         skill_library = build_skill_library(config)
 
-        # Ensure base artifacts path exists
+        # Create shared artifact store (same as Redis mode)
         config.artifacts_path.mkdir(parents=True, exist_ok=True)
+        artifact_store = FileArtifactStore(config.artifacts_path)
 
         _state = ServerState(
             config=config,
             registry=registry,
             skill_library=skill_library,
+            artifact_store=artifact_store,
             sessions={},
             start_time=time.time(),
             redis_mode=False,
@@ -387,14 +399,8 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         session.execution_count += 1
         session.last_used = time.time()
 
-        # Serialize value for JSON response
-        try:
-            import json
-
-            json.dumps(result.value)
-            value = result.value
-        except (TypeError, ValueError):
-            value = str(result.value) if result.value is not None else None
+        # Serialize value for JSON response (handles dataclasses, frozensets, etc.)
+        value = serialize_value(result.value)
 
         return ExecuteResponseModel(
             value=value,

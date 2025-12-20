@@ -10,29 +10,8 @@ from typing import Any
 
 import yaml
 
-
-@dataclass
-class CLIToolConfig:
-    """Configuration for a CLI tool in the container.
-
-    Defines how to invoke a CLI tool and expose it through the ToolRegistry.
-    """
-
-    name: str
-    description: str = ""  # Auto-generated if empty
-    command: str | None = None  # Defaults to name if not specified
-    args_template: str = ""
-    timeout_seconds: float = 60.0
-    tags: list[str] = field(default_factory=list)
-    working_dir: str | None = None
-    env: dict[str, str] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        """Apply defaults after initialization."""
-        if self.command is None:
-            object.__setattr__(self, "command", self.name)
-        if not self.description:
-            object.__setattr__(self, "description", f"Run {self.name} command")
+# Default Docker image for container execution
+DEFAULT_IMAGE = "py-code-mode-tools:latest"
 
 
 @dataclass
@@ -52,8 +31,7 @@ class SessionConfig:
     Loaded from environment variables and/or YAML config files.
     """
 
-    # Tools
-    cli_tools: list[CLIToolConfig] = field(default_factory=list)
+    # Tools (MCP servers only - CLI tools loaded via TOOLS_PATH)
     mcp_servers: list[MCPServerConfig] = field(default_factory=list)
 
     # Python dependencies (auto-installed at startup)
@@ -118,9 +96,6 @@ class SessionConfig:
             if tools_path.exists():
                 with open(tools_path) as f:
                     tools_data = yaml.safe_load(f) or {}
-                # Support both 'tools' (new) and 'cli_tools' (legacy) keys
-                tools_list = tools_data.get("tools") or tools_data.get("cli_tools", [])
-                config.cli_tools = cls._parse_cli_tools(tools_list)
                 config.mcp_servers = cls._parse_mcp_servers(tools_data.get("mcp_servers", []))
                 config.python_deps = tools_data.get("python_deps", [])
 
@@ -129,10 +104,7 @@ class SessionConfig:
     @classmethod
     def _from_dict(cls, data: dict[str, Any]) -> SessionConfig:
         """Create config from dictionary."""
-        # Support both 'tools' (new) and 'cli_tools' (legacy) keys
-        tools_list = data.get("tools") or data.get("cli_tools", [])
         return cls(
-            cli_tools=cls._parse_cli_tools(tools_list),
             mcp_servers=cls._parse_mcp_servers(data.get("mcp_servers", [])),
             python_deps=data.get("python_deps", []),
             skills_path=Path(data.get("skills_path", "/app/skills")),
@@ -144,29 +116,6 @@ class SessionConfig:
             host=data.get("host", "0.0.0.0"),
             port=data.get("port", 8080),
         )
-
-    @staticmethod
-    def _parse_cli_tools(tools_data: list[dict[str, Any]]) -> list[CLIToolConfig]:
-        """Parse CLI tool configurations.
-
-        Supports both new and legacy field names:
-        - 'args' (new) or 'args_template' (legacy)
-        - 'timeout' (new) or 'timeout_seconds' (legacy)
-        - 'command' is optional, defaults to 'name'
-        """
-        return [
-            CLIToolConfig(
-                name=t["name"],
-                description=t.get("description", ""),
-                command=t.get("command"),  # Defaults to name via __post_init__
-                args_template=t.get("args") or t.get("args_template", ""),
-                timeout_seconds=t.get("timeout") or t.get("timeout_seconds", 60.0),
-                tags=t.get("tags", []),
-                working_dir=t.get("working_dir"),
-                env=t.get("env", {}),
-            )
-            for t in tools_data
-        ]
 
     @staticmethod
     def _parse_mcp_servers(servers_data: list[dict[str, Any]]) -> list[MCPServerConfig]:
@@ -192,7 +141,7 @@ class ContainerConfig:
     """
 
     # Image
-    image: str = "py-code-mode-tools:latest"
+    image: str = DEFAULT_IMAGE
     auto_build: bool = True  # Auto-build image if missing
 
     # Networking
@@ -215,6 +164,9 @@ class ContainerConfig:
         skills_path: Path | None = None,
         artifacts_path: Path | None = None,
         redis_url: str | None = None,
+        tools_prefix: str | None = None,
+        skills_prefix: str | None = None,
+        artifacts_prefix: str | None = None,
     ) -> dict[str, Any]:
         """Convert to Docker SDK configuration.
 
@@ -223,6 +175,9 @@ class ContainerConfig:
             skills_path: Host path to skills directory (volume mount).
             artifacts_path: Host path to artifacts directory (volume mount).
             redis_url: Redis URL for Redis-based storage (sets env vars).
+            tools_prefix: Redis key prefix for tools.
+            skills_prefix: Redis key prefix for skills.
+            artifacts_prefix: Redis key prefix for artifacts.
 
         Returns:
             Docker SDK run() configuration dict.
@@ -267,6 +222,13 @@ class ContainerConfig:
         if redis_url:
             config["environment"]["ARTIFACT_BACKEND"] = "redis"
             config["environment"]["REDIS_URL"] = redis_url
+            # Pass prefixes so container uses consistent keys
+            if tools_prefix:
+                config["environment"]["REDIS_TOOLS_PREFIX"] = tools_prefix
+            if skills_prefix:
+                config["environment"]["REDIS_SKILLS_PREFIX"] = skills_prefix
+            if artifacts_prefix:
+                config["environment"]["REDIS_ARTIFACTS_PREFIX"] = artifacts_prefix
 
         # Add host.docker.internal mapping for Linux
         # macOS/Windows Docker Desktop provides this natively, but Linux needs it

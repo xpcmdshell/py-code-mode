@@ -9,6 +9,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from py_code_mode.adapters.base import ToolAdapter
+
 if TYPE_CHECKING:
     pass
 
@@ -188,16 +190,22 @@ class TestRegistryFromRedis:
                 {
                     "name": "curl",
                     "type": "cli",
-                    "args": "{url}",
+                    "command": "curl",
                     "description": "HTTP client",
+                    "schema": {"positional": [{"name": "url", "type": "string", "required": True}]},
+                    "recipes": {"get": {"description": "GET request", "params": {"url": {}}}},
                 }
             ).encode(),
             b"jq": json.dumps(
                 {
                     "name": "jq",
                     "type": "cli",
-                    "args": "{filter}",
+                    "command": "jq",
                     "description": "JSON processor",
+                    "schema": {
+                        "positional": [{"name": "filter", "type": "string", "required": True}]
+                    },
+                    "recipes": {"query": {"description": "Query JSON", "params": {"filter": {}}}},
                 }
             ).encode(),
         }
@@ -207,7 +215,11 @@ class TestRegistryFromRedis:
         store = RedisToolStore(mock_redis, prefix="test-tools")
         registry = await registry_from_redis(store)
 
-        tools = registry.list_tools()
+        # Check adapters directly
+        tools = []
+        for adapter in registry._adapters:
+            if isinstance(adapter, ToolAdapter):
+                tools.extend(adapter.list_tools())
         assert len(tools) == 2
         tool_names = {t.name for t in tools}
         assert tool_names == {"curl", "jq"}
@@ -240,8 +252,10 @@ class TestRegistryFromRedis:
                 {
                     "name": "curl",
                     "type": "cli",
-                    "args": "{url}",
+                    "command": "curl",
                     "description": "HTTP client",
+                    "schema": {"positional": [{"name": "url", "type": "string", "required": True}]},
+                    "recipes": {"get": {"description": "GET request", "params": {"url": {}}}},
                 }
             ).encode(),
             b"fetch": json.dumps(
@@ -261,7 +275,10 @@ class TestRegistryFromRedis:
         registry = await registry_from_redis(store)
 
         # Should have at least CLI tool; MCP may or may not load depending on environment
-        tools = registry.list_tools()
+        tools = []
+        for adapter in registry._adapters:
+            if isinstance(adapter, ToolAdapter):
+                tools.extend(adapter.list_tools())
         tool_names = {t.name for t in tools}
         assert "curl" in tool_names
 
@@ -321,8 +338,9 @@ class TestRedisToolStoreIntegration:
                 "name": "echo",
                 "type": "cli",
                 "command": "echo",
-                "args": "{text}",
                 "description": "Echo text",
+                "schema": {"positional": [{"name": "text", "type": "string", "required": True}]},
+                "recipes": {"run": {"description": "Echo text", "params": {"text": {}}}},
             },
         )
         store.add(
@@ -331,13 +349,18 @@ class TestRedisToolStoreIntegration:
                 "name": "cat",
                 "type": "cli",
                 "command": "cat",
-                "args": "{file}",
                 "description": "Show file contents",
+                "schema": {"positional": [{"name": "file", "type": "string", "required": True}]},
+                "recipes": {"show": {"description": "Show file", "params": {"file": {}}}},
             },
         )
 
         registry = await registry_from_redis(store)
-        tools = registry.list_tools()
+        # Check via adapter interface
+        tools = []
+        for adapter in registry._adapters:
+            if isinstance(adapter, ToolAdapter):
+                tools.extend(adapter.list_tools())
 
         assert len(tools) == 2
         tool_names = {t.name for t in tools}

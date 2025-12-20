@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from py_code_mode.errors import ToolCallError, ToolNotFoundError
-from py_code_mode.types import JsonSchema, ToolDefinition
+from py_code_mode.tool_types import Tool, ToolCallable, ToolParameter
+from py_code_mode.types import JsonSchema
 
 
 @dataclass
@@ -77,43 +78,54 @@ class HTTPAdapter:
         """
         self._endpoints[endpoint.name] = endpoint
 
-    async def list_tools(self) -> list[ToolDefinition]:
+    def list_tools(self) -> list[Tool]:
         """List all endpoints as tools.
 
         Returns:
-            List of ToolDefinition objects.
+            List of Tool objects.
         """
         tools = []
         for endpoint in self._endpoints.values():
-            # Build input schema from parameters
-            properties = {}
-            required = []
+            # Build parameters from endpoint schema
+            params = []
             for param_name, param_schema in endpoint.parameters.items():
-                properties[param_name] = param_schema
-                # All parameters are required unless they have a default
-                required.append(param_name)
+                params.append(
+                    ToolParameter(
+                        name=param_name,
+                        type=param_schema.type,
+                        required=True,  # HTTP params are typically required
+                        default=param_schema.default,
+                        description=param_schema.description or "",
+                    )
+                )
 
-            input_schema = JsonSchema(
-                type="object",
-                properties=properties if properties else None,
-                required=required if required else None,
-                description=endpoint.description,
-            )
-
-            tool_def = ToolDefinition(
+            # Create a single callable for the endpoint
+            callable_obj = ToolCallable(
                 name=endpoint.name,
                 description=endpoint.description,
-                input_schema=input_schema,
+                parameters=tuple(params),
             )
-            tools.append(tool_def)
+
+            tool = Tool(
+                name=endpoint.name,
+                description=endpoint.description,
+                callables=(callable_obj,),
+            )
+            tools.append(tool)
 
         return tools
 
-    async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
+    async def call_tool(
+        self,
+        name: str,
+        callable_name: str | None,
+        args: dict[str, Any],
+    ) -> Any:
         """Call an HTTP endpoint.
 
         Args:
             name: Endpoint name.
+            callable_name: Ignored for HTTP (no recipes).
             args: Request parameters.
 
         Returns:
@@ -198,6 +210,23 @@ class HTTPAdapter:
             Set of parameter names found in path.
         """
         return set(re.findall(r"\{(\w+)\}", path))
+
+    async def describe(self, tool_name: str, callable_name: str) -> dict[str, str]:
+        """Get parameter descriptions for a callable.
+
+        Args:
+            tool_name: Name of the tool/endpoint.
+            callable_name: Ignored for HTTP (no recipes).
+
+        Returns:
+            Dict mapping parameter names to descriptions.
+        """
+        tools = self.list_tools()
+        for tool in tools:
+            if tool.name == tool_name:
+                for c in tool.callables:
+                    return {p.name: p.description for p in c.parameters}
+        return {}
 
     async def close(self) -> None:
         """Clean up resources (no-op for stateless HTTP adapter)."""

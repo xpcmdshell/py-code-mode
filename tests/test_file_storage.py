@@ -65,13 +65,26 @@ class TestFileStorageTools:
         """Sample tool YAML content."""
         return """
 name: nmap
-type: cli
 command: nmap
-args: "{flags} {target}"
 description: Network port scanner
 tags:
   - network
   - recon
+
+schema:
+  options:
+    sS: {type: boolean, short: sS, description: TCP SYN scan}
+  positional:
+    - name: target
+      type: string
+      required: true
+      description: Target host
+
+recipes:
+  scan:
+    description: Scan a target
+    params:
+      target: {}
 """
 
     def test_list_empty_returns_empty_list(self, storage: FileStorage) -> None:
@@ -95,12 +108,42 @@ tags:
 
     def test_list_multiple_tools(self, storage: FileStorage, tmp_path: Path) -> None:
         """tools.list() returns all tools."""
-        (tmp_path / "tools" / "tool1.yaml").write_text(
-            "name: tool1\ntype: cli\ncommand: echo\nargs: test\ndescription: Tool 1"
-        )
-        (tmp_path / "tools" / "tool2.yaml").write_text(
-            "name: tool2\ntype: cli\ncommand: echo\nargs: test\ndescription: Tool 2"
-        )
+        tool1_yaml = """
+name: tool1
+command: echo
+description: Tool 1
+
+schema:
+  positional:
+    - name: text
+      type: string
+      required: true
+
+recipes:
+  echo:
+    description: Echo text
+    params:
+      text: {}
+"""
+        tool2_yaml = """
+name: tool2
+command: echo
+description: Tool 2
+
+schema:
+  positional:
+    - name: text
+      type: string
+      required: true
+
+recipes:
+  echo:
+    description: Echo text
+    params:
+      text: {}
+"""
+        (tmp_path / "tools" / "tool1.yaml").write_text(tool1_yaml)
+        (tmp_path / "tools" / "tool2.yaml").write_text(tool2_yaml)
 
         result = storage.tools.list()
 
@@ -139,10 +182,10 @@ tags:
         """tools.save(tool) creates a YAML file."""
         tool = {
             "name": "mytool",
-            "type": "cli",
             "command": "echo",
-            "args": "{text}",
             "description": "Test tool",
+            "schema": {"positional": [{"name": "text", "type": "string", "required": True}]},
+            "recipes": {"echo": {"description": "Echo text", "params": {"text": {}}}},
         }
 
         storage.tools.save(tool)
@@ -156,10 +199,10 @@ tags:
         """tools.save(tool) overwrites existing tool."""
         tool = {
             "name": "mytool",
-            "type": "cli",
             "command": "echo",
-            "args": "v1",
             "description": "Version 1",
+            "schema": {"positional": [{"name": "text", "type": "string", "required": True}]},
+            "recipes": {"echo": {"description": "Echo text", "params": {"text": {}}}},
         }
         storage.tools.save(tool)
 
@@ -189,14 +232,42 @@ tags:
 
     def test_search_finds_matching_tools(self, storage: FileStorage, tmp_path: Path) -> None:
         """tools.search(query) finds tools matching the query."""
-        (tmp_path / "tools" / "nmap.yaml").write_text(
-            "name: nmap\ntype: cli\ncommand: nmap\nargs: test\n"
-            "description: Network port scanner for security testing"
-        )
-        (tmp_path / "tools" / "curl.yaml").write_text(
-            "name: curl\ntype: cli\ncommand: curl\nargs: test\n"
-            "description: HTTP client for web requests"
-        )
+        nmap_yaml = """
+name: nmap
+command: nmap
+description: Network port scanner for security testing
+
+schema:
+  positional:
+    - name: target
+      type: string
+      required: true
+
+recipes:
+  scan:
+    description: Scan target
+    params:
+      target: {}
+"""
+        curl_yaml = """
+name: curl
+command: curl
+description: HTTP client for web requests
+
+schema:
+  positional:
+    - name: url
+      type: string
+      required: true
+
+recipes:
+  get:
+    description: Get URL
+    params:
+      url: {}
+"""
+        (tmp_path / "tools" / "nmap.yaml").write_text(nmap_yaml)
+        (tmp_path / "tools" / "curl.yaml").write_text(curl_yaml)
 
         result = storage.tools.search("network")
 
@@ -481,18 +552,30 @@ class TestFileStorageEdgeCases:
         """Create FileStorage."""
         return FileStorage(tmp_path)
 
-    def test_tool_name_with_special_chars(self, storage: FileStorage) -> None:
+    def test_tool_name_with_special_chars(self, storage: FileStorage, tmp_path: Path) -> None:
         """Tool names with special characters are handled safely."""
         # This should either work or raise a clear error
         try:
-            tool = {
-                "name": "my-tool_v2",
-                "type": "cli",
-                "command": "echo",
-                "args": "test",
-                "description": "Tool with special chars",
-            }
-            storage.tools.save(tool)
+            tool_yaml = """
+name: my-tool_v2
+command: echo
+description: Tool with special chars
+
+schema:
+  positional:
+    - name: text
+      type: string
+      required: true
+
+recipes:
+  echo:
+    description: Echo text
+    params:
+      text: {}
+"""
+            tools_dir = tmp_path / "tools"
+            tools_dir.mkdir(exist_ok=True)
+            (tools_dir / "my-tool_v2.yaml").write_text(tool_yaml)
             assert storage.tools.exists("my-tool_v2")
         except ValueError:
             pass  # Rejecting special chars is acceptable
