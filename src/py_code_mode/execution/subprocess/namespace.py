@@ -144,21 +144,14 @@ else:
     _store = MemorySkillStore()
     _library = SkillLibrary(embedder=MockEmbedder(), store=_store)
 
-# Skills namespace needs an executor reference for skill invocation.
-# Since we're in a subprocess, we create a minimal mock that provides
-# the namespace dict that SkillsNamespace.invoke() needs.
-class _MockExecutor:
-    """Minimal executor mock for skills namespace in subprocess."""
-    def __init__(self):
-        self._namespace = {{}}
-
-# Create mock executor and wire up circular references
-_mock_executor = _MockExecutor()
-skills = SkillsNamespace(_library, _mock_executor)
+# SkillsNamespace now takes a namespace dict directly (no executor needed).
+# Create the namespace dict first, then wire up circular references.
+_skills_ns_dict = {{}}
+skills = SkillsNamespace(_library, _skills_ns_dict)
 
 # Wire up the namespace so skills can access tools/skills/artifacts
-_mock_executor._namespace["tools"] = tools
-_mock_executor._namespace["skills"] = skills
+_skills_ns_dict["tools"] = tools
+_skills_ns_dict["skills"] = skills
 
 # =============================================================================
 # Artifacts Namespace (with simplified API for agent usage)
@@ -215,7 +208,7 @@ class _SimpleArtifactStore:
 artifacts = _SimpleArtifactStore(_base_artifacts)
 
 # Complete the namespace wiring for skills
-_mock_executor._namespace["artifacts"] = artifacts
+_skills_ns_dict["artifacts"] = artifacts
 
 # =============================================================================
 # Cleanup temporary variables (keep wrapper classes for runtime use)
@@ -226,7 +219,7 @@ try:
     del _adapter
 except NameError:
     pass
-del _skills_path, _store, _library, _mock_executor, _MockExecutor
+del _skills_path, _store, _library, _skills_ns_dict
 del _artifacts_path, _base_artifacts
 del Path
 del ToolRegistry, ToolsNamespace, CLIAdapter

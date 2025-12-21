@@ -10,8 +10,7 @@ import builtins
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from py_code_mode.execution.in_process.executor import InProcessExecutor
-    from py_code_mode.skills import SkillLibrary
+    from py_code_mode.skills import PythonSkill, SkillLibrary
 
 # Use builtins to avoid security hook false positive on Python's code execution
 _run_code = getattr(builtins, "exec")
@@ -23,9 +22,26 @@ class SkillsNamespace:
     Wraps a SkillLibrary and provides agent-facing methods plus skill execution.
     """
 
-    def __init__(self, library: SkillLibrary, executor: InProcessExecutor) -> None:
+    def __init__(self, library: SkillLibrary, namespace: dict[str, Any]) -> None:
+        """Initialize SkillsNamespace.
+
+        Args:
+            library: The skill library for skill lookup and storage.
+            namespace: Dict containing tools, skills, artifacts for skill execution.
+                       Must be a plain dict, not an executor object.
+
+        Raises:
+            TypeError: If namespace is an executor-like object (has _namespace attr).
+        """
+        # Reject executor-like objects - require the actual namespace dict
+        if hasattr(namespace, "_namespace"):
+            raise TypeError(
+                "SkillsNamespace expects a namespace dict, not an executor. "
+                "Pass executor._namespace instead of the executor itself."
+            )
+
         self._library = library
-        self._executor = executor
+        self._namespace = namespace
 
     def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search for skills matching query. Returns simplified skill info."""
@@ -41,7 +57,7 @@ class SkillsNamespace:
         skills = self._library.list()
         return [self._simplify(s) for s in skills]
 
-    def _simplify(self, skill: Any) -> dict[str, Any]:
+    def _simplify(self, skill: PythonSkill) -> dict[str, Any]:
         """Simplify skill for agent readability."""
         params = {}
         for p in skill.parameters:
@@ -118,11 +134,12 @@ class SkillsNamespace:
             raise ValueError(f"Skill not found: {skill_name}")
 
         # Execute skill source fresh, same as regular code execution
-        namespace = {
-            "tools": self._executor._namespace.get("tools"),
-            "skills": self._executor._namespace.get("skills"),
-            "artifacts": self._executor._namespace.get("artifacts"),
+        # Create isolated namespace with copies of tools/skills/artifacts refs
+        skill_namespace = {
+            "tools": self._namespace.get("tools"),
+            "skills": self._namespace.get("skills"),
+            "artifacts": self._namespace.get("artifacts"),
         }
         code = compile(skill.source, f"<skill:{skill_name}>", "exec")
-        _run_code(code, namespace)
-        return namespace["run"](**kwargs)
+        _run_code(code, skill_namespace)
+        return skill_namespace["run"](**kwargs)

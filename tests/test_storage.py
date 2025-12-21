@@ -48,9 +48,7 @@ class TestGetSerializableAccess:
 
             assert isinstance(result, FileStorageAccess)
 
-        def test_tools_path_is_none_when_directory_does_not_exist(
-            self, tmp_path: Path
-        ) -> None:
+        def test_tools_path_is_none_when_directory_does_not_exist(self, tmp_path: Path) -> None:
             """tools_path is None if tools/ directory doesn't exist.
 
             Breaks when: tools_path is set even when directory is missing.
@@ -139,9 +137,7 @@ class TestGetSerializableAccess:
     class TestRedisStorageAccess:
         """Tests for RedisStorage.get_serializable_access()."""
 
-        def test_returns_redis_storage_access_type(
-            self, mock_redis: MockRedisClient
-        ) -> None:
+        def test_returns_redis_storage_access_type(self, mock_redis: MockRedisClient) -> None:
             """get_serializable_access() returns RedisStorageAccess instance.
 
             Breaks when: Return type is wrong or method doesn't exist.
@@ -152,9 +148,7 @@ class TestGetSerializableAccess:
 
             assert isinstance(result, RedisStorageAccess)
 
-        def test_redis_url_is_correctly_reconstructed(
-            self, mock_redis: MockRedisClient
-        ) -> None:
+        def test_redis_url_is_correctly_reconstructed(self, mock_redis: MockRedisClient) -> None:
             """redis_url is reconstructed from connection pool kwargs.
 
             Breaks when: URL format is wrong or components are missing.
@@ -207,9 +201,7 @@ class TestGetSerializableAccess:
             assert "@" not in result.redis_url
             assert result.redis_url == "redis://localhost:6379/0"
 
-        def test_tools_prefix_is_correctly_formatted(
-            self, mock_redis: MockRedisClient
-        ) -> None:
+        def test_tools_prefix_is_correctly_formatted(self, mock_redis: MockRedisClient) -> None:
             """tools_prefix follows {prefix}:tools format.
 
             Breaks when: Prefix format doesn't match expected pattern.
@@ -220,9 +212,7 @@ class TestGetSerializableAccess:
 
             assert result.tools_prefix == "myapp:tools"
 
-        def test_skills_prefix_is_correctly_formatted(
-            self, mock_redis: MockRedisClient
-        ) -> None:
+        def test_skills_prefix_is_correctly_formatted(self, mock_redis: MockRedisClient) -> None:
             """skills_prefix follows {prefix}:skills format.
 
             Breaks when: Prefix format doesn't match expected pattern.
@@ -233,9 +223,7 @@ class TestGetSerializableAccess:
 
             assert result.skills_prefix == "myapp:skills"
 
-        def test_artifacts_prefix_is_correctly_formatted(
-            self, mock_redis: MockRedisClient
-        ) -> None:
+        def test_artifacts_prefix_is_correctly_formatted(self, mock_redis: MockRedisClient) -> None:
             """artifacts_prefix follows {prefix}:artifacts format.
 
             Breaks when: Prefix format doesn't match expected pattern.
@@ -246,9 +234,7 @@ class TestGetSerializableAccess:
 
             assert result.artifacts_prefix == "myapp:artifacts"
 
-        def test_access_descriptor_is_frozen_dataclass(
-            self, mock_redis: MockRedisClient
-        ) -> None:
+        def test_access_descriptor_is_frozen_dataclass(self, mock_redis: MockRedisClient) -> None:
             """RedisStorageAccess is immutable (frozen dataclass).
 
             Breaks when: Descriptor can be mutated after creation.
@@ -297,9 +283,7 @@ class TestGetSerializableAccess:
             # Should be FileStorageAccess (part of the union)
             assert isinstance(result, FileStorageAccess)
 
-        def test_redis_storage_returns_union_type(
-            self, mock_redis: MockRedisClient
-        ) -> None:
+        def test_redis_storage_returns_union_type(self, mock_redis: MockRedisClient) -> None:
             """RedisStorage returns type compatible with StorageAccess union.
 
             Breaks when: Return type doesn't match expected union.
@@ -321,9 +305,7 @@ class TestGetSerializableAccess:
             assert hasattr(storage, "get_serializable_access")
             assert callable(storage.get_serializable_access)
 
-        def test_method_exists_on_redis_storage(
-            self, mock_redis: MockRedisClient
-        ) -> None:
+        def test_method_exists_on_redis_storage(self, mock_redis: MockRedisClient) -> None:
             """RedisStorage has get_serializable_access method.
 
             Breaks when: Method is missing from implementation.
@@ -420,9 +402,7 @@ def run(name: str) -> str:
             assert any(s.name == "greet" for s in all_skills)
 
         @pytest.mark.asyncio
-        async def test_redis_storage_complete_journey(
-            self, mock_redis: MockRedisClient
-        ) -> None:
+        async def test_redis_storage_complete_journey(self, mock_redis: MockRedisClient) -> None:
             """Developer sets up RedisStorage, gets registry and library, uses in code.
 
             User action: Set up distributed environment with Redis-based storage
@@ -675,24 +655,13 @@ def run() -> str:
                 "description": "A test tool",
                 "command": "echo",
                 "timeout": 10,
-                "schema": {
-                    "positional": [
-                        {"name": "arg", "type": "string", "required": True}
-                    ]
-                },
-                "recipes": {
-                    "run": {
-                        "description": "Run test",
-                        "params": {"arg": {}}
-                    }
-                }
+                "schema": {"positional": [{"name": "arg", "type": "string", "required": True}]},
+                "recipes": {"run": {"description": "Run test", "params": {"arg": {}}}},
             }
 
             # RedisToolStore uses a hash at {prefix}:__tools__
             hash_key = "test:tools:__tools__"
-            mock_redis._data[hash_key] = {
-                "test_tool": json.dumps(tool_config)
-            }
+            mock_redis._data[hash_key] = {"test_tool": json.dumps(tool_config)}
 
             registry = storage.get_tool_registry()
 
@@ -902,9 +871,7 @@ def run() -> str:
             assert isinstance(library, SkillLibrary)
 
         @pytest.mark.asyncio
-        async def test_file_storage_skips_non_yaml_files_in_tools(
-            self, tmp_path: Path
-        ) -> None:
+        async def test_file_storage_skips_non_yaml_files_in_tools(self, tmp_path: Path) -> None:
             """get_tool_registry() ignores non-.yaml files in tools/ directory.
 
             Input: .txt, .md files in tools/ directory
@@ -925,9 +892,7 @@ def run() -> str:
             assert len(tools) == 0
 
         @pytest.mark.asyncio
-        async def test_file_storage_skips_non_python_files_in_skills(
-            self, tmp_path: Path
-        ) -> None:
+        async def test_file_storage_skips_non_python_files_in_skills(self, tmp_path: Path) -> None:
             """get_skill_library() ignores non-.py files in skills/ directory.
 
             Input: .txt, .md files in skills/ directory

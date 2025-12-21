@@ -62,9 +62,9 @@ class InProcessExecutor:
     ) -> None:
         self._registry = registry
         self._skill_library = skill_library
-        self._artifact_store: (
-            ArtifactStoreProtocol | ArtifactStoreWrapperProtocol | None
-        ) = artifact_store
+        self._artifact_store: ArtifactStoreProtocol | ArtifactStoreWrapperProtocol | None = (
+            artifact_store
+        )
         self._default_timeout = default_timeout
         self._namespace: dict[str, Any] = {"__builtins__": builtins}
         self._closed = False
@@ -75,7 +75,7 @@ class InProcessExecutor:
 
         # Inject skills namespace if skill_library provided
         if skill_library is not None:
-            self._namespace["skills"] = SkillsNamespace(skill_library, self)
+            self._namespace["skills"] = SkillsNamespace(skill_library, self._namespace)
 
         # Inject artifacts namespace if artifact_store provided
         if artifact_store is not None:
@@ -226,7 +226,7 @@ class InProcessExecutor:
         self._namespace["tools"] = ToolsNamespace(self._registry)
 
         self._skill_library = storage.get_skill_library()
-        self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
+        self._namespace["skills"] = SkillsNamespace(self._skill_library, self._namespace)
 
         self._artifact_store = storage.get_artifact_store()
         self._namespace["artifacts"] = self._artifact_store

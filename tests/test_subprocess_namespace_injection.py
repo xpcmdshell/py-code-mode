@@ -454,9 +454,7 @@ class TestStorageAccessIntegration:
     """Integration tests for FileStorageAccess with namespaces."""
 
     @pytest.mark.asyncio
-    async def test_namespaces_use_storage_paths(
-        self, tmp_path: Path, echo_tool_yaml: str
-    ) -> None:
+    async def test_namespaces_use_storage_paths(self, tmp_path: Path, echo_tool_yaml: str) -> None:
         """Namespaces use paths from FileStorage.
 
         Breaks when: Paths not passed through, wrong directories used.

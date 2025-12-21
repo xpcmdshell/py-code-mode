@@ -97,9 +97,7 @@ class SubprocessExecutor:
             try:
                 storage_access = storage.get_serializable_access()
             except Exception as e:
-                raise RuntimeError(
-                    f"Failed to get serializable access from storage: {e}"
-                ) from e
+                raise RuntimeError(f"Failed to get serializable access from storage: {e}") from e
         self._storage_access = storage_access
 
         # 1. Create venv with VenvManager
