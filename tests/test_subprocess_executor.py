@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from py_code_mode.execution.protocol import Capability
 from py_code_mode.execution.subprocess.config import SubprocessConfig
 from py_code_mode.execution.subprocess.venv import KernelVenv, VenvManager
 
@@ -726,3 +727,710 @@ class TestVenvManagerErrors:
         # Error should contain useful information
         error_msg = str(exc_info.value).lower()
         assert "fake-nonexistent-package" in error_msg or "not found" in error_msg
+
+
+# =============================================================================
+# SubprocessExecutor Initialization Tests
+# =============================================================================
+
+
+@pytest.mark.xdist_group("subprocess")
+class TestSubprocessExecutorInit:
+    """Tests for SubprocessExecutor initialization."""
+
+    def test_accepts_none_config_uses_defaults(self) -> None:
+        """When config is None, uses default SubprocessConfig."""
+        # Import will fail until implementation exists - this is expected (TDD)
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        executor = SubprocessExecutor(config=None)
+        # Default config should have python_version set
+        assert executor._config is not None
+        assert executor._config.python_version is not None
+
+    def test_accepts_custom_config(self, tmp_path: Path) -> None:
+        """SubprocessExecutor accepts custom SubprocessConfig."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(
+            python_version="3.12",
+            venv_path=tmp_path / "custom-venv",
+            startup_timeout=45.0,
+        )
+        executor = SubprocessExecutor(config=config)
+
+        assert executor._config is config
+        assert executor._config.python_version == "3.12"
+        assert executor._config.startup_timeout == 45.0
+
+    def test_does_not_start_kernel_until_start_called(self) -> None:
+        """Kernel is not started on __init__, only on start()."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        executor = SubprocessExecutor()
+
+        # Kernel should not exist yet
+        assert not hasattr(executor, "_km") or executor._km is None
+        assert not hasattr(executor, "_kc") or executor._kc is None
+
+
+# =============================================================================
+# SubprocessExecutor Capabilities Tests
+# =============================================================================
+
+
+@pytest.mark.xdist_group("subprocess")
+class TestSubprocessExecutorCapabilities:
+    """Tests for SubprocessExecutor capability reporting."""
+
+    def test_supports_timeout(self) -> None:
+        """supports(TIMEOUT) returns True."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        executor = SubprocessExecutor()
+        assert executor.supports(Capability.TIMEOUT) is True
+
+    def test_supports_process_isolation(self) -> None:
+        """supports(PROCESS_ISOLATION) returns True."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        executor = SubprocessExecutor()
+        assert executor.supports(Capability.PROCESS_ISOLATION) is True
+
+    def test_supports_reset(self) -> None:
+        """supports(RESET) returns True."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        executor = SubprocessExecutor()
+        assert executor.supports(Capability.RESET) is True
+
+    def test_does_not_support_network_isolation(self) -> None:
+        """supports(NETWORK_ISOLATION) returns False."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        executor = SubprocessExecutor()
+        assert executor.supports(Capability.NETWORK_ISOLATION) is False
+
+    def test_does_not_support_filesystem_isolation(self) -> None:
+        """supports(FILESYSTEM_ISOLATION) returns False."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        executor = SubprocessExecutor()
+        assert executor.supports(Capability.FILESYSTEM_ISOLATION) is False
+
+    def test_supported_capabilities_returns_correct_set(self) -> None:
+        """supported_capabilities() returns set with TIMEOUT, PROCESS_ISOLATION, RESET."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        executor = SubprocessExecutor()
+        caps = executor.supported_capabilities()
+
+        assert Capability.TIMEOUT in caps
+        assert Capability.PROCESS_ISOLATION in caps
+        assert Capability.RESET in caps
+        assert Capability.NETWORK_ISOLATION not in caps
+        assert Capability.FILESYSTEM_ISOLATION not in caps
+
+
+# =============================================================================
+# SubprocessExecutor Lifecycle Tests
+# =============================================================================
+
+
+@pytest.mark.slow
+@pytest.mark.xdist_group("subprocess")
+class TestSubprocessExecutorLifecycle:
+    """Tests for SubprocessExecutor lifecycle (start/close/context manager)."""
+
+    @pytest.mark.asyncio
+    async def test_start_creates_kernel_that_can_execute(self, tmp_path: Path) -> None:
+        """start() creates a kernel that can execute code."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        executor = SubprocessExecutor(config=config)
+
+        try:
+            await executor.start()
+
+            result = await executor.run("1 + 1")
+            assert result.value == "2" or result.value == 2
+            assert result.error is None
+        finally:
+            await executor.close()
+
+    @pytest.mark.asyncio
+    async def test_start_with_storage_access_injects_namespaces(self, tmp_path: Path) -> None:
+        """start() with storage_access injects tools, skills, artifacts namespaces."""
+        from py_code_mode.execution.protocol import FileStorageAccess
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        tools_path = tmp_path / "tools"
+        skills_path = tmp_path / "skills"
+        artifacts_path = tmp_path / "artifacts"
+        tools_path.mkdir()
+        skills_path.mkdir()
+        artifacts_path.mkdir()
+
+        storage_access = FileStorageAccess(
+            tools_path=tools_path,
+            skills_path=skills_path,
+            artifacts_path=artifacts_path,
+        )
+
+        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        executor = SubprocessExecutor(config=config)
+
+        try:
+            await executor.start(storage_access=storage_access)
+
+            # Verify namespaces are injected
+            result = await executor.run("'tools' in dir()")
+            assert result.value in (True, "True")
+
+            result = await executor.run("'skills' in dir()")
+            assert result.value in (True, "True")
+
+            result = await executor.run("'artifacts' in dir()")
+            assert result.value in (True, "True")
+        finally:
+            await executor.close()
+
+    @pytest.mark.asyncio
+    async def test_close_shuts_down_kernel(self, tmp_path: Path) -> None:
+        """close() shuts down the kernel."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        executor = SubprocessExecutor(config=config)
+
+        await executor.start()
+        await executor.close()
+
+        # Kernel should be shut down - trying to run should indicate closed state
+        result = await executor.run("1 + 1")
+        assert result.error is not None
+
+    @pytest.mark.asyncio
+    async def test_close_cleans_up_venv_when_cleanup_enabled(self, tmp_path: Path) -> None:
+        """close() removes venv when cleanup_venv_on_close=True."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        venv_path = tmp_path / "venv-cleanup-test"
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            cleanup_venv_on_close=True,
+        )
+        executor = SubprocessExecutor(config=config)
+
+        await executor.start()
+        assert venv_path.exists()
+
+        await executor.close()
+        assert not venv_path.exists()
+
+    @pytest.mark.asyncio
+    async def test_close_preserves_venv_when_cleanup_disabled(self, tmp_path: Path) -> None:
+        """close() preserves venv when cleanup_venv_on_close=False."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        venv_path = tmp_path / "venv-preserve-test"
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            cleanup_venv_on_close=False,
+        )
+        executor = SubprocessExecutor(config=config)
+
+        await executor.start()
+        assert venv_path.exists()
+
+        await executor.close()
+        assert venv_path.exists()  # Still exists
+
+    @pytest.mark.asyncio
+    async def test_context_manager_calls_start_and_close(self, tmp_path: Path) -> None:
+        """async with SubprocessExecutor calls start() and close()."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        venv_path = tmp_path / "venv-context-manager"
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            cleanup_venv_on_close=True,
+        )
+
+        async with SubprocessExecutor(config=config) as executor:
+            result = await executor.run("2 + 2")
+            assert result.error is None
+
+        # Venv should be cleaned up after context exit
+        assert not venv_path.exists()
+
+
+# =============================================================================
+# SubprocessExecutor run() - Basic Execution Tests
+# =============================================================================
+
+
+@pytest.mark.slow
+@pytest.mark.xdist_group("subprocess")
+class TestSubprocessExecutorRun:
+    """Tests for SubprocessExecutor.run() - basic code execution."""
+
+    @pytest.fixture
+    async def executor(self, tmp_path: Path):
+        """Provide a started SubprocessExecutor for tests."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        exec = SubprocessExecutor(config=config)
+        await exec.start()
+        yield exec
+        await exec.close()
+
+    @pytest.mark.asyncio
+    async def test_simple_expression_returns_value(self, executor) -> None:
+        """Simple expression returns evaluated value."""
+        result = await executor.run("1 + 2 + 3")
+
+        assert result.error is None
+        # Value may be int or string representation depending on implementation
+        assert result.value in (6, "6")
+
+    @pytest.mark.asyncio
+    async def test_multi_statement_returns_last_expression(self, executor) -> None:
+        """Multi-statement code with final expression returns last value."""
+        code = """
+x = 10
+y = 20
+x + y
+"""
+        result = await executor.run(code)
+
+        assert result.error is None
+        assert result.value in (30, "30")
+
+    @pytest.mark.asyncio
+    async def test_statements_without_expression_returns_none(self, executor) -> None:
+        """Statements without trailing expression return None."""
+        result = await executor.run("x = 42")
+
+        assert result.error is None
+        assert result.value is None
+
+    @pytest.mark.asyncio
+    async def test_captures_stdout_from_print(self, executor) -> None:
+        """Captures stdout from print() calls."""
+        result = await executor.run('print("hello world")')
+
+        assert result.error is None
+        assert "hello world" in result.stdout
+
+    @pytest.mark.asyncio
+    async def test_returns_traceback_on_exception(self, executor) -> None:
+        """Returns formatted traceback on exception."""
+        result = await executor.run("1 / 0")
+
+        assert result.error is not None
+        assert "ZeroDivisionError" in result.error
+
+    @pytest.mark.asyncio
+    async def test_string_expression_returns_string_value(self, executor) -> None:
+        """String expression returns string value."""
+        result = await executor.run('"hello"')
+
+        assert result.error is None
+        # IPython may include quotes in the repr
+        assert "hello" in str(result.value)
+
+    @pytest.mark.asyncio
+    async def test_list_expression_returns_list(self, executor) -> None:
+        """List expression returns list representation."""
+        result = await executor.run("[1, 2, 3]")
+
+        assert result.error is None
+        # Value should represent [1, 2, 3]
+        assert "1" in str(result.value)
+        assert "2" in str(result.value)
+        assert "3" in str(result.value)
+
+
+# =============================================================================
+# SubprocessExecutor run() - Top-level Await Tests
+# =============================================================================
+
+
+@pytest.mark.slow
+@pytest.mark.xdist_group("subprocess")
+class TestSubprocessExecutorAsync:
+    """Tests for SubprocessExecutor top-level await support.
+
+    This is a KEY DIFFERENTIATOR from InProcessExecutor.
+    """
+
+    @pytest.fixture
+    async def executor(self, tmp_path: Path):
+        """Provide a started SubprocessExecutor for tests."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        exec = SubprocessExecutor(config=config)
+        await exec.start()
+        yield exec
+        await exec.close()
+
+    @pytest.mark.asyncio
+    async def test_can_await_async_function(self, executor) -> None:
+        """Can await async functions at top level."""
+        code = """
+import asyncio
+
+async def get_value():
+    await asyncio.sleep(0.01)
+    return 42
+
+await get_value()
+"""
+        result = await executor.run(code)
+
+        assert result.error is None
+        assert result.value in (42, "42")
+
+    @pytest.mark.asyncio
+    async def test_can_use_async_for_loop(self, executor) -> None:
+        """Can use async for loops at top level."""
+        code = """
+import asyncio
+
+async def async_gen():
+    for i in range(3):
+        await asyncio.sleep(0.001)
+        yield i
+
+items = []
+async for item in async_gen():
+    items.append(item)
+
+items
+"""
+        result = await executor.run(code)
+
+        assert result.error is None
+        # Should be [0, 1, 2]
+        assert "0" in str(result.value)
+        assert "1" in str(result.value)
+        assert "2" in str(result.value)
+
+    @pytest.mark.asyncio
+    async def test_can_use_async_with_statement(self, executor) -> None:
+        """Can use async with statements at top level."""
+        code = """
+import asyncio
+
+class AsyncContextManager:
+    async def __aenter__(self):
+        await asyncio.sleep(0.001)
+        return "entered"
+
+    async def __aexit__(self, *args):
+        await asyncio.sleep(0.001)
+
+async with AsyncContextManager() as value:
+    result = value
+
+result
+"""
+        result = await executor.run(code)
+
+        assert result.error is None
+        assert "entered" in str(result.value)
+
+
+# =============================================================================
+# SubprocessExecutor State Persistence Tests
+# =============================================================================
+
+
+@pytest.mark.slow
+@pytest.mark.xdist_group("subprocess")
+class TestSubprocessExecutorState:
+    """Tests for SubprocessExecutor state persistence between runs."""
+
+    @pytest.fixture
+    async def executor(self, tmp_path: Path):
+        """Provide a started SubprocessExecutor for tests."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        exec = SubprocessExecutor(config=config)
+        await exec.start()
+        yield exec
+        await exec.close()
+
+    @pytest.mark.asyncio
+    async def test_variables_persist_between_runs(self, executor) -> None:
+        """Variables defined in one run are accessible in next run."""
+        await executor.run("my_var = 123")
+        result = await executor.run("my_var")
+
+        assert result.error is None
+        assert result.value in (123, "123")
+
+    @pytest.mark.asyncio
+    async def test_imports_persist_between_runs(self, executor) -> None:
+        """Imports from one run are accessible in next run."""
+        await executor.run("import math")
+        result = await executor.run("math.pi")
+
+        assert result.error is None
+        assert "3.14" in str(result.value)
+
+    @pytest.mark.asyncio
+    async def test_functions_persist_between_runs(self, executor) -> None:
+        """Functions defined in one run are callable in next run."""
+        await executor.run("def double(x): return x * 2")
+        result = await executor.run("double(21)")
+
+        assert result.error is None
+        assert result.value in (42, "42")
+
+    @pytest.mark.asyncio
+    async def test_class_definitions_persist(self, executor) -> None:
+        """Classes defined in one run are usable in next run."""
+        await executor.run("class Counter:\n    def __init__(self): self.n = 0")
+        await executor.run("c = Counter()")
+        result = await executor.run("c.n")
+
+        assert result.error is None
+        assert result.value in (0, "0")
+
+
+# =============================================================================
+# SubprocessExecutor Timeout Tests
+# =============================================================================
+
+
+@pytest.mark.slow
+@pytest.mark.xdist_group("subprocess")
+class TestSubprocessExecutorTimeout:
+    """Tests for SubprocessExecutor timeout behavior."""
+
+    @pytest.fixture
+    async def executor(self, tmp_path: Path):
+        """Provide a started SubprocessExecutor with short timeout."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv",
+            default_timeout=2.0,  # Short timeout for tests
+        )
+        exec = SubprocessExecutor(config=config)
+        await exec.start()
+        yield exec
+        await exec.close()
+
+    @pytest.mark.asyncio
+    async def test_times_out_long_running_code(self, executor) -> None:
+        """Times out code that runs longer than timeout."""
+        code = """
+import time
+time.sleep(10)  # Sleep longer than timeout
+"""
+        result = await executor.run(code)
+
+        assert result.error is not None
+        # Error should indicate timeout
+        assert "timeout" in result.error.lower() or "timed out" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_returns_timeout_error_in_result(self, executor) -> None:
+        """Timeout error is in ExecutionResult.error field."""
+        code = "import time; time.sleep(10)"
+        result = await executor.run(code)
+
+        assert result.value is None
+        assert result.error is not None
+
+    @pytest.mark.asyncio
+    async def test_uses_config_default_timeout(self, tmp_path: Path) -> None:
+        """Uses default_timeout from config when not specified."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv-timeout",
+            default_timeout=1.0,  # Very short
+        )
+        async with SubprocessExecutor(config=config) as executor:
+            result = await executor.run("import time; time.sleep(5)")
+
+            assert result.error is not None
+            assert "timeout" in result.error.lower() or "timed out" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_timeout_can_be_overridden_per_call(self, executor) -> None:
+        """Timeout can be overridden per-call with timeout parameter."""
+        # This should timeout quickly because we override to 0.5s
+        result = await executor.run("import time; time.sleep(5)", timeout=0.5)
+
+        assert result.error is not None
+        assert "timeout" in result.error.lower() or "timed out" in result.error.lower()
+
+
+# =============================================================================
+# SubprocessExecutor Reset Tests
+# =============================================================================
+
+
+@pytest.mark.slow
+@pytest.mark.xdist_group("subprocess")
+class TestSubprocessExecutorReset:
+    """Tests for SubprocessExecutor.reset() functionality."""
+
+    @pytest.fixture
+    async def executor(self, tmp_path: Path):
+        """Provide a started SubprocessExecutor for tests."""
+        from py_code_mode.execution.protocol import FileStorageAccess
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        tools_path = tmp_path / "tools"
+        skills_path = tmp_path / "skills"
+        artifacts_path = tmp_path / "artifacts"
+        tools_path.mkdir()
+        skills_path.mkdir()
+        artifacts_path.mkdir()
+
+        storage_access = FileStorageAccess(
+            tools_path=tools_path,
+            skills_path=skills_path,
+            artifacts_path=artifacts_path,
+        )
+
+        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        exec = SubprocessExecutor(config=config)
+        await exec.start(storage_access=storage_access)
+        yield exec
+        await exec.close()
+
+    @pytest.mark.asyncio
+    async def test_reset_clears_user_defined_variables(self, executor) -> None:
+        """reset() clears user-defined variables."""
+        await executor.run("my_data = [1, 2, 3]")
+        result = await executor.run("my_data")
+        assert result.error is None  # Variable exists
+
+        await executor.reset()
+
+        result = await executor.run("my_data")
+        assert result.error is not None  # Variable no longer exists
+
+    @pytest.mark.asyncio
+    async def test_reset_preserves_injected_namespaces(self, executor) -> None:
+        """reset() preserves tools, skills, artifacts namespaces."""
+        # Verify namespaces exist before reset
+        result = await executor.run("'tools' in dir()")
+        assert result.value in (True, "True")
+
+        await executor.reset()
+
+        # Namespaces should still exist after reset
+        result = await executor.run("'tools' in dir()")
+        assert result.value in (True, "True")
+
+        result = await executor.run("'skills' in dir()")
+        assert result.value in (True, "True")
+
+        result = await executor.run("'artifacts' in dir()")
+        assert result.value in (True, "True")
+
+
+# =============================================================================
+# SubprocessExecutor Error Condition Tests
+# =============================================================================
+
+
+@pytest.mark.slow
+@pytest.mark.xdist_group("subprocess")
+class TestSubprocessExecutorErrors:
+    """Tests for SubprocessExecutor error handling.
+
+    NO silent fallbacks - errors should propagate with clear messages.
+    """
+
+    @pytest.mark.asyncio
+    async def test_run_on_closed_executor_returns_error(self, tmp_path: Path) -> None:
+        """run() on closed executor returns error in result."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        executor = SubprocessExecutor(config=config)
+
+        await executor.start()
+        await executor.close()
+
+        result = await executor.run("1 + 1")
+        assert result.error is not None
+
+    @pytest.mark.asyncio
+    async def test_start_twice_is_safe_or_raises(self, tmp_path: Path) -> None:
+        """start() called twice either raises or is idempotent."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        executor = SubprocessExecutor(config=config)
+
+        try:
+            await executor.start()
+
+            # Second start should either:
+            # 1. Raise an error (preferred - explicit)
+            # 2. Be idempotent (acceptable - no harm)
+            try:
+                await executor.start()
+                # If it doesn't raise, verify it still works
+                result = await executor.run("1 + 1")
+                assert result.error is None
+            except RuntimeError:
+                # This is fine - explicit error on double start
+                pass
+        finally:
+            await executor.close()
+
+    @pytest.mark.asyncio
+    async def test_syntax_error_returns_error_in_result(self, tmp_path: Path) -> None:
+        """Syntax errors are captured in ExecutionResult.error."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        async with SubprocessExecutor(config=config) as executor:
+            result = await executor.run("def broken(")
+
+            assert result.error is not None
+            assert "SyntaxError" in result.error or "syntax" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_import_error_returns_error_in_result(self, tmp_path: Path) -> None:
+        """Import errors are captured in ExecutionResult.error."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        async with SubprocessExecutor(config=config) as executor:
+            result = await executor.run("import this_module_does_not_exist_xyz")
+
+            assert result.error is not None
+            assert "ModuleNotFoundError" in result.error or "No module" in result.error
+
+    @pytest.mark.asyncio
+    async def test_attribute_error_returns_error_in_result(self, tmp_path: Path) -> None:
+        """Attribute errors are captured in ExecutionResult.error."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+
+        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        async with SubprocessExecutor(config=config) as executor:
+            result = await executor.run("'hello'.nonexistent_method()")
+
+            assert result.error is not None
+            assert "AttributeError" in result.error
