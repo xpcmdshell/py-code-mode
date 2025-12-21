@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from redis import Redis
 
+    from py_code_mode.tools import ToolRegistry
+
 
 def _tool_to_dict(tool: Any) -> dict[str, Any]:
     """Convert Tool object to dict."""
@@ -180,6 +182,27 @@ class StorageBackend(Protocol):
 
         Used by executors that run in separate processes and need
         connection info rather than direct object references.
+        """
+        ...
+
+    def get_tool_registry(self) -> ToolRegistry:
+        """Return ToolRegistry for in-process execution.
+
+        This method provides a registry of tools loaded from storage for executors.
+        """
+        ...
+
+    def get_skill_library(self) -> SkillLibrary:
+        """Return SkillLibrary for in-process execution.
+
+        This method provides a library of skills loaded from storage for executors.
+        """
+        ...
+
+    def get_artifact_store(self) -> ArtifactStoreWrapperProtocol:
+        """Return artifact store for in-process execution.
+
+        This method provides access to the artifact store wrapper for executors.
         """
         ...
 
@@ -469,6 +492,31 @@ class FileStorage:
             artifacts_path=base_path / "artifacts",
         )
 
+    def get_tool_registry(self) -> ToolRegistry:
+        """Return ToolRegistry for in-process execution."""
+        from py_code_mode.tools import ToolRegistry
+
+        registry = ToolRegistry()
+        tools_wrapper = self.tools
+        adapter = tools_wrapper._get_adapter()
+        if adapter is not None:
+            registry.register_adapter(adapter)
+        return registry
+
+    def get_skill_library(self) -> SkillLibrary:
+        """Return SkillLibrary for in-process execution."""
+        skills_wrapper = self.skills
+        return skills_wrapper._get_library()
+
+    def get_artifact_store(self) -> ArtifactStoreWrapperProtocol:
+        """Return artifact store for in-process execution."""
+        return self.artifacts
+
+    def get_skill_store(self) -> SkillStore:
+        """Return the underlying SkillStore for direct access."""
+        skills_wrapper = self.skills
+        return skills_wrapper._store
+
 
 class RedisToolStoreWrapper:
     """Redis-based tool store wrapper."""
@@ -619,3 +667,28 @@ class RedisStorage:
             skills_prefix=f"{prefix}:skills",
             artifacts_prefix=f"{prefix}:artifacts",
         )
+
+    def get_tool_registry(self) -> ToolRegistry:
+        """Return ToolRegistry for in-process execution."""
+        from py_code_mode.tools import ToolRegistry
+
+        registry = ToolRegistry()
+        tools_wrapper = self.tools
+        adapter = tools_wrapper._get_adapter()
+        if adapter is not None:
+            registry.register_adapter(adapter)
+        return registry
+
+    def get_skill_library(self) -> SkillLibrary:
+        """Return SkillLibrary for in-process execution."""
+        skills_wrapper = self.skills
+        return skills_wrapper._get_library()
+
+    def get_artifact_store(self) -> ArtifactStoreWrapperProtocol:
+        """Return artifact store for in-process execution."""
+        return self.artifacts
+
+    def get_skill_store(self) -> SkillStore:
+        """Return the underlying SkillStore for direct access."""
+        skills_wrapper = self.skills
+        return skills_wrapper._store

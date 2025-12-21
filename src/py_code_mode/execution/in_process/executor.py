@@ -14,7 +14,6 @@ import traceback
 from contextlib import redirect_stdout
 from typing import TYPE_CHECKING, Any
 
-from py_code_mode.artifacts import ArtifactStoreProtocol
 from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
 from py_code_mode.execution.protocol import Capability, validate_storage_not_access
 from py_code_mode.execution.registry import register_backend
@@ -23,7 +22,8 @@ from py_code_mode.tools import ToolRegistry, ToolsNamespace
 from py_code_mode.types import ExecutionResult
 
 if TYPE_CHECKING:
-    from py_code_mode.storage.backends import StorageBackend
+    from py_code_mode.artifacts import ArtifactStoreProtocol
+    from py_code_mode.storage.backends import ArtifactStoreWrapperProtocol, StorageBackend
 
 # Use builtins to avoid security hook false positive on Python's code execution
 _run_code = getattr(builtins, "exec")
@@ -57,12 +57,14 @@ class InProcessExecutor:
         self,
         registry: ToolRegistry | None = None,
         skill_library: SkillLibrary | None = None,
-        artifact_store: ArtifactStoreProtocol | None = None,
+        artifact_store: ArtifactStoreProtocol | ArtifactStoreWrapperProtocol | None = None,
         default_timeout: float = 30.0,
     ) -> None:
         self._registry = registry
         self._skill_library = skill_library
-        self._artifact_store = artifact_store
+        self._artifact_store: (
+            ArtifactStoreProtocol | ArtifactStoreWrapperProtocol | None
+        ) = artifact_store
         self._default_timeout = default_timeout
         self._namespace: dict[str, Any] = {"__builtins__": builtins}
         self._closed = False
@@ -207,12 +209,11 @@ class InProcessExecutor:
 
         Args:
             storage: Optional StorageBackend instance.
-                    If provided, uses storage.tools/skills/artifacts directly.
+                    If provided, uses storage protocol methods to build namespaces.
                     If None, uses whatever was passed to __init__.
 
         Raises:
-            TypeError: If passed old StorageAccess types instead of StorageBackend,
-                      or if storage wrapper types are unexpected.
+            TypeError: If passed old StorageAccess types instead of StorageBackend.
         """
         if storage is None:
             return  # Use __init__ configuration
@@ -220,70 +221,15 @@ class InProcessExecutor:
         # Reject old StorageAccess types - no backward compatibility
         validate_storage_not_access(storage, "InProcessExecutor")
 
-        # Use storage directly - access its internal adapters/stores
-        # This is preferred for InProcessExecutor since we're in the same process
-        # and can share the storage's resources directly.
-
-        # Build registry from storage's tool adapters
-        self._registry = await self._build_registry_from_storage(storage)
+        # Use public protocol methods to build namespaces
+        self._registry = storage.get_tool_registry()
         self._namespace["tools"] = ToolsNamespace(self._registry)
 
-        # Build skill library from storage's skill wrapper
-        self._skill_library = self._build_skill_library_from_storage(storage)
+        self._skill_library = storage.get_skill_library()
         self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
 
-        # Get artifact store from storage
-        self._artifact_store = self._get_artifact_store_from_storage(storage)
+        self._artifact_store = storage.get_artifact_store()
         self._namespace["artifacts"] = self._artifact_store
-
-    async def _build_registry_from_storage(self, storage: Any) -> ToolRegistry:
-        """Build a ToolRegistry from a storage backend's internal components."""
-        from py_code_mode.storage.backends import FileToolStore, RedisToolStoreWrapper
-
-        registry = ToolRegistry()
-
-        # Use protocol - storage.tools exists per StorageBackend protocol
-        tool_store = storage.tools
-        if isinstance(tool_store, (FileToolStore, RedisToolStoreWrapper)):
-            adapter = tool_store._get_adapter()
-            if adapter is not None:
-                registry.add_adapter(adapter)
-
-        return registry
-
-    def _build_skill_library_from_storage(self, storage: Any) -> SkillLibrary:
-        """Build a SkillLibrary from a storage backend's skill wrapper.
-
-        Raises:
-            TypeError: If storage.skills is not a SkillStoreWrapper.
-        """
-        from py_code_mode.storage.backends import SkillStoreWrapper
-
-        # Use protocol - storage.skills exists per StorageBackend protocol
-        skills_wrapper = storage.skills
-        if not isinstance(skills_wrapper, SkillStoreWrapper):
-            raise TypeError(
-                f"Expected SkillStoreWrapper from storage.skills, "
-                f"got {type(skills_wrapper).__name__}"
-            )
-        return skills_wrapper._get_library()
-
-    def _get_artifact_store_from_storage(self, storage: Any) -> ArtifactStoreProtocol:
-        """Get artifact store from a storage backend.
-
-        Raises:
-            TypeError: If storage.artifacts is not an ArtifactStoreWrapper.
-        """
-        from py_code_mode.storage.backends import ArtifactStoreWrapper
-
-        # Use protocol - storage.artifacts exists per StorageBackend protocol
-        artifacts_wrapper = storage.artifacts
-        if not isinstance(artifacts_wrapper, ArtifactStoreWrapper):
-            raise TypeError(
-                f"Expected ArtifactStoreWrapper from storage.artifacts, "
-                f"got {type(artifacts_wrapper).__name__}"
-            )
-        return artifacts_wrapper
 
     async def __aenter__(self) -> InProcessExecutor:
         return self
