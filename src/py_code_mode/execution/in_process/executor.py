@@ -16,17 +16,9 @@ from typing import TYPE_CHECKING, Any
 
 from py_code_mode.artifacts import ArtifactStoreProtocol
 from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
-from py_code_mode.execution.protocol import (
-    Capability,
-    FileStorageAccess,
-    RedisStorageAccess,
-)
+from py_code_mode.execution.protocol import Capability, validate_storage_not_access
 from py_code_mode.execution.registry import register_backend
-from py_code_mode.skills import (
-    MemorySkillStore,
-    MockEmbedder,
-    SkillLibrary,
-)
+from py_code_mode.skills import SkillLibrary
 from py_code_mode.tools import ToolRegistry, ToolsNamespace
 from py_code_mode.types import ExecutionResult
 
@@ -219,17 +211,14 @@ class InProcessExecutor:
                     If None, uses whatever was passed to __init__.
 
         Raises:
-            TypeError: If passed old StorageAccess types instead of StorageBackend.
+            TypeError: If passed old StorageAccess types instead of StorageBackend,
+                      or if storage wrapper types are unexpected.
         """
         if storage is None:
             return  # Use __init__ configuration
 
         # Reject old StorageAccess types - no backward compatibility
-        if isinstance(storage, (FileStorageAccess, RedisStorageAccess)):
-            raise TypeError(
-                f"InProcessExecutor.start() accepts StorageBackend, not {type(storage).__name__}. "
-                "Pass the storage backend directly, not a storage access descriptor."
-            )
+        validate_storage_not_access(storage, "InProcessExecutor")
 
         # Use storage directly - access its internal adapters/stores
         # This is preferred for InProcessExecutor since we're in the same process
@@ -245,8 +234,7 @@ class InProcessExecutor:
 
         # Get artifact store from storage
         self._artifact_store = self._get_artifact_store_from_storage(storage)
-        if self._artifact_store is not None:
-            self._namespace["artifacts"] = self._artifact_store
+        self._namespace["artifacts"] = self._artifact_store
 
     async def _build_registry_from_storage(self, storage: Any) -> ToolRegistry:
         """Build a ToolRegistry from a storage backend's internal components."""
@@ -264,27 +252,38 @@ class InProcessExecutor:
         return registry
 
     def _build_skill_library_from_storage(self, storage: Any) -> SkillLibrary:
-        """Build a SkillLibrary from a storage backend's skill wrapper."""
+        """Build a SkillLibrary from a storage backend's skill wrapper.
+
+        Raises:
+            TypeError: If storage.skills is not a SkillStoreWrapper.
+        """
         from py_code_mode.storage.backends import SkillStoreWrapper
 
         # Use protocol - storage.skills exists per StorageBackend protocol
         skills_wrapper = storage.skills
-        if isinstance(skills_wrapper, SkillStoreWrapper):
-            return skills_wrapper._get_library()
+        if not isinstance(skills_wrapper, SkillStoreWrapper):
+            raise TypeError(
+                f"Expected SkillStoreWrapper from storage.skills, "
+                f"got {type(skills_wrapper).__name__}"
+            )
+        return skills_wrapper._get_library()
 
-        # Fallback: return an empty skill library
-        return SkillLibrary(embedder=MockEmbedder(), store=MemorySkillStore())
+    def _get_artifact_store_from_storage(self, storage: Any) -> ArtifactStoreProtocol:
+        """Get artifact store from a storage backend.
 
-    def _get_artifact_store_from_storage(self, storage: Any) -> ArtifactStoreProtocol | None:
-        """Get artifact store from a storage backend."""
+        Raises:
+            TypeError: If storage.artifacts is not an ArtifactStoreWrapper.
+        """
         from py_code_mode.storage.backends import ArtifactStoreWrapper
 
         # Use protocol - storage.artifacts exists per StorageBackend protocol
         artifacts_wrapper = storage.artifacts
-        if isinstance(artifacts_wrapper, ArtifactStoreWrapper):
-            return artifacts_wrapper
-
-        return None
+        if not isinstance(artifacts_wrapper, ArtifactStoreWrapper):
+            raise TypeError(
+                f"Expected ArtifactStoreWrapper from storage.artifacts, "
+                f"got {type(artifacts_wrapper).__name__}"
+            )
+        return artifacts_wrapper
 
     async def __aenter__(self) -> InProcessExecutor:
         return self

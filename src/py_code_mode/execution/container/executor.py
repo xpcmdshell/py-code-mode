@@ -51,6 +51,7 @@ from py_code_mode.execution.protocol import (
     Capability,
     FileStorageAccess,
     RedisStorageAccess,
+    validate_storage_not_access,
 )
 from py_code_mode.execution.registry import register_backend
 from py_code_mode.types import ExecutionResult
@@ -324,14 +325,11 @@ class ContainerExecutor:
                     to get paths/URLs for container configuration.
 
         Raises:
-            TypeError: If passed old StorageAccess types instead of StorageBackend.
+            TypeError: If passed old StorageAccess types instead of StorageBackend,
+                      or if storage access type is unexpected.
         """
         # Reject old StorageAccess types - no backward compatibility
-        if isinstance(storage, (FileStorageAccess, RedisStorageAccess)):
-            raise TypeError(
-                f"ContainerExecutor.start() accepts StorageBackend, not {type(storage).__name__}. "
-                "Pass the storage backend directly."
-            )
+        validate_storage_not_access(storage, "ContainerExecutor")
 
         # Initialize Docker client with fallback socket detection
         self._docker = self._create_docker_client()
@@ -372,6 +370,11 @@ class ContainerExecutor:
                 tools_prefix = access.tools_prefix
                 skills_prefix = access.skills_prefix
                 artifacts_prefix = access.artifacts_prefix
+            else:
+                raise TypeError(
+                    f"Unexpected storage access type: {type(access).__name__}. "
+                    f"Expected FileStorageAccess or RedisStorageAccess"
+                )
 
         # Prepare container config with storage access
         docker_config = self.config.to_docker_config(

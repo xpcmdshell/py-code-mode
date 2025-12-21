@@ -51,6 +51,23 @@ class RedisStorageAccess:
 StorageAccess = FileStorageAccess | RedisStorageAccess
 
 
+def validate_storage_not_access(storage: Any, executor_name: str) -> None:
+    """Reject old StorageAccess types passed to executor.start().
+
+    Args:
+        storage: Value passed to executor.start()
+        executor_name: Name of the executor for error message
+
+    Raises:
+        TypeError: If storage is a StorageAccess type (old API)
+    """
+    if isinstance(storage, (FileStorageAccess, RedisStorageAccess)):
+        raise TypeError(
+            f"{executor_name}.start() accepts StorageBackend, not {type(storage).__name__}. "
+            "Pass the storage backend directly."
+        )
+
+
 class Capability:
     """Standard capability names for execution backends.
 

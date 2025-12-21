@@ -13,9 +13,8 @@ from jupyter_client import AsyncKernelManager
 
 from py_code_mode.execution.protocol import (
     Capability,
-    FileStorageAccess,
-    RedisStorageAccess,
     StorageAccess,
+    validate_storage_not_access,
 )
 from py_code_mode.execution.registry import register_backend
 from py_code_mode.execution.subprocess.config import SubprocessConfig
@@ -83,15 +82,11 @@ class SubprocessExecutor:
                     Calls storage.get_serializable_access() to get paths/URLs.
 
         Raises:
-            RuntimeError: If already started.
+            RuntimeError: If already started or storage access fails.
             TypeError: If passed old StorageAccess types instead of StorageBackend.
         """
         # Reject old StorageAccess types - no backward compatibility
-        if isinstance(storage, (FileStorageAccess, RedisStorageAccess)):
-            raise TypeError(
-                f"SubprocessExecutor.start() accepts StorageBackend, not {type(storage).__name__}. "
-                "Pass the storage backend directly."
-            )
+        validate_storage_not_access(storage, "SubprocessExecutor")
 
         if self._km is not None:
             raise RuntimeError("Executor already started")
@@ -99,7 +94,12 @@ class SubprocessExecutor:
         # Convert storage to storage_access for namespace injection
         storage_access: StorageAccess | None = None
         if storage is not None:
-            storage_access = storage.get_serializable_access()
+            try:
+                storage_access = storage.get_serializable_access()
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to get serializable access from storage: {e}"
+                ) from e
         self._storage_access = storage_access
 
         # 1. Create venv with VenvManager
