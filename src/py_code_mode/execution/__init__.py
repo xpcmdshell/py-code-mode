@@ -15,7 +15,7 @@ from py_code_mode.execution.registry import (
     register_backend,
 )
 
-# Container is optional
+# Container is optional (requires docker)
 try:
     from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 
@@ -24,6 +24,16 @@ except ImportError:
     CONTAINER_AVAILABLE = False
     ContainerConfig = None  # type: ignore
     ContainerExecutor = None  # type: ignore
+
+# Subprocess is optional (requires jupyter_client, ipykernel)
+try:
+    from py_code_mode.execution.subprocess import SubprocessConfig, SubprocessExecutor
+
+    SUBPROCESS_AVAILABLE = True
+except ImportError:
+    SUBPROCESS_AVAILABLE = False
+    SubprocessConfig = None  # type: ignore
+    SubprocessExecutor = None  # type: ignore
 
 __all__ = [
     "Capability",
@@ -38,4 +48,7 @@ __all__ = [
     "ContainerExecutor",
     "ContainerConfig",
     "CONTAINER_AVAILABLE",
+    "SubprocessExecutor",
+    "SubprocessConfig",
+    "SUBPROCESS_AVAILABLE",
 ]

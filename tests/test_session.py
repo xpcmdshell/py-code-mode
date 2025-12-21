@@ -672,47 +672,33 @@ class TestContainerExecutorStorageAccess:
 
 
 class TestExecutorStartSignature:
-    """Tests for Executor.start() accepting StorageAccess."""
+    """Tests for Executor.start() accepting StorageBackend."""
 
     @pytest.mark.asyncio
-    async def test_in_process_executor_start_accepts_storage_access(self) -> None:
-        """InProcessExecutor.start() accepts storage_access parameter."""
+    async def test_in_process_executor_start_accepts_storage(self, tmp_path: Path) -> None:
+        """InProcessExecutor.start() accepts storage parameter."""
         from py_code_mode.execution.in_process import InProcessExecutor
-        from py_code_mode.execution.protocol import FileStorageAccess
 
+        storage = FileStorage(tmp_path)
         executor = InProcessExecutor()
-        access = FileStorageAccess(
-            tools_path=None,
-            skills_path=None,
-            artifacts_path=Path("/tmp/artifacts"),
-        )
 
         # Should not raise
-        await executor.start(storage_access=access)
+        await executor.start(storage=storage)
         await executor.close()
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     @pytest.mark.xdist_group("docker")
-    async def test_container_executor_start_accepts_storage_access(self, tmp_path: Path) -> None:
-        """ContainerExecutor.start() accepts storage_access parameter."""
+    async def test_container_executor_start_accepts_storage(self, tmp_path: Path) -> None:
+        """ContainerExecutor.start() accepts storage parameter."""
         from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
-        from py_code_mode.execution.protocol import FileStorageAccess
 
-        artifacts_path = tmp_path / "artifacts"
-        artifacts_path.mkdir()
-
+        storage = FileStorage(tmp_path)
         config = ContainerConfig(timeout=30.0)
         executor = ContainerExecutor(config)
 
-        access = FileStorageAccess(
-            tools_path=None,
-            skills_path=None,
-            artifacts_path=artifacts_path,
-        )
-
         # Should not raise
-        await executor.start(storage_access=access)
+        await executor.start(storage=storage)
         await executor.close()
 
 
