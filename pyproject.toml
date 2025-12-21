@@ -37,6 +37,7 @@ jupyter = [
     "nbclient>=0.10",
     "nbformat>=5.10",
     "jupyter-client>=8.6",
+    "ipykernel>=6.0",
 ]
 chromadb = [
     "chromadb>=0.5",
