@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import shutil
 import sys
 import tempfile
@@ -12,6 +13,27 @@ from pathlib import Path
 
 import py_code_mode
 from py_code_mode.execution.subprocess.config import SubprocessConfig
+
+# Pattern for valid package specifiers
+# Allows: package-name, package_name, package.name, package[extras], package>=1.0
+_PACKAGE_PATTERN = re.compile(
+    r"^[a-zA-Z0-9_.-]+(\[[a-zA-Z0-9_,.-]+\])?([<>=!~][a-zA-Z0-9_.,<>=!~*]*)?$"
+)
+
+
+def _validate_package_spec(package: str) -> None:
+    """Validate package specifier to prevent argument injection.
+
+    Args:
+        package: Package specifier to validate.
+
+    Raises:
+        ValueError: If the package specifier is invalid or potentially malicious.
+    """
+    if package.startswith("-"):
+        raise ValueError(f"Invalid package specifier (starts with -): {package}")
+    if not _PACKAGE_PATTERN.match(package):
+        raise ValueError(f"Invalid package specifier: {package}")
 
 
 @dataclass
@@ -76,6 +98,11 @@ class VenvManager:
             ["venv", "--python", self._config.python_version, str(venv_path)],
             error_context="uv venv failed",
         )
+
+        # Validate extra_deps before processing
+        if extra_deps:
+            for dep in extra_deps:
+                _validate_package_spec(dep)
 
         # Collect all dependencies, separating py-code-mode for special handling
         deps = list(self._config.base_deps)
@@ -151,8 +178,10 @@ class VenvManager:
             package: The package specifier to install (e.g., "requests>=2.28").
 
         Raises:
+            ValueError: If the package specifier is invalid.
             RuntimeError: If package installation fails.
         """
+        _validate_package_spec(package)
         await self._run_uv(
             ["pip", "install", "--python", str(venv.python_path), package],
             error_context=f"uv pip install {package} failed",

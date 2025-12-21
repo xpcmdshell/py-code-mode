@@ -730,6 +730,96 @@ class TestVenvManagerErrors:
 
 
 # =============================================================================
+# VenvManager Package Validation Tests (Security)
+# =============================================================================
+
+
+@pytest.mark.xdist_group("venv")
+class TestVenvManagerPackageValidation:
+    """Tests for package specifier validation to prevent argument injection.
+
+    These tests ensure that malicious package specifiers cannot be used
+    to inject arbitrary arguments into pip/uv commands.
+    """
+
+    @pytest.mark.asyncio
+    async def test_add_package_rejects_dash_prefix(self, tmp_path: Path) -> None:
+        """add_package() rejects package names starting with dash (argument injection)."""
+        venv_path = tmp_path / "venv-dash"
+        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        manager = VenvManager(config)
+        venv = await manager.create()
+
+        with pytest.raises(ValueError, match="starts with -"):
+            await manager.add_package(venv, "-e /malicious/path")
+
+    @pytest.mark.asyncio
+    async def test_add_package_rejects_double_dash_prefix(self, tmp_path: Path) -> None:
+        """add_package() rejects package names starting with double dash."""
+        venv_path = tmp_path / "venv-double-dash"
+        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        manager = VenvManager(config)
+        venv = await manager.create()
+
+        with pytest.raises(ValueError, match="starts with -"):
+            await manager.add_package(venv, "--index-url=http://malicious.com/simple")
+
+    @pytest.mark.asyncio
+    async def test_add_package_rejects_shell_metacharacters(self, tmp_path: Path) -> None:
+        """add_package() rejects package names with shell metacharacters."""
+        venv_path = tmp_path / "venv-shell"
+        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        manager = VenvManager(config)
+        venv = await manager.create()
+
+        with pytest.raises(ValueError, match="Invalid package specifier"):
+            await manager.add_package(venv, "requests; rm -rf /")
+
+    @pytest.mark.asyncio
+    async def test_extra_deps_rejects_dash_prefix(self, tmp_path: Path) -> None:
+        """create() extra_deps rejects package names starting with dash."""
+        venv_path = tmp_path / "venv-extra-dash"
+        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        manager = VenvManager(config)
+
+        with pytest.raises(ValueError, match="starts with -"):
+            await manager.create(extra_deps=["-r requirements.txt"])
+
+    @pytest.mark.asyncio
+    async def test_valid_package_spec_with_version(self, tmp_path: Path) -> None:
+        """add_package() accepts valid package specifiers with versions."""
+        from py_code_mode.execution.subprocess.venv import _validate_package_spec
+
+        # These should not raise
+        _validate_package_spec("requests")
+        _validate_package_spec("requests>=2.28")
+        _validate_package_spec("requests>=2.28,<3.0")
+        _validate_package_spec("requests==2.28.0")
+        _validate_package_spec("requests~=2.28")
+
+    @pytest.mark.asyncio
+    async def test_valid_package_spec_with_extras(self, tmp_path: Path) -> None:
+        """add_package() accepts valid package specifiers with extras."""
+        from py_code_mode.execution.subprocess.venv import _validate_package_spec
+
+        # These should not raise
+        _validate_package_spec("requests[security]")
+        _validate_package_spec("pandas[excel,html]")
+        _validate_package_spec("aiohttp[speedups]>=3.8")
+
+    @pytest.mark.asyncio
+    async def test_valid_package_spec_with_underscores_dashes_dots(self, tmp_path: Path) -> None:
+        """add_package() accepts valid package names with various separators."""
+        from py_code_mode.execution.subprocess.venv import _validate_package_spec
+
+        # These should not raise
+        _validate_package_spec("my-package")
+        _validate_package_spec("my_package")
+        _validate_package_spec("my.package")
+        _validate_package_spec("my-package_name.v2")
+
+
+# =============================================================================
 # SubprocessExecutor Initialization Tests
 # =============================================================================
 

@@ -119,10 +119,11 @@ class SubprocessExecutor:
 
         # Collect output from IOPub channel
         stdout_parts: list[str] = []
+        stderr_parts: list[str] = []
         value: Any = None
         error: str | None = None
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
 
         while True:
@@ -153,8 +154,12 @@ class SubprocessExecutor:
             msg_type = msg["header"]["msg_type"]
             content = msg["content"]
 
-            if msg_type == "stream" and content.get("name") == "stdout":
-                stdout_parts.append(content["text"])
+            if msg_type == "stream":
+                stream_name = content.get("name")
+                if stream_name == "stdout":
+                    stdout_parts.append(content["text"])
+                elif stream_name == "stderr":
+                    stderr_parts.append(content["text"])
             elif msg_type == "execute_result":
                 value = content["data"].get("text/plain")
             elif msg_type == "error":
@@ -162,7 +167,16 @@ class SubprocessExecutor:
             elif msg_type == "status" and content.get("execution_state") == "idle":
                 break
 
-        return ExecutionResult(value=value, stdout="".join(stdout_parts), error=error)
+        # Combine stdout and stderr (stderr appended after stdout)
+        combined_output = "".join(stdout_parts)
+        if stderr_parts:
+            stderr_output = "".join(stderr_parts)
+            if combined_output:
+                combined_output = combined_output + stderr_output
+            else:
+                combined_output = stderr_output
+
+        return ExecutionResult(value=value, stdout=combined_output, error=error)
 
     async def reset(self) -> None:
         """Clear kernel state by restarting.
@@ -209,19 +223,27 @@ class SubprocessExecutor:
             await self._run_setup_code(setup_code)
 
     async def _run_setup_code(self, code: str) -> None:
-        """Run setup code in the kernel, ignoring errors."""
+        """Run setup code in the kernel.
+
+        Raises:
+            RuntimeError: If namespace setup fails or times out.
+        """
         if self._kc is None:
             return
 
         msg_id = self._kc.execute(code, store_history=False, silent=True)
 
         # Wait for completion
-        deadline = asyncio.get_event_loop().time() + self._config.startup_timeout
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._config.startup_timeout
+        error: str | None = None
 
         while True:
-            remaining = deadline - asyncio.get_event_loop().time()
+            remaining = deadline - loop.time()
             if remaining <= 0:
-                break
+                raise RuntimeError(
+                    f"Namespace setup timed out after {self._config.startup_timeout}s"
+                )
 
             try:
                 msg = await asyncio.wait_for(
@@ -229,7 +251,9 @@ class SubprocessExecutor:
                     timeout=remaining,
                 )
             except TimeoutError:
-                break
+                raise RuntimeError(
+                    f"Namespace setup timed out after {self._config.startup_timeout}s"
+                ) from None
 
             parent_msg_id = msg.get("parent_header", {}).get("msg_id")
             if parent_msg_id != msg_id:
@@ -238,8 +262,14 @@ class SubprocessExecutor:
             msg_type = msg["header"]["msg_type"]
             content = msg["content"]
 
-            if msg_type == "status" and content.get("execution_state") == "idle":
+            if msg_type == "error":
+                traceback = content.get("traceback", [content.get("evalue", "Unknown error")])
+                error = "\n".join(traceback)
+            elif msg_type == "status" and content.get("execution_state") == "idle":
                 break
+
+        if error is not None:
+            raise RuntimeError(f"Namespace setup failed: {error}")
 
     async def __aenter__(self) -> SubprocessExecutor:
         """Support async context manager."""
