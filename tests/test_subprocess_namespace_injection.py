@@ -15,29 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from py_code_mode.execution.protocol import FileStorageAccess
 from py_code_mode.execution.subprocess import SubprocessExecutor
 from py_code_mode.execution.subprocess.config import SubprocessConfig
+from py_code_mode.storage import FileStorage
 
 # =============================================================================
 # Fixtures
 # =============================================================================
-
-
-@pytest.fixture
-def storage_dirs(tmp_path: Path) -> dict[str, Path]:
-    """Create storage directory structure for tests."""
-    tools_path = tmp_path / "tools"
-    skills_path = tmp_path / "skills"
-    artifacts_path = tmp_path / "artifacts"
-    tools_path.mkdir()
-    skills_path.mkdir()
-    artifacts_path.mkdir()
-    return {
-        "tools": tools_path,
-        "skills": skills_path,
-        "artifacts": artifacts_path,
-    }
 
 
 @pytest.fixture
@@ -65,28 +49,26 @@ recipes:
 
 
 @pytest.fixture
-def storage_with_echo_tool(storage_dirs: dict[str, Path], echo_tool_yaml: str) -> FileStorageAccess:
-    """Create storage access with an echo tool installed."""
-    (storage_dirs["tools"] / "echo.yaml").write_text(echo_tool_yaml)
-    return FileStorageAccess(
-        tools_path=storage_dirs["tools"],
-        skills_path=storage_dirs["skills"],
-        artifacts_path=storage_dirs["artifacts"],
-    )
+def storage_with_echo_tool(tmp_path: Path, echo_tool_yaml: str) -> FileStorage:
+    """Create storage with an echo tool installed."""
+    base_path = tmp_path / "storage_with_tool"
+    base_path.mkdir(parents=True, exist_ok=True)
+    tools_path = base_path / "tools"
+    tools_path.mkdir(parents=True, exist_ok=True)
+    (tools_path / "echo.yaml").write_text(echo_tool_yaml)
+    return FileStorage(base_path=base_path)
 
 
 @pytest.fixture
-def empty_storage(storage_dirs: dict[str, Path]) -> FileStorageAccess:
-    """Create empty storage access for tests."""
-    return FileStorageAccess(
-        tools_path=storage_dirs["tools"],
-        skills_path=storage_dirs["skills"],
-        artifacts_path=storage_dirs["artifacts"],
-    )
+def empty_storage(tmp_path: Path) -> FileStorage:
+    """Create empty storage for tests."""
+    base_path = tmp_path / "empty_storage"
+    base_path.mkdir(parents=True, exist_ok=True)
+    return FileStorage(base_path=base_path)
 
 
 @pytest.fixture
-async def executor_with_storage(tmp_path: Path, storage_with_echo_tool: FileStorageAccess):
+async def executor_with_storage(tmp_path: Path, storage_with_echo_tool: FileStorage):
     """Provide a started SubprocessExecutor with storage access."""
     config = SubprocessConfig(
         python_version="3.12",
@@ -95,13 +77,13 @@ async def executor_with_storage(tmp_path: Path, storage_with_echo_tool: FileStor
         base_deps=("ipykernel", "py-code-mode"),
     )
     executor = SubprocessExecutor(config=config)
-    await executor.start(storage_access=storage_with_echo_tool)
+    await executor.start(storage=storage_with_echo_tool)
     yield executor
     await executor.close()
 
 
 @pytest.fixture
-async def executor_empty_storage(tmp_path: Path, empty_storage: FileStorageAccess):
+async def executor_empty_storage(tmp_path: Path, empty_storage: FileStorage):
     """Provide a started SubprocessExecutor with empty storage."""
     config = SubprocessConfig(
         python_version="3.12",
@@ -109,7 +91,7 @@ async def executor_empty_storage(tmp_path: Path, empty_storage: FileStorageAcces
         base_deps=("ipykernel", "py-code-mode"),
     )
     executor = SubprocessExecutor(config=config)
-    await executor.start(storage_access=empty_storage)
+    await executor.start(storage=empty_storage)
     yield executor
     await executor.close()
 
@@ -473,20 +455,20 @@ class TestStorageAccessIntegration:
 
     @pytest.mark.asyncio
     async def test_namespaces_use_storage_paths(
-        self, tmp_path: Path, storage_dirs: dict[str, Path], echo_tool_yaml: str
+        self, tmp_path: Path, echo_tool_yaml: str
     ) -> None:
-        """Namespaces use paths from FileStorageAccess.
+        """Namespaces use paths from FileStorage.
 
         Breaks when: Paths not passed through, wrong directories used.
         """
-        # Write tool to storage
-        (storage_dirs["tools"] / "echo.yaml").write_text(echo_tool_yaml)
+        # Create storage and write tool
+        base_path = tmp_path / "test_storage"
+        base_path.mkdir(parents=True, exist_ok=True)
+        tools_path = base_path / "tools"
+        tools_path.mkdir(parents=True, exist_ok=True)
+        (tools_path / "echo.yaml").write_text(echo_tool_yaml)
 
-        storage_access = FileStorageAccess(
-            tools_path=storage_dirs["tools"],
-            skills_path=storage_dirs["skills"],
-            artifacts_path=storage_dirs["artifacts"],
-        )
+        storage = FileStorage(base_path=base_path)
 
         config = SubprocessConfig(
             python_version="3.12",
@@ -496,7 +478,7 @@ class TestStorageAccessIntegration:
 
         executor = SubprocessExecutor(config=config)
         try:
-            await executor.start(storage_access=storage_access)
+            await executor.start(storage=storage)
 
             # Tools should be loaded from tools_path
             result = await executor.run("'echo' in [t.name for t in tools.list()]")
@@ -534,18 +516,14 @@ skills.create(
         assert result.value in (True, "True")
 
     @pytest.mark.asyncio
-    async def test_namespace_state_preserved_after_reset(
-        self, tmp_path: Path, storage_dirs: dict[str, Path]
-    ) -> None:
+    async def test_namespace_state_preserved_after_reset(self, tmp_path: Path) -> None:
         """reset() preserves namespace access and persisted data.
 
         Breaks when: reset() clears storage, namespaces not re-injected.
         """
-        storage_access = FileStorageAccess(
-            tools_path=storage_dirs["tools"],
-            skills_path=storage_dirs["skills"],
-            artifacts_path=storage_dirs["artifacts"],
-        )
+        base_path = tmp_path / "reset_test_storage"
+        base_path.mkdir(parents=True, exist_ok=True)
+        storage = FileStorage(base_path=base_path)
 
         config = SubprocessConfig(
             python_version="3.12",
@@ -555,7 +533,7 @@ skills.create(
 
         executor = SubprocessExecutor(config=config)
         try:
-            await executor.start(storage_access=storage_access)
+            await executor.start(storage=storage)
 
             # Create skill and artifact before reset
             await executor.run(
@@ -592,7 +570,7 @@ class TestNamespaceInvariants:
 
     @pytest.mark.asyncio
     async def test_namespaces_available_immediately_after_start(
-        self, tmp_path: Path, empty_storage: FileStorageAccess
+        self, tmp_path: Path, empty_storage: FileStorage
     ) -> None:
         """Namespaces are accessible immediately after start().
 
@@ -606,7 +584,7 @@ class TestNamespaceInvariants:
         executor = SubprocessExecutor(config=config)
 
         try:
-            await executor.start(storage_access=empty_storage)
+            await executor.start(storage=empty_storage)
 
             # Immediately check all namespaces
             result = await executor.run(
