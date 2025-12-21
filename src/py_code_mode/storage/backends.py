@@ -245,10 +245,20 @@ class SkillStoreWrapper:
 
 
 class ArtifactStoreWrapper:
-    """Wraps any ArtifactStoreProtocol with dict conversion and error handling."""
+    """Wraps any ArtifactStoreProtocol with dict conversion and error handling.
+
+    This wrapper provides an agent-friendly API where description is optional.
+    The underlying store (FileArtifactStore, RedisArtifactStore) requires description,
+    but this wrapper defaults to an empty string if not provided.
+    """
 
     def __init__(self, store: ArtifactStoreProtocol) -> None:
         self._store = store
+
+    @property
+    def path(self) -> str:
+        """Base path/prefix for this store."""
+        return self._store.path
 
     def list(self) -> list[dict[str, Any]]:
         """List all artifacts."""
@@ -280,10 +290,17 @@ class ArtifactStoreWrapper:
         self,
         name: str,
         data: Any,
-        description: str,
+        description: str = "",
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Save artifact."""
+        """Save artifact.
+
+        Args:
+            name: Artifact name.
+            data: Data to save (dict, list, str, or bytes).
+            description: Optional description (defaults to empty string).
+            metadata: Optional additional metadata.
+        """
         self._store.save(name, data, description, metadata)
 
     def delete(self, name: str) -> bool:
@@ -300,6 +317,10 @@ class ArtifactStoreWrapper:
     def exists(self, name: str) -> bool:
         """Check if artifact exists."""
         return self._store.exists(name)
+
+    def get(self, name: str) -> Any:
+        """Get artifact metadata by name."""
+        return self._store.get(name)
 
 
 class FileToolStore:
