@@ -81,13 +81,25 @@ uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.3.1
 
 ### Claude Code (MCP)
 
+**Global installation** (recommended - available in all directories):
+
 ```bash
-claude mcp add py-code-mode \
+claude mcp add -s user py-code-mode \
   -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.3.1 \
   py-code-mode-mcp --storage ~/.code-mode
 ```
 
-The storage directory will contain `tools/`, `skills/`, and `artifacts/` subdirectories.
+**Project-scoped installation** (only available in the current project):
+
+```bash
+claude mcp add -s project py-code-mode \
+  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.3.1 \
+  py-code-mode-mcp --storage ./.code-mode
+```
+
+> **Note:** Without `-s user` or `-s project`, `claude mcp add` defaults to project scope based on your current directory. If you install from `~` without a scope flag, the server only works in that directory.
+
+Verify your installation with `claude mcp list`. The storage directory will contain `tools/`, `skills/`, and `artifacts/` subdirectories.
 
 ### Python
 
