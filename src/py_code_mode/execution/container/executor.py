@@ -20,7 +20,10 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from py_code_mode.storage.backends import StorageBackend
 from urllib.parse import urlparse, urlunparse
 
 try:
@@ -48,7 +51,6 @@ from py_code_mode.execution.protocol import (
     Capability,
     FileStorageAccess,
     RedisStorageAccess,
-    StorageAccess,
 )
 from py_code_mode.execution.registry import register_backend
 from py_code_mode.types import ExecutionResult
@@ -129,8 +131,9 @@ class ContainerExecutor:
     ) -> ContainerExecutor:
         """Create container executor from factory kwargs.
 
-        NOTE: This is a convenience factory. Prefer using Session API
-        which handles storage access wiring automatically.
+        DEPRECATED: This factory uses FileStorageAccess directly, bypassing
+        the StorageBackend abstraction. Prefer using Session API which handles
+        storage wiring automatically.
 
         Args:
             artifacts: Path to artifacts directory on host.
@@ -142,22 +145,17 @@ class ContainerExecutor:
 
         Returns:
             Started ContainerExecutor.
+
+        Raises:
+            TypeError: Always - this factory is deprecated.
         """
-        config = ContainerConfig(
-            image=image,
-            timeout=timeout,
+        raise TypeError(
+            "ContainerExecutor.create() is deprecated. Use Session API instead:\n"
+            "  storage = FileStorage(base_path=Path('./data'))\n"
+            "  executor = ContainerExecutor(config)\n"
+            "  async with Session(storage=storage, executor=executor) as session:\n"
+            "      result = await session.run(code)"
         )
-
-        # Build storage access from paths
-        storage_access = FileStorageAccess(
-            tools_path=Path(tools) if tools else None,
-            skills_path=Path(skills) if skills else None,
-            artifacts_path=Path(artifacts) if artifacts else Path("/tmp/artifacts"),
-        )
-
-        executor = cls(config)
-        await executor.start(storage_access=storage_access)
-        return executor
 
     def supports(self, capability: str) -> bool:
         """Check if this backend supports a capability."""
@@ -172,7 +170,12 @@ class ContainerExecutor:
         await self.start()
         return self
 
-    async def __aexit__(self, *args: object) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
         """Stop container and cleanup."""
         await self.close()
 
@@ -312,56 +315,63 @@ class ContainerExecutor:
 
     async def start(
         self,
-        storage_access: StorageAccess | None = None,
+        storage: StorageBackend | None = None,
     ) -> None:
         """Start the container and wait for it to be healthy.
 
         Args:
-            storage_access: Storage access descriptor from Session.
-                           Determines volume mounts (FileStorageAccess) or
-                           Redis connection (RedisStorageAccess).
+            storage: StorageBackend instance. Calls storage.get_serializable_access()
+                    to get paths/URLs for container configuration.
+
+        Raises:
+            TypeError: If passed old StorageAccess types instead of StorageBackend.
         """
+        # Reject old StorageAccess types - no backward compatibility
+        if isinstance(storage, (FileStorageAccess, RedisStorageAccess)):
+            raise TypeError(
+                f"ContainerExecutor.start() accepts StorageBackend, not {type(storage).__name__}. "
+                "Pass the storage backend directly."
+            )
+
         # Initialize Docker client with fallback socket detection
         self._docker = self._create_docker_client()
 
         # Ensure image exists (build if needed and auto_build=True)
         self._ensure_image_exists()
 
-        # Extract paths/urls from storage access
+        # Extract paths/urls from storage via get_serializable_access()
         tools_path = None
         skills_path = None
         artifacts_path = None
         redis_url = None
-
-        if storage_access is None:
-            # No storage access - proceed with defaults
-            pass
-        elif isinstance(storage_access, FileStorageAccess):
-            tools_path = storage_access.tools_path
-            skills_path = storage_access.skills_path
-            artifacts_path = storage_access.artifacts_path
-            # Create directories on host before mounting
-            # Skills need to exist for volume mount
-            if skills_path:
-                skills_path.mkdir(parents=True, exist_ok=True)
-            # Artifacts need to exist for volume mount
-            if artifacts_path:
-                artifacts_path.mkdir(parents=True, exist_ok=True)
-        elif isinstance(storage_access, RedisStorageAccess):
-            redis_url = storage_access.redis_url
-            # Transform localhost URLs for Docker container access
-            # Inside container, localhost refers to container itself, not host
-            if redis_url:
-                redis_url = _transform_localhost_for_docker(redis_url)
-
-        # Extract Redis prefixes if available
         tools_prefix = None
         skills_prefix = None
         artifacts_prefix = None
-        if isinstance(storage_access, RedisStorageAccess):
-            tools_prefix = storage_access.tools_prefix
-            skills_prefix = storage_access.skills_prefix
-            artifacts_prefix = storage_access.artifacts_prefix
+
+        if storage is not None:
+            # Get serializable access descriptor from storage
+            access = storage.get_serializable_access()
+
+            if isinstance(access, FileStorageAccess):
+                tools_path = access.tools_path
+                skills_path = access.skills_path
+                artifacts_path = access.artifacts_path
+                # Create directories on host before mounting
+                # Skills need to exist for volume mount
+                if skills_path:
+                    skills_path.mkdir(parents=True, exist_ok=True)
+                # Artifacts need to exist for volume mount
+                if artifacts_path:
+                    artifacts_path.mkdir(parents=True, exist_ok=True)
+            elif isinstance(access, RedisStorageAccess):
+                redis_url = access.redis_url
+                # Transform localhost URLs for Docker container access
+                # Inside container, localhost refers to container itself, not host
+                if redis_url:
+                    redis_url = _transform_localhost_for_docker(redis_url)
+                tools_prefix = access.tools_prefix
+                skills_prefix = access.skills_prefix
+                artifacts_prefix = access.artifacts_prefix
 
         # Prepare container config with storage access
         docker_config = self.config.to_docker_config(

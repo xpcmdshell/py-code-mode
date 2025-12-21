@@ -12,30 +12,26 @@ import builtins
 import io
 import traceback
 from contextlib import redirect_stdout
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from py_code_mode.artifacts import ArtifactStoreProtocol, FileArtifactStore, RedisArtifactStore
+from py_code_mode.artifacts import ArtifactStoreProtocol
 from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
 from py_code_mode.execution.protocol import (
     Capability,
     FileStorageAccess,
     RedisStorageAccess,
-    StorageAccess,
-    StorageBackendAccess,
 )
 from py_code_mode.execution.registry import register_backend
 from py_code_mode.skills import (
-    FileSkillStore,
     MemorySkillStore,
     MockEmbedder,
-    RedisSkillStore,
     SkillLibrary,
-    create_skill_library,
 )
-from py_code_mode.storage import RedisToolStore, registry_from_redis
 from py_code_mode.tools import ToolRegistry, ToolsNamespace
-from py_code_mode.tools.adapters import CLIAdapter
 from py_code_mode.types import ExecutionResult
+
+if TYPE_CHECKING:
+    from py_code_mode.storage.backends import StorageBackend
 
 # Use builtins to avoid security hook false positive on Python's code execution
 _run_code = getattr(builtins, "exec")
@@ -213,93 +209,44 @@ class InProcessExecutor:
 
     async def start(
         self,
-        storage_access: StorageAccess | None = None,
+        storage: StorageBackend | None = None,
     ) -> None:
-        """Start executor and configure from storage access.
+        """Start executor and configure from storage backend.
 
         Args:
-            storage_access: Optional storage access descriptor.
-                           If provided, loads tools/skills/artifacts from paths.
-                           If None, uses whatever was passed to __init__.
+            storage: Optional StorageBackend instance.
+                    If provided, uses storage.tools/skills/artifacts directly.
+                    If None, uses whatever was passed to __init__.
+
+        Raises:
+            TypeError: If passed old StorageAccess types instead of StorageBackend.
         """
-        if storage_access is None:
+        if storage is None:
             return  # Use __init__ configuration
 
-        if isinstance(storage_access, FileStorageAccess):
-            # Load from file paths
-            # Always inject tools namespace (empty if no path/directory)
-            if storage_access.tools_path and storage_access.tools_path.exists():
-                adapter = CLIAdapter(tools_path=storage_access.tools_path)
-                self._registry = ToolRegistry()
-                self._registry.add_adapter(adapter)
-            else:
-                self._registry = ToolRegistry()
-            self._namespace["tools"] = ToolsNamespace(self._registry)
-
-            # Always inject skills namespace
-            if storage_access.skills_path:
-                # Create directory if it doesn't exist (same as artifacts behavior)
-                storage_access.skills_path.mkdir(parents=True, exist_ok=True)
-                store = FileSkillStore(storage_access.skills_path)
-                self._skill_library = create_skill_library(store=store)
-            else:
-                # Only use memory store if NO path configured (explicit choice)
-                self._skill_library = SkillLibrary(
-                    embedder=MockEmbedder(), store=MemorySkillStore()
-                )
-            self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
-
-            # Always inject artifacts namespace
-            if storage_access.artifacts_path:
-                storage_access.artifacts_path.mkdir(parents=True, exist_ok=True)
-                self._artifact_store = FileArtifactStore(storage_access.artifacts_path)
-                self._namespace["artifacts"] = self._artifact_store
-
-        elif isinstance(storage_access, RedisStorageAccess):
-            # Load from Redis
-            try:
-                import redis
-            except ImportError as e:
-                raise ImportError(
-                    "redis required for RedisStorageAccess. Install with: pip install redis"
-                ) from e
-
-            client = redis.from_url(storage_access.redis_url)
-
-            # Tools from Redis
-            tool_store = RedisToolStore(client, prefix=storage_access.tools_prefix)
-            self._registry = await registry_from_redis(tool_store)
-            self._namespace["tools"] = ToolsNamespace(self._registry)
-
-            # Skills from Redis with semantic search
-            skill_store = RedisSkillStore(client, prefix=storage_access.skills_prefix)
-            self._skill_library = create_skill_library(store=skill_store)
-            self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
-
-            # Artifacts from Redis
-            self._artifact_store = RedisArtifactStore(
-                client, prefix=storage_access.artifacts_prefix
+        # Reject old StorageAccess types - no backward compatibility
+        if isinstance(storage, (FileStorageAccess, RedisStorageAccess)):
+            raise TypeError(
+                f"InProcessExecutor.start() accepts StorageBackend, not {type(storage).__name__}. "
+                "Pass the storage backend directly, not a storage access descriptor."
             )
+
+        # Use storage directly - access its internal adapters/stores
+        # This is preferred for InProcessExecutor since we're in the same process
+        # and can share the storage's resources directly.
+
+        # Build registry from storage's tool adapters
+        self._registry = await self._build_registry_from_storage(storage)
+        self._namespace["tools"] = ToolsNamespace(self._registry)
+
+        # Build skill library from storage's skill wrapper
+        self._skill_library = self._build_skill_library_from_storage(storage)
+        self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
+
+        # Get artifact store from storage
+        self._artifact_store = self._get_artifact_store_from_storage(storage)
+        if self._artifact_store is not None:
             self._namespace["artifacts"] = self._artifact_store
-
-        elif isinstance(storage_access, StorageBackendAccess):
-            # Direct storage backend access - use its internal adapters/stores
-            # This is preferred for InProcessExecutor since we're in the same process
-            # and can share the storage's resources directly.
-            storage = storage_access.storage
-
-            # Build registry from storage's tool adapters
-            self._registry = await self._build_registry_from_storage(storage)
-            self._namespace["tools"] = ToolsNamespace(self._registry)
-
-            # Build skill library from storage's skill wrapper
-            self._skill_library = self._build_skill_library_from_storage(storage)
-            self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
-
-            # Get artifact store from storage
-            self._artifact_store = self._get_artifact_store_from_storage(storage)
-            if self._artifact_store is not None:
-                self._namespace["artifacts"] = self._artifact_store
 
     async def _build_registry_from_storage(self, storage: Any) -> ToolRegistry:
         """Build a ToolRegistry from a storage backend's internal components."""
@@ -342,7 +289,12 @@ class InProcessExecutor:
     async def __aenter__(self) -> InProcessExecutor:
         return self
 
-    async def __aexit__(self, *args: Any) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
         await self.close()
 
 

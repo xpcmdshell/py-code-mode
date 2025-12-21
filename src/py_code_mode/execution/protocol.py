@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from py_code_mode.types import ExecutionResult
 
 if TYPE_CHECKING:
-    from py_code_mode.storage import StorageBackend
+    from py_code_mode.storage.backends import StorageBackend
 
 # =============================================================================
 # Storage Access Descriptors
@@ -48,22 +48,7 @@ class RedisStorageAccess:
     artifacts_prefix: str
 
 
-@dataclass(frozen=True)
-class StorageBackendAccess:
-    """Direct access to a StorageBackend instance.
-
-    Used by InProcessExecutor to directly use the storage's internal
-    adapters and stores, avoiding the need to recreate connections.
-    This is important for Redis with mock clients in tests.
-
-    ContainerExecutor cannot use this since it needs to pass connection
-    info to another process - use FileStorageAccess or RedisStorageAccess.
-    """
-
-    storage: StorageBackend
-
-
-StorageAccess = FileStorageAccess | RedisStorageAccess | StorageBackendAccess
+StorageAccess = FileStorageAccess | RedisStorageAccess
 
 
 class Capability:
@@ -161,5 +146,16 @@ class Executor(Protocol):
 
         Raises:
             NotImplementedError: If backend doesn't support reset
+        """
+        ...
+
+    async def start(self, storage: StorageBackend | None = None) -> None:
+        """Initialize executor with storage backend.
+
+        Args:
+            storage: StorageBackend instance. Executor decides how to use it:
+                    - InProcessExecutor: uses storage.tools/skills/artifacts directly
+                    - ContainerExecutor: calls storage.get_serializable_access()
+                    - SubprocessExecutor: calls storage.get_serializable_access()
         """
         ...

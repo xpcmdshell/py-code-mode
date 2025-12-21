@@ -950,23 +950,12 @@ class TestSubprocessExecutorLifecycle:
             await executor.close()
 
     @pytest.mark.asyncio
-    async def test_start_with_storage_access_injects_namespaces(self, tmp_path: Path) -> None:
-        """start() with storage_access injects tools, skills, artifacts namespaces."""
-        from py_code_mode.execution.protocol import FileStorageAccess
+    async def test_start_with_storage_injects_namespaces(self, tmp_path: Path) -> None:
+        """start() with storage injects tools, skills, artifacts namespaces."""
         from py_code_mode.execution.subprocess import SubprocessExecutor
+        from py_code_mode.storage.backends import FileStorage
 
-        tools_path = tmp_path / "tools"
-        skills_path = tmp_path / "skills"
-        artifacts_path = tmp_path / "artifacts"
-        tools_path.mkdir()
-        skills_path.mkdir()
-        artifacts_path.mkdir()
-
-        storage_access = FileStorageAccess(
-            tools_path=tools_path,
-            skills_path=skills_path,
-            artifacts_path=artifacts_path,
-        )
+        storage = FileStorage(tmp_path)
 
         config = SubprocessConfig(
             python_version="3.12",
@@ -976,7 +965,7 @@ class TestSubprocessExecutorLifecycle:
         executor = SubprocessExecutor(config=config)
 
         try:
-            await executor.start(storage_access=storage_access)
+            await executor.start(storage=storage)
 
             # Verify namespaces are injected
             result = await executor.run("'tools' in dir()")
@@ -1387,21 +1376,10 @@ class TestSubprocessExecutorReset:
     @pytest.fixture
     async def executor(self, tmp_path: Path):
         """Provide a started SubprocessExecutor for tests."""
-        from py_code_mode.execution.protocol import FileStorageAccess
         from py_code_mode.execution.subprocess import SubprocessExecutor
+        from py_code_mode.storage.backends import FileStorage
 
-        tools_path = tmp_path / "tools"
-        skills_path = tmp_path / "skills"
-        artifacts_path = tmp_path / "artifacts"
-        tools_path.mkdir()
-        skills_path.mkdir()
-        artifacts_path.mkdir()
-
-        storage_access = FileStorageAccess(
-            tools_path=tools_path,
-            skills_path=skills_path,
-            artifacts_path=artifacts_path,
-        )
+        storage = FileStorage(tmp_path)
 
         config = SubprocessConfig(
             python_version="3.12",
@@ -1409,7 +1387,7 @@ class TestSubprocessExecutorReset:
             base_deps=("ipykernel", "py-code-mode"),
         )
         exec = SubprocessExecutor(config=config)
-        await exec.start(storage_access=storage_access)
+        await exec.start(storage=storage)
         yield exec
         await exec.close()
 

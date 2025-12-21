@@ -8,7 +8,6 @@ from py_code_mode.execution.protocol import (
     FileStorageAccess,
     RedisStorageAccess,
     StorageAccess,
-    StorageBackendAccess,
 )
 from py_code_mode.execution.registry import (
     get_backend,
@@ -32,7 +31,6 @@ __all__ = [
     "FileStorageAccess",
     "RedisStorageAccess",
     "StorageAccess",
-    "StorageBackendAccess",
     "get_backend",
     "list_backends",
     "register_backend",

@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from py_code_mode.storage.backends import StorageBackend
 
 from jupyter_client import AsyncKernelManager
 
 from py_code_mode.execution.protocol import (
     Capability,
+    FileStorageAccess,
+    RedisStorageAccess,
     StorageAccess,
 )
+from py_code_mode.execution.registry import register_backend
 from py_code_mode.execution.subprocess.config import SubprocessConfig
 from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
 from py_code_mode.execution.subprocess.venv import KernelVenv, VenvManager
@@ -69,18 +75,31 @@ class SubprocessExecutor:
         """Return set of all capabilities this backend supports."""
         return set(self._CAPABILITIES)
 
-    async def start(self, storage_access: StorageAccess | None = None) -> None:
+    async def start(self, storage: StorageBackend | None = None) -> None:
         """Start kernel: create venv, start kernel, inject namespaces.
 
         Args:
-            storage_access: Optional storage access for namespace injection.
+            storage: Optional StorageBackend for namespace injection.
+                    Calls storage.get_serializable_access() to get paths/URLs.
 
         Raises:
             RuntimeError: If already started.
+            TypeError: If passed old StorageAccess types instead of StorageBackend.
         """
+        # Reject old StorageAccess types - no backward compatibility
+        if isinstance(storage, (FileStorageAccess, RedisStorageAccess)):
+            raise TypeError(
+                f"SubprocessExecutor.start() accepts StorageBackend, not {type(storage).__name__}. "
+                "Pass the storage backend directly."
+            )
+
         if self._km is not None:
             raise RuntimeError("Executor already started")
 
+        # Convert storage to storage_access for namespace injection
+        storage_access: StorageAccess | None = None
+        if storage is not None:
+            storage_access = storage.get_serializable_access()
         self._storage_access = storage_access
 
         # 1. Create venv with VenvManager
@@ -284,3 +303,7 @@ class SubprocessExecutor:
     ) -> None:
         """Close on context exit."""
         await self.close()
+
+
+# Register this backend
+register_backend("subprocess", SubprocessExecutor)
