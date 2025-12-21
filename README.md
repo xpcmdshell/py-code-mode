@@ -82,8 +82,12 @@ uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.3.0
 ### Claude Code (MCP)
 
 ```bash
-claude mcp add py-code-mode -- uvx py-code-mode --tools ./tools --skills ./skills
+claude mcp add py-code-mode \
+  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.3.0 \
+  py-code-mode-mcp --storage ~/.code-mode
 ```
+
+The storage directory will contain `tools/`, `skills/`, and `artifacts/` subdirectories.
 
 ### Python
 

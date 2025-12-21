@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.scripts]
-py-code-mode-mcp = "py_code_mode.mcp_server:main"
+py-code-mode-mcp = "py_code_mode.cli.mcp_server:main"
 
 [project.optional-dependencies]
 dev = [

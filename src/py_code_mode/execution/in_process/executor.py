@@ -303,46 +303,39 @@ class InProcessExecutor:
 
     async def _build_registry_from_storage(self, storage: Any) -> ToolRegistry:
         """Build a ToolRegistry from a storage backend's internal components."""
-        from py_code_mode.storage import FileStorage, RedisStorage
         from py_code_mode.storage.backends import FileToolStore, RedisToolStoreWrapper
 
         registry = ToolRegistry()
 
-        if isinstance(storage, (FileStorage, RedisStorage)):
-            # Access .tools property to trigger lazy initialization of the tool store
-            # The tool store has a _get_adapter() method that returns the CLIAdapter
-            tool_store = storage.tools
-            if isinstance(tool_store, (FileToolStore, RedisToolStoreWrapper)):
-                adapter = tool_store._get_adapter()
-                if adapter is not None:
-                    registry.add_adapter(adapter)
+        # Use protocol - storage.tools exists per StorageBackend protocol
+        tool_store = storage.tools
+        if isinstance(tool_store, (FileToolStore, RedisToolStoreWrapper)):
+            adapter = tool_store._get_adapter()
+            if adapter is not None:
+                registry.add_adapter(adapter)
 
         return registry
 
     def _build_skill_library_from_storage(self, storage: Any) -> SkillLibrary:
         """Build a SkillLibrary from a storage backend's skill wrapper."""
-        from py_code_mode.storage import FileStorage, RedisStorage
         from py_code_mode.storage.backends import SkillStoreWrapper
 
-        if isinstance(storage, (FileStorage, RedisStorage)):
-            # Access .skills property to trigger lazy initialization of the wrapper
-            skills_wrapper = storage.skills
-            if isinstance(skills_wrapper, SkillStoreWrapper):
-                return skills_wrapper._get_library()
+        # Use protocol - storage.skills exists per StorageBackend protocol
+        skills_wrapper = storage.skills
+        if isinstance(skills_wrapper, SkillStoreWrapper):
+            return skills_wrapper._get_library()
 
         # Fallback: return an empty skill library
         return SkillLibrary(embedder=MockEmbedder(), store=MemorySkillStore())
 
     def _get_artifact_store_from_storage(self, storage: Any) -> ArtifactStoreProtocol | None:
         """Get artifact store from a storage backend."""
-        from py_code_mode.storage import FileStorage, RedisStorage
         from py_code_mode.storage.backends import ArtifactStoreWrapper
 
-        if isinstance(storage, (FileStorage, RedisStorage)):
-            # Access .artifacts property to trigger lazy initialization
-            artifacts_wrapper = storage.artifacts
-            if isinstance(artifacts_wrapper, ArtifactStoreWrapper):
-                return artifacts_wrapper._store
+        # Use protocol - storage.artifacts exists per StorageBackend protocol
+        artifacts_wrapper = storage.artifacts
+        if isinstance(artifacts_wrapper, ArtifactStoreWrapper):
+            return artifacts_wrapper
 
         return None
 
