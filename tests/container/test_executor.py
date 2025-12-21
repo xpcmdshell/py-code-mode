@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from py_code_mode.backends.container.config import ContainerConfig
-from py_code_mode.backends.container.executor import ContainerExecutor
+from py_code_mode.execution.container.config import ContainerConfig
+from py_code_mode.execution.container.executor import ContainerExecutor
 
 
 class TestContainerConfig:
@@ -79,7 +79,7 @@ class TestContainerExecutor:
         mock_docker = MagicMock()
         mock_docker.containers.run.return_value = mock_container
 
-        from py_code_mode.backends.container.client import ExecuteResult
+        from py_code_mode.execution.container.client import ExecuteResult
 
         mock_result = ExecuteResult(
             value=42,
@@ -109,7 +109,7 @@ class TestContainerExecutor:
         mock_docker = MagicMock()
         mock_docker.containers.run.return_value = mock_container
 
-        from py_code_mode.backends.container.client import ExecuteResult
+        from py_code_mode.execution.container.client import ExecuteResult
 
         mock_result = ExecuteResult(
             value=None,
@@ -139,7 +139,7 @@ class TestContainerExecutor:
         mock_docker = MagicMock()
         mock_docker.containers.run.return_value = mock_container
 
-        from py_code_mode.backends.container.client import ExecuteResult
+        from py_code_mode.execution.container.client import ExecuteResult
 
         mock_result = ExecuteResult(
             value={"key": "value"},
@@ -170,7 +170,7 @@ class TestContainerExecutor:
         mock_docker = MagicMock()
         mock_docker.containers.run.return_value = mock_container
 
-        from py_code_mode.backends.container.client import ExecuteResult
+        from py_code_mode.execution.container.client import ExecuteResult
 
         mock_result = ExecuteResult(
             value=None,

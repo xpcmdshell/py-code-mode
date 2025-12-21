@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from py_code_mode.adapters.base import ToolAdapter
+from py_code_mode.tools.adapters.base import ToolAdapter
 
 if TYPE_CHECKING:
     pass
@@ -35,7 +35,7 @@ class TestRedisToolStore:
 
     def test_add_and_get_tool(self) -> None:
         """Can add a tool config and retrieve it by name."""
-        from py_code_mode import RedisToolStore
+        from py_code_mode.storage.redis_tools import RedisToolStore
 
         mock_redis = MagicMock()
         stored_data: dict[str, bytes] = {}
@@ -60,7 +60,7 @@ class TestRedisToolStore:
 
     def test_list_tools(self) -> None:
         """List returns all added tools."""
-        from py_code_mode import RedisToolStore
+        from py_code_mode.storage.redis_tools import RedisToolStore
 
         mock_redis = MagicMock()
         stored_data: dict[str, bytes] = {}
@@ -90,7 +90,7 @@ class TestRedisToolStore:
 
     def test_get_nonexistent_returns_none(self) -> None:
         """get() returns None for missing tool."""
-        from py_code_mode import RedisToolStore
+        from py_code_mode.storage.redis_tools import RedisToolStore
 
         mock_redis = MagicMock()
         mock_redis.hget.return_value = None
@@ -101,7 +101,7 @@ class TestRedisToolStore:
 
     def test_len_returns_tool_count(self) -> None:
         """__len__ returns number of tools."""
-        from py_code_mode import RedisToolStore
+        from py_code_mode.storage.redis_tools import RedisToolStore
 
         mock_redis = MagicMock()
         mock_redis.hlen.return_value = 5
@@ -111,7 +111,7 @@ class TestRedisToolStore:
 
     def test_remove_tool(self) -> None:
         """Can remove a tool from Redis."""
-        from py_code_mode import RedisToolStore
+        from py_code_mode.storage.redis_tools import RedisToolStore
 
         mock_redis = MagicMock()
         mock_redis.hdel.return_value = 1
@@ -124,7 +124,7 @@ class TestRedisToolStore:
 
     def test_remove_nonexistent_returns_false(self) -> None:
         """Removing nonexistent tool returns False."""
-        from py_code_mode import RedisToolStore
+        from py_code_mode.storage.redis_tools import RedisToolStore
 
         mock_redis = MagicMock()
         mock_redis.hdel.return_value = 0
@@ -136,7 +136,7 @@ class TestRedisToolStore:
 
     def test_from_directory(self, tmp_path: Path) -> None:
         """Loads tools from directory into Redis."""
-        from py_code_mode import RedisToolStore
+        from py_code_mode.storage.redis_tools import RedisToolStore
 
         # Create test tool file
         tool_file = tmp_path / "echo.yaml"
@@ -180,7 +180,7 @@ class TestRegistryFromRedis:
     @pytest.mark.asyncio
     async def test_creates_registry_with_cli_tools(self) -> None:
         """Creates ToolRegistry from CLI tool configs in Redis."""
-        from py_code_mode import RedisToolStore, registry_from_redis
+        from py_code_mode.storage.redis_tools import RedisToolStore, registry_from_redis
 
         mock_redis = MagicMock()
 
@@ -227,7 +227,7 @@ class TestRegistryFromRedis:
     @pytest.mark.asyncio
     async def test_empty_store_returns_empty_registry(self) -> None:
         """Empty Redis store returns empty registry."""
-        from py_code_mode import RedisToolStore, registry_from_redis
+        from py_code_mode.storage.redis_tools import RedisToolStore, registry_from_redis
 
         mock_redis = MagicMock()
         mock_redis.hgetall.return_value = {}
@@ -242,7 +242,7 @@ class TestRegistryFromRedis:
     @pytest.mark.asyncio
     async def test_mcp_tools_without_package_skipped(self) -> None:
         """MCP tools are skipped when mcp package not installed."""
-        from py_code_mode import RedisToolStore, registry_from_redis
+        from py_code_mode.storage.redis_tools import RedisToolStore, registry_from_redis
 
         mock_redis = MagicMock()
 
@@ -304,7 +304,7 @@ class TestRedisToolStoreIntegration:
 
     def test_round_trip_tool(self, redis_client) -> None:
         """Tool config survives Redis round-trip."""
-        from py_code_mode import RedisToolStore
+        from py_code_mode.storage.redis_tools import RedisToolStore
 
         store = RedisToolStore(redis_client, prefix="test-tools")
 
@@ -328,7 +328,7 @@ class TestRedisToolStoreIntegration:
     @pytest.mark.asyncio
     async def test_registry_from_redis_integration(self, redis_client) -> None:
         """registry_from_redis works with real Redis."""
-        from py_code_mode import RedisToolStore, registry_from_redis
+        from py_code_mode.storage.redis_tools import RedisToolStore, registry_from_redis
 
         store = RedisToolStore(redis_client, prefix="test-tools")
 

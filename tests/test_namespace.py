@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from py_code_mode.adapters.cli import CLIAdapter
-from py_code_mode.namespace import CallableProxy, ToolProxy, ToolsNamespace
-from py_code_mode.registry import ToolRegistry
+from py_code_mode.tools.adapters.cli import CLIAdapter
+from py_code_mode.tools.namespace import CallableProxy, ToolProxy, ToolsNamespace
+from py_code_mode.tools.registry import ToolRegistry
 
 
 @pytest.fixture

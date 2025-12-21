@@ -256,7 +256,7 @@ class TestToolRegistryFromDirLogging:
     @pytest.mark.asyncio
     async def test_from_dir_missing_path_logs_warning(self, log_capture: pytest.LogCaptureFixture):
         """from_dir() should log warning when path doesn't exist."""
-        from py_code_mode.registry import ToolRegistry
+        from py_code_mode.tools.registry import ToolRegistry
 
         nonexistent = "/nonexistent/tools/path"
         registry = await ToolRegistry.from_dir(nonexistent)
@@ -279,7 +279,7 @@ class TestToolRegistryFromDirLogging:
         self, tools_dir_with_corruption: Path, log_capture: pytest.LogCaptureFixture
     ):
         """CLIAdapter should log warning for corrupt YAML files."""
-        from py_code_mode.adapters.cli import CLIAdapter
+        from py_code_mode.tools.adapters.cli import CLIAdapter
 
         adapter = CLIAdapter(tools_path=tools_dir_with_corruption)
 
@@ -311,7 +311,7 @@ class TestCLIAdapterConstructorLogging:
 
     def test_constructor_missing_path_logs_warning(self, log_capture: pytest.LogCaptureFixture):
         """CLIAdapter(tools_path=...) should log warning when path doesn't exist."""
-        from py_code_mode.adapters.cli import CLIAdapter
+        from py_code_mode.tools.adapters.cli import CLIAdapter
 
         nonexistent = "/nonexistent/tools/path"
         adapter = CLIAdapter(tools_path=nonexistent)
@@ -341,7 +341,7 @@ class TestRedisToolStoreFromDirectoryLogging:
 
     def test_from_directory_missing_path_logs_warning(self, log_capture: pytest.LogCaptureFixture):
         """from_directory() should log warning when path doesn't exist."""
-        from py_code_mode.redis_tools import RedisToolStore
+        from py_code_mode.storage.redis_tools import RedisToolStore
         from tests.conftest import MockRedisClient
 
         mock_redis = MockRedisClient()
@@ -378,7 +378,7 @@ class TestFileToolStoreErrorHandling:
     @pytest.mark.asyncio
     async def test_get_returns_none_for_missing_tool(self, tmp_path: Path):
         """get() should return None when tool doesn't exist."""
-        from py_code_mode.registry import ToolRegistry
+        from py_code_mode.tools.registry import ToolRegistry
 
         # Create empty tools directory
         tools_dir = tmp_path / "tools"
@@ -400,7 +400,7 @@ class TestFileToolStoreErrorHandling:
         for corrupt files and continues loading valid tools. This allows partial
         functionality when some tool definitions are broken.
         """
-        from py_code_mode.registry import ToolRegistry
+        from py_code_mode.tools.registry import ToolRegistry
 
         caplog.set_level(logging.WARNING, logger="py_code_mode.registry")
 
@@ -536,7 +536,7 @@ class TestFileSkillStoreErrorHandling:
 
     def test_load_returns_none_for_missing_file(self, tmp_path: Path):
         """load() should return None when skill file doesn't exist."""
-        from py_code_mode.skill_store import FileSkillStore
+        from py_code_mode.skills import FileSkillStore
 
         store = FileSkillStore(tmp_path)
         result = store.load("nonexistent")
@@ -547,7 +547,7 @@ class TestFileSkillStoreErrorHandling:
         self, skills_dir_with_corruption: Path, log_capture: pytest.LogCaptureFixture
     ):
         """load() should raise StorageReadError for Python syntax errors."""
-        from py_code_mode.skill_store import FileSkillStore
+        from py_code_mode.skills import FileSkillStore
 
         store = FileSkillStore(skills_dir_with_corruption)
 
@@ -579,7 +579,7 @@ class TestFileSkillStoreListAllLogging:
         self, skills_dir_with_corruption: Path, log_capture: pytest.LogCaptureFixture
     ):
         """list_all() should log warning for each corrupt file."""
-        from py_code_mode.skill_store import FileSkillStore
+        from py_code_mode.skills import FileSkillStore
 
         store = FileSkillStore(skills_dir_with_corruption)
         skills = store.list_all()
@@ -604,7 +604,7 @@ class TestRedisSkillStoreErrorHandling:
 
     def test_load_returns_none_for_missing_key(self, mock_redis_with_corruption):
         """load() should return None when key doesn't exist."""
-        from py_code_mode.skill_store import RedisSkillStore
+        from py_code_mode.skills import RedisSkillStore
 
         store = RedisSkillStore(mock_redis_with_corruption, prefix="skills")
         result = store.load("totally_nonexistent")
@@ -615,7 +615,7 @@ class TestRedisSkillStoreErrorHandling:
         self, mock_redis_with_corruption, log_capture: pytest.LogCaptureFixture
     ):
         """load() should raise StorageReadError for invalid JSON."""
-        from py_code_mode.skill_store import RedisSkillStore
+        from py_code_mode.skills import RedisSkillStore
 
         store = RedisSkillStore(mock_redis_with_corruption, prefix="skills")
 
@@ -639,7 +639,7 @@ class TestRedisSkillStoreErrorHandling:
         self, mock_redis_with_corruption, log_capture: pytest.LogCaptureFixture
     ):
         """load() should raise StorageReadError for incomplete skill data."""
-        from py_code_mode.skill_store import RedisSkillStore
+        from py_code_mode.skills import RedisSkillStore
 
         store = RedisSkillStore(mock_redis_with_corruption, prefix="skills")
 
@@ -660,7 +660,7 @@ class TestRedisSkillStoreErrorHandling:
         self, mock_redis_with_corruption, log_capture: pytest.LogCaptureFixture
     ):
         """list_all() should log warning for corrupt entries."""
-        from py_code_mode.skill_store import RedisSkillStore
+        from py_code_mode.skills import RedisSkillStore
 
         store = RedisSkillStore(mock_redis_with_corruption, prefix="skills")
         skills = store.list_all()
@@ -703,8 +703,8 @@ class TestServerBuildSkillLibraryUsesLogging:
         # This test requires mocking to trigger the OSError path
         # Skip if FastAPI not available
         try:
-            from py_code_mode.backends.container.config import SessionConfig
-            from py_code_mode.backends.container.server import build_skill_library
+            from py_code_mode.execution.container.config import SessionConfig
+            from py_code_mode.execution.container.server import build_skill_library
         except ImportError:
             pytest.skip("FastAPI not installed")
 
@@ -741,7 +741,7 @@ class TestMCPAdapterCloseExceptionHandling:
     @pytest.mark.asyncio
     async def test_close_propagates_keyboard_interrupt(self):
         """close() should not catch KeyboardInterrupt."""
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         # Create adapter with mock session
         mock_session = MagicMock()
@@ -770,7 +770,7 @@ class TestMCPAdapterCloseExceptionHandling:
     @pytest.mark.asyncio
     async def test_close_catches_regular_exceptions(self):
         """close() should catch regular exceptions to ensure cleanup."""
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         mock_session = MagicMock()
         mock_exit_stack = MagicMock()
@@ -817,7 +817,7 @@ command: fake_mcp_server
         # Mock the MCP package import to fail by patching the mcp_adapter module
         with patch.dict("sys.modules", {"mcp": None}):
             # Reload registry module to trigger import failure
-            from py_code_mode.registry import ToolRegistry
+            from py_code_mode.tools.registry import ToolRegistry
 
             _registry = await ToolRegistry.from_dir(str(tools_dir))
 
@@ -846,7 +846,7 @@ class TestEmbedderFallbackLogging:
         self, tmp_path: Path, log_capture: pytest.LogCaptureFixture
     ):
         """Fallback to MockEmbedder should log warning."""
-        from py_code_mode.skill_store import FileSkillStore
+        from py_code_mode.skills import FileSkillStore
         from py_code_mode.storage import SkillStoreWrapper
 
         # Create skills directory and wrapper which triggers lazy library creation
@@ -857,7 +857,7 @@ class TestEmbedderFallbackLogging:
 
         # Mock the create_skill_library import to fail
         with patch(
-            "py_code_mode.storage.create_skill_library",
+            "py_code_mode.storage.backends.create_skill_library",
             side_effect=ImportError("No module named 'sentence_transformers'"),
         ):
             _library = wrapper._get_library()
@@ -891,7 +891,7 @@ class TestStorageWrapperErrorPropagation:
         mock_redis = MagicMock()
         mock_redis.get.side_effect = ConnectionError("Redis connection lost")
 
-        from py_code_mode.redis_artifacts import RedisArtifactStore
+        from py_code_mode.artifacts import RedisArtifactStore
         from py_code_mode.storage import ArtifactStoreWrapper
 
         store = RedisArtifactStore(mock_redis, prefix="test")
@@ -911,57 +911,38 @@ class TestDeveloperErrorDiscovery:
     """E2E tests simulating developer discovering errors through logs."""
 
     @pytest.mark.asyncio
-    async def test_developer_discovers_missing_tools_through_logs(self):
+    async def test_developer_discovers_missing_tools_through_logs(
+        self, caplog: pytest.LogCaptureFixture
+    ):
         """Developer should be able to see why tools didn't load from logs."""
-        import logging as log_module
+        import uuid
 
-        # Use a custom handler since caplog doesn't capture async logs reliably
-        class LogCapture(log_module.Handler):
-            def __init__(self):
-                super().__init__()
-                self.records: list[log_module.LogRecord] = []
+        from py_code_mode.tools.registry import ToolRegistry
 
-            def emit(self, record):
-                self.records.append(record)
+        # Set log level to capture warnings
+        caplog.set_level(logging.WARNING, logger="py_code_mode.tools.registry")
 
-        # Set up capture on registry logger BEFORE importing
-        registry_logger = log_module.getLogger("py_code_mode.registry")
-        capture = LogCapture()
-        capture.setLevel(log_module.WARNING)
-        registry_logger.addHandler(capture)
-        original_level = registry_logger.level
-        registry_logger.setLevel(log_module.WARNING)
+        # Try to load from truly nonexistent path (use uuid to ensure uniqueness)
+        nonexistent_path = f"/tmp/test_storage_nonexistent_{uuid.uuid4().hex}"
+        registry = await ToolRegistry.from_dir(nonexistent_path)
 
-        # Import after handler is set up
-        from py_code_mode.registry import ToolRegistry
+        # Developer sees empty tools list
+        tools = registry.list_tools()
+        assert tools == []
 
-        try:
-            # Try to load from truly nonexistent path (use uuid to ensure uniqueness)
-            import uuid
-
-            nonexistent_path = f"/tmp/test_storage_nonexistent_{uuid.uuid4().hex}"
-            registry = await ToolRegistry.from_dir(nonexistent_path)
-
-            # Developer sees empty tools list
-            tools = registry.list_tools()
-            assert tools == []
-
-            # Developer should be able to find reason in logs
-            messages = [r.getMessage() for r in capture.records]
-            assert any("does not exist" in msg or nonexistent_path in msg for msg in messages), (
-                "Developer cannot discover why tools are empty - no log message.\n"
-                f"Logs should indicate the missing path. Got: {messages}"
-            )
-        finally:
-            registry_logger.removeHandler(capture)
-            registry_logger.setLevel(original_level)
+        # Developer should be able to find reason in logs
+        messages = [r.message for r in caplog.records]
+        assert any("does not exist" in msg or nonexistent_path in msg for msg in messages), (
+            "Developer cannot discover why tools are empty - no log message.\n"
+            f"Logs should indicate the missing path. Got: {messages}"
+        )
 
     @pytest.mark.asyncio
     async def test_developer_discovers_skill_parse_error_through_logs(
         self, skills_dir_with_corruption: Path, log_capture: pytest.LogCaptureFixture
     ):
         """Developer should see specific parse errors in logs."""
-        from py_code_mode.skill_store import FileSkillStore
+        from py_code_mode.skills import FileSkillStore
 
         store = FileSkillStore(skills_dir_with_corruption)
         skills = store.list_all()
@@ -988,7 +969,7 @@ class TestErrorMessageConsistency:
 
     def test_missing_path_warnings_include_path(self, log_capture: pytest.LogCaptureFixture):
         """All missing path warnings should include the actual path."""
-        from py_code_mode.adapters.cli import CLIAdapter
+        from py_code_mode.tools.adapters.cli import CLIAdapter
 
         test_path = "/test/unique/path/12345"
         CLIAdapter(tools_path=test_path)

@@ -19,8 +19,8 @@ from pathlib import Path
 import pytest
 import redis
 
-from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
-from py_code_mode.backends.in_process import InProcessExecutor
+from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
+from py_code_mode.execution.in_process import InProcessExecutor
 from py_code_mode.session import Session
 from py_code_mode.storage import FileStorage, RedisStorage
 

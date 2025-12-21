@@ -8,10 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from py_code_mode import CLIAdapter, InProcessExecutor, ToolRegistry
-from py_code_mode.adapters.base import ToolAdapter
-from py_code_mode.semantic import MockEmbedder, SkillLibrary
-from py_code_mode.skill_store import FileSkillStore
+from py_code_mode.execution.in_process import InProcessExecutor
+from py_code_mode.skills import FileSkillStore, MockEmbedder, SkillLibrary
+from py_code_mode.tools.adapters.base import ToolAdapter
+from py_code_mode.tools.adapters.cli import CLIAdapter
+from py_code_mode.tools.registry import ToolRegistry
 
 
 class TestCLIToExecutorFlow:

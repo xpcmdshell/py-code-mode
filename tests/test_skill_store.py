@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from py_code_mode.skill_store import (
+from py_code_mode.skills import (
     FileSkillStore,
     MemorySkillStore,
+    PythonSkill,
     RedisSkillStore,
     SkillStore,
 )
-from py_code_mode.skills import PythonSkill
 
 # --- Fixtures ---
 

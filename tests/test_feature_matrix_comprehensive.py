@@ -115,7 +115,7 @@ def _docker_available() -> bool:
 
 def _create_in_process_executor():
     """Create InProcessExecutor."""
-    from py_code_mode.backends.in_process import InProcessExecutor
+    from py_code_mode.execution.in_process import InProcessExecutor
 
     return InProcessExecutor()
 
@@ -124,7 +124,7 @@ def _create_container_executor():
     """Create ContainerExecutor if Docker available."""
     if not _docker_available():
         pytest.skip("Docker not available")
-    from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+    from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 
     return ContainerExecutor(ContainerConfig(timeout=30.0))
 
@@ -299,7 +299,7 @@ skills.create(
         - artifacts_path is created and mounted read-write
         - Environment variables set for container's SessionConfig
         """
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 
         storage = FileStorage(empty_base_dir)
         config = ContainerConfig(timeout=30.0)

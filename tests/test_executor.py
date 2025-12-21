@@ -2,7 +2,9 @@
 
 import pytest
 
-from py_code_mode import ExecutionResult, InProcessExecutor, ToolRegistry
+from py_code_mode import ExecutionResult
+from py_code_mode.execution.in_process import InProcessExecutor
+from py_code_mode.tools.registry import ToolRegistry
 
 
 class TestExecutorInterface:

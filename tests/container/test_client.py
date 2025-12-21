@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from py_code_mode.backends.container.client import SessionClient
+from py_code_mode.execution.container.client import SessionClient
 
 
 def make_mock_response(json_data: dict, status_code: int = 200) -> MagicMock:
