@@ -9,9 +9,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from urllib.parse import quote
 
 from py_code_mode.artifacts import ArtifactStoreProtocol, FileArtifactStore, RedisArtifactStore
 from py_code_mode.errors import StorageReadError, StorageWriteError
+from py_code_mode.execution.protocol import FileStorageAccess, RedisStorageAccess
 from py_code_mode.skills import (
     FileSkillStore,
     PythonSkill,
@@ -171,6 +173,14 @@ class StorageBackend(Protocol):
     @property
     def artifacts(self) -> ArtifactStoreWrapperProtocol:
         """Artifact storage interface."""
+        ...
+
+    def get_serializable_access(self) -> FileStorageAccess | RedisStorageAccess:
+        """Return serializable access descriptor for cross-process communication.
+
+        Used by executors that run in separate processes and need
+        connection info rather than direct object references.
+        """
         ...
 
 
@@ -448,6 +458,17 @@ class FileStorage:
             self._artifacts_wrapper = ArtifactStoreWrapper(raw_store)
         return self._artifacts_wrapper
 
+    def get_serializable_access(self) -> FileStorageAccess:
+        """Return FileStorageAccess for cross-process communication."""
+        base_path = self._base_path
+        tools_path = base_path / "tools"
+
+        return FileStorageAccess(
+            tools_path=tools_path if tools_path.exists() else None,
+            skills_path=base_path / "skills",
+            artifacts_path=base_path / "artifacts",
+        )
+
 
 class RedisToolStoreWrapper:
     """Redis-based tool store wrapper."""
@@ -570,3 +591,31 @@ class RedisStorage:
             raw_store = RedisArtifactStore(self._redis, prefix=f"{self._prefix}:artifacts")
             self._artifacts_wrapper = ArtifactStoreWrapper(raw_store)
         return self._artifacts_wrapper
+
+    def get_serializable_access(self) -> RedisStorageAccess:
+        """Return RedisStorageAccess for cross-process communication."""
+        # Reconstruct Redis URL from client connection
+        pool = self._redis.connection_pool
+        kwargs = pool.connection_kwargs
+        host = kwargs.get("host", "localhost")
+        port = kwargs.get("port", 6379)
+        db = kwargs.get("db", 0)
+        username = kwargs.get("username")
+        password = kwargs.get("password")
+
+        if username and password:
+            encoded_user = quote(username, safe="")
+            encoded_pass = quote(password, safe="")
+            redis_url = f"redis://{encoded_user}:{encoded_pass}@{host}:{port}/{db}"
+        elif password:
+            redis_url = f"redis://:{quote(password, safe='')}@{host}:{port}/{db}"
+        else:
+            redis_url = f"redis://{host}:{port}/{db}"
+
+        prefix = self._prefix
+        return RedisStorageAccess(
+            redis_url=redis_url,
+            tools_prefix=f"{prefix}:tools",
+            skills_prefix=f"{prefix}:skills",
+            artifacts_prefix=f"{prefix}:artifacts",
+        )
