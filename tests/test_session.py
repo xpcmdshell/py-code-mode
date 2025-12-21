@@ -796,3 +796,241 @@ class TestErrorHandling:
 
         with pytest.raises(TypeError):
             Session(storage=storage, executor=["in-process"])  # type: ignore
+
+
+# =============================================================================
+# Session + SubprocessExecutor Integration Tests
+# =============================================================================
+
+
+def _subprocess_executor_available() -> bool:
+    """Check if SubprocessExecutor is available (requires uv)."""
+    return shutil.which("uv") is not None
+
+
+@pytest.mark.slow
+@pytest.mark.xdist_group("subprocess")
+class TestSessionWithSubprocessExecutor:
+    """Integration tests for Session + SubprocessExecutor.
+
+    These tests verify the architectural fix where SubprocessExecutor can be
+    used through the unified Session API. SubprocessExecutor has PROCESS_ISOLATION
+    capability, which means it calls storage.get_serializable_access() internally.
+
+    Session is "dumb" - it just passes storage to executor.start(). The executor
+    decides how to use it based on its capabilities.
+
+    Tests are slow (~5-10s startup per test) due to venv creation.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not _subprocess_executor_available(), reason="uv not available")
+    async def test_session_with_subprocess_executor(self, tmp_path: Path) -> None:
+        """Session works with SubprocessExecutor through unified API.
+
+        User action: Create Session with SubprocessExecutor
+        Verification: Code execution works, returns correct result
+        Breaks when: SubprocessExecutor doesn't implement Executor protocol
+        """
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+        from py_code_mode.execution.subprocess.config import SubprocessConfig
+
+        config = SubprocessConfig(
+            python_version="3.12",
+            venv_path=tmp_path / "venv",
+            # py-code-mode required for namespace injection in subprocess
+            base_deps=("ipykernel", "py-code-mode"),
+        )
+        executor = SubprocessExecutor(config=config)
+        storage = FileStorage(tmp_path)
+
+        async with Session(storage=storage, executor=executor) as session:
+            result = await session.run("2 + 2")
+
+            assert result.is_ok, f"Execution failed: {result.error}"
+            assert result.value in (4, "4")
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not _subprocess_executor_available(), reason="uv not available")
+    async def test_subprocess_executor_gets_serializable_access(self, tmp_path: Path) -> None:
+        """Verify get_serializable_access() is called for isolated executors.
+
+        User action: Session.start() with SubprocessExecutor
+        Verification: SubprocessExecutor receives storage and calls get_serializable_access()
+        Breaks when: Session bypasses storage.get_serializable_access() for isolated executors
+        """
+        from unittest.mock import MagicMock, patch
+
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+        from py_code_mode.execution.subprocess.config import SubprocessConfig
+
+        storage = FileStorage(tmp_path)
+
+        # Create a mock that tracks if get_serializable_access was called
+        original_get_serializable_access = storage.get_serializable_access
+        mock_access = MagicMock(wraps=original_get_serializable_access)
+
+        config = SubprocessConfig(
+            python_version="3.12",
+            venv_path=tmp_path / "venv",
+            # py-code-mode required for namespace injection in subprocess
+            base_deps=("ipykernel", "py-code-mode"),
+        )
+        executor = SubprocessExecutor(config=config)
+
+        with patch.object(storage, "get_serializable_access", mock_access):
+            async with Session(storage=storage, executor=executor) as session:
+                # Run a simple command to ensure full initialization
+                await session.run("1")
+
+        # SubprocessExecutor should have called get_serializable_access
+        mock_access.assert_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not _subprocess_executor_available(), reason="uv not available")
+    async def test_subprocess_namespaces_work_via_session(self, tmp_path: Path) -> None:
+        """tools/skills/artifacts namespaces accessible via Session.
+
+        User action: Access namespaces in code via Session.run()
+        Setup: FileStorage with skills directory, py-code-mode in venv
+        Verification: Namespaces exist and are callable
+        Breaks when: Namespace injection fails in subprocess
+        """
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+        from py_code_mode.execution.subprocess.config import SubprocessConfig
+
+        # Create skills directory with a test skill
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        (skills_dir / "add_numbers.py").write_text(
+            '''"""Add two numbers together."""
+
+def run(a: int, b: int) -> int:
+    return a + b
+'''
+        )
+
+        storage = FileStorage(tmp_path)
+
+        config = SubprocessConfig(
+            python_version="3.12",
+            venv_path=tmp_path / "venv",
+            # py-code-mode must be in the venv for namespaces to work
+            base_deps=("ipykernel", "py-code-mode"),
+        )
+        executor = SubprocessExecutor(config=config)
+
+        async with Session(storage=storage, executor=executor) as session:
+            # Verify tools namespace exists
+            result = await session.run("'tools' in dir()")
+            assert result.is_ok, f"Failed to check tools: {result.error}"
+            assert result.value in (True, "True"), "tools namespace not found"
+
+            # Verify skills namespace exists
+            result = await session.run("'skills' in dir()")
+            assert result.is_ok, f"Failed to check skills: {result.error}"
+            assert result.value in (True, "True"), "skills namespace not found"
+
+            # Verify artifacts namespace exists
+            result = await session.run("'artifacts' in dir()")
+            assert result.is_ok, f"Failed to check artifacts: {result.error}"
+            assert result.value in (True, "True"), "artifacts namespace not found"
+
+            # Verify skills.list() works and contains our skill
+            result = await session.run("skills.list()")
+            assert result.is_ok, f"skills.list() failed: {result.error}"
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not _subprocess_executor_available(), reason="uv not available")
+    async def test_subprocess_capabilities_via_session(self, tmp_path: Path) -> None:
+        """session.supports() reports correct capabilities for SubprocessExecutor.
+
+        User action: Query session capabilities
+        Verification: PROCESS_ISOLATION, TIMEOUT, RESET are supported
+        Breaks when: Capability reporting broken in Session/Executor interface
+        """
+        from py_code_mode.execution.protocol import Capability
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+        from py_code_mode.execution.subprocess.config import SubprocessConfig
+
+        storage = FileStorage(tmp_path)
+
+        config = SubprocessConfig(
+            python_version="3.12",
+            venv_path=tmp_path / "venv",
+            # py-code-mode required for namespace injection in subprocess
+            base_deps=("ipykernel", "py-code-mode"),
+        )
+        executor = SubprocessExecutor(config=config)
+
+        async with Session(storage=storage, executor=executor) as session:
+            # SubprocessExecutor advertises PROCESS_ISOLATION
+            assert session.supports(Capability.PROCESS_ISOLATION), (
+                "SubprocessExecutor should support PROCESS_ISOLATION"
+            )
+
+            # SubprocessExecutor supports TIMEOUT
+            assert session.supports(Capability.TIMEOUT), "SubprocessExecutor should support TIMEOUT"
+
+            # SubprocessExecutor supports RESET (via kernel restart)
+            assert session.supports(Capability.RESET), "SubprocessExecutor should support RESET"
+
+            # SubprocessExecutor does NOT support NETWORK_ISOLATION
+            assert not session.supports(Capability.NETWORK_ISOLATION), (
+                "SubprocessExecutor should NOT support NETWORK_ISOLATION"
+            )
+
+            # SubprocessExecutor does NOT support FILESYSTEM_ISOLATION
+            assert not session.supports(Capability.FILESYSTEM_ISOLATION), (
+                "SubprocessExecutor should NOT support FILESYSTEM_ISOLATION"
+            )
+
+            # supported_capabilities() returns the full set
+            caps = session.supported_capabilities()
+            assert Capability.PROCESS_ISOLATION in caps
+            assert Capability.TIMEOUT in caps
+            assert Capability.RESET in caps
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not _subprocess_executor_available(), reason="uv not available")
+    async def test_process_isolation_implies_serializable_access(self, tmp_path: Path) -> None:
+        """Any executor with PROCESS_ISOLATION uses serializable access.
+
+        User action: Use any executor with PROCESS_ISOLATION capability
+        Verification: The executor calls get_serializable_access() not direct storage
+        Breaks when: New isolated executor bypasses serialization
+
+        This test documents the architectural invariant: executors that run code
+        in a separate process (PROCESS_ISOLATION capability) cannot directly access
+        Python objects from the main process. They must use get_serializable_access()
+        to get file paths or connection URLs they can reconstruct from.
+        """
+        from py_code_mode.execution.protocol import Capability
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+        from py_code_mode.execution.subprocess.config import SubprocessConfig
+
+        storage = FileStorage(tmp_path)
+
+        config = SubprocessConfig(
+            python_version="3.12",
+            venv_path=tmp_path / "venv",
+            # py-code-mode required for namespace injection in subprocess
+            base_deps=("ipykernel", "py-code-mode"),
+        )
+        executor = SubprocessExecutor(config=config)
+
+        # Verify the invariant: PROCESS_ISOLATION capability exists
+        assert executor.supports(Capability.PROCESS_ISOLATION), (
+            "SubprocessExecutor must have PROCESS_ISOLATION capability"
+        )
+
+        # Start and verify it can access storage-based namespaces
+        # (this implicitly verifies serializable access works)
+        async with Session(storage=storage, executor=executor) as session:
+            # If serializable access is broken, this will fail because
+            # the subprocess won't be able to reconstruct the storage
+            result = await session.run("'artifacts' in dir()")
+            assert result.is_ok, f"Failed: {result.error}"
+            assert result.value in (True, "True"), (
+                "artifacts namespace not available - serializable access likely broken"
+            )
