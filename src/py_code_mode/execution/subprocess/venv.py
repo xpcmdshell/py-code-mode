@@ -10,6 +10,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+import py_code_mode
 from py_code_mode.execution.subprocess.config import SubprocessConfig
 
 
@@ -76,16 +77,30 @@ class VenvManager:
             error_context="uv venv failed",
         )
 
-        # Collect all dependencies
+        # Collect all dependencies, separating py-code-mode for special handling
         deps = list(self._config.base_deps)
         if extra_deps:
             deps.extend(extra_deps)
 
-        # Install dependencies with uv
-        if deps:
+        # Check if py-code-mode is requested - needs special handling
+        install_py_code_mode = "py-code-mode" in deps
+        other_deps = [d for d in deps if d != "py-code-mode"]
+
+        # Install regular dependencies with uv
+        if other_deps:
             await self._run_uv(
-                ["pip", "install", "--python", str(python_path), *deps],
+                ["pip", "install", "--python", str(python_path), *other_deps],
                 error_context="uv pip install failed",
+            )
+
+        # Install py-code-mode from local package if requested
+        if install_py_code_mode:
+            await self._install_py_code_mode(python_path)
+
+            # Also install nest_asyncio for sync tool calls in Jupyter kernel
+            await self._run_uv(
+                ["pip", "install", "--python", str(python_path), "nest_asyncio"],
+                error_context="uv pip install nest_asyncio failed",
             )
 
         # Install kernel spec
@@ -99,6 +114,33 @@ class VenvManager:
             path=venv_path,
             python_path=python_path,
             kernel_spec_name=kernel_spec_name,
+        )
+
+    async def _install_py_code_mode(self, python_path: Path) -> None:
+        """Install py-code-mode from the local package.
+
+        This finds the project root (where pyproject.toml lives) and installs
+        the package in editable mode so the kernel has full py-code-mode functionality.
+
+        Args:
+            python_path: Path to Python executable in the venv.
+
+        Raises:
+            RuntimeError: If installation fails.
+        """
+        # Find the project root (where pyproject.toml is)
+        pkg_path = Path(py_code_mode.__file__).parent.parent.parent
+        pyproject = pkg_path / "pyproject.toml"
+
+        if not pyproject.exists():
+            raise RuntimeError(
+                f"Cannot install py-code-mode: pyproject.toml not found at {pyproject}"
+            )
+
+        # Install in editable mode from project root
+        await self._run_uv(
+            ["pip", "install", "--python", str(python_path), "-e", str(pkg_path)],
+            error_context="uv pip install py-code-mode failed",
         )
 
     async def add_package(self, venv: KernelVenv, package: str) -> None:

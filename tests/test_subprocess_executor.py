@@ -878,7 +878,11 @@ class TestSubprocessExecutorLifecycle:
             artifacts_path=artifacts_path,
         )
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.12",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel", "py-code-mode"),
+        )
         executor = SubprocessExecutor(config=config)
 
         try:
@@ -1309,7 +1313,11 @@ class TestSubprocessExecutorReset:
             artifacts_path=artifacts_path,
         )
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.12",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel", "py-code-mode"),
+        )
         exec = SubprocessExecutor(config=config)
         await exec.start(storage_access=storage_access)
         yield exec

@@ -10,10 +10,10 @@ from jupyter_client import AsyncKernelManager
 
 from py_code_mode.execution.protocol import (
     Capability,
-    FileStorageAccess,
     StorageAccess,
 )
 from py_code_mode.execution.subprocess.config import SubprocessConfig
+from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
 from py_code_mode.execution.subprocess.venv import KernelVenv, VenvManager
 from py_code_mode.types import ExecutionResult
 
@@ -196,130 +196,17 @@ class SubprocessExecutor:
             self._venv = None
 
     async def _setup_namespaces(self) -> None:
-        """Inject tools/skills/artifacts namespaces into kernel."""
+        """Inject tools/skills/artifacts namespaces into kernel.
+
+        Uses build_namespace_setup_code() to generate Python code that sets up
+        full py-code-mode namespaces in the kernel subprocess.
+        """
         if self._storage_access is None:
             return
 
-        if isinstance(self._storage_access, FileStorageAccess):
-            # Generate code to inject namespaces
-            setup_code = self._generate_namespace_setup_code(self._storage_access)
-            if setup_code:
-                # Run setup code silently (no timeout since it's internal)
-                await self._run_setup_code(setup_code)
-
-    def _generate_namespace_setup_code(self, storage_access: FileStorageAccess) -> str:
-        """Generate Python code to set up namespaces in the kernel.
-
-        Uses simple stub classes that don't require py-code-mode to be installed
-        in the kernel's venv. The stubs provide basic functionality and can be
-        replaced with full implementations if py-code-mode is available.
-        """
-        tools_path_str = (
-            repr(str(storage_access.tools_path)) if storage_access.tools_path else "None"
-        )
-        skills_path_str = (
-            repr(str(storage_access.skills_path)) if storage_access.skills_path else "None"
-        )
-        artifacts_path_str = repr(str(storage_access.artifacts_path))
-
-        # Use simple stub classes that don't require py-code-mode
-        code = f'''
-# Namespace setup for SubprocessExecutor
-# Uses simple stub classes - no external dependencies required
-import json
-from pathlib import Path
-
-# Simple tools namespace stub
-class ToolsNamespaceStub:
-    """Minimal tools namespace for subprocess kernel."""
-    def __init__(self, tools_path):
-        self._tools_path = tools_path
-
-    def list(self):
-        """List available tools."""
-        if self._tools_path and self._tools_path.exists():
-            return [f.stem for f in self._tools_path.glob("*.yaml")]
-        return []
-
-    def __repr__(self):
-        return f"<ToolsNamespace tools={{len(self.list())}}>"
-
-_tools_path = Path({tools_path_str}) if {tools_path_str} else None
-tools = ToolsNamespaceStub(_tools_path)
-
-# Simple skills namespace stub
-class SkillsNamespaceStub:
-    """Minimal skills namespace for subprocess kernel."""
-    def __init__(self, skills_path):
-        self._skills_path = skills_path
-
-    def list(self):
-        """List available skills."""
-        if self._skills_path and self._skills_path.exists():
-            return [f.stem for f in self._skills_path.glob("*.py")]
-        return []
-
-    def search(self, query, limit=5):
-        """Search skills (basic name matching)."""
-        all_skills = self.list()
-        return [s for s in all_skills if query.lower() in s.lower()][:limit]
-
-    def __repr__(self):
-        return f"<SkillsNamespace skills={{len(self.list())}}>"
-
-_skills_path = Path({skills_path_str}) if {skills_path_str} else None
-if _skills_path:
-    _skills_path.mkdir(parents=True, exist_ok=True)
-skills = SkillsNamespaceStub(_skills_path)
-
-# Simple artifacts namespace stub
-class ArtifactsNamespaceStub:
-    """Minimal artifacts namespace for subprocess kernel."""
-    def __init__(self, artifacts_path):
-        self._path = artifacts_path
-        if self._path:
-            self._path.mkdir(parents=True, exist_ok=True)
-
-    def save(self, name, data):
-        """Save artifact to file."""
-        if self._path:
-            filepath = self._path / name
-            if isinstance(data, (dict, list)):
-                filepath.write_text(json.dumps(data))
-            elif isinstance(data, bytes):
-                filepath.write_bytes(data)
-            else:
-                filepath.write_text(str(data))
-
-    def load(self, name):
-        """Load artifact from file."""
-        if self._path:
-            filepath = self._path / name
-            if filepath.exists():
-                content = filepath.read_text()
-                try:
-                    return json.loads(content)
-                except json.JSONDecodeError:
-                    return content
-        return None
-
-    def list(self):
-        """List available artifacts."""
-        if self._path and self._path.exists():
-            return [f.name for f in self._path.iterdir() if f.is_file()]
-        return []
-
-    def __repr__(self):
-        return f"<ArtifactsNamespace artifacts={{len(self.list())}}>"
-
-_artifacts_path = Path({artifacts_path_str})
-artifacts = ArtifactsNamespaceStub(_artifacts_path)
-
-# Cleanup internal variables
-del _tools_path, _skills_path, _artifacts_path
-del ToolsNamespaceStub, SkillsNamespaceStub, ArtifactsNamespaceStub
-'''
-        return code
+        setup_code = build_namespace_setup_code(self._storage_access)
+        if setup_code:
+            await self._run_setup_code(setup_code)
 
     async def _run_setup_code(self, code: str) -> None:
         """Run setup code in the kernel, ignoring errors."""
