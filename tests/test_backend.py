@@ -8,8 +8,8 @@ import pytest
 
 # These imports will fail initially - that's expected (TDD red phase)
 from py_code_mode.artifacts import FileArtifactStore
-from py_code_mode.backend import Capability, Executor
-from py_code_mode.backends.in_process import InProcessExecutor
+from py_code_mode.execution import Capability, Executor
+from py_code_mode.execution.in_process import InProcessExecutor
 from py_code_mode.types import ExecutionResult
 
 
@@ -207,14 +207,14 @@ class TestBackendRegistry:
 
     def test_in_process_backend_registered(self) -> None:
         """in-process backend must be registered by default."""
-        from py_code_mode.backend import get_backend, list_backends
+        from py_code_mode.execution import get_backend, list_backends
 
         assert "in-process" in list_backends()
         assert get_backend("in-process") is not None
 
     def test_list_backends_returns_list(self) -> None:
         """list_backends() must return list of backend names."""
-        from py_code_mode.backend import list_backends
+        from py_code_mode.execution import list_backends
 
         backends = list_backends()
         assert isinstance(backends, list)
@@ -222,7 +222,7 @@ class TestBackendRegistry:
 
     def test_get_unknown_backend_returns_none(self) -> None:
         """get_backend() returns None for unknown backends."""
-        from py_code_mode.backend import get_backend
+        from py_code_mode.execution import get_backend
 
         result = get_backend("nonexistent-backend")
         assert result is None
@@ -273,7 +273,7 @@ class TestContainerCapabilities:
     def container_executor_class(self):
         """Get ContainerExecutor class, skip if docker not installed."""
         try:
-            from py_code_mode.backends.container import ContainerExecutor
+            from py_code_mode.execution.container import ContainerExecutor
 
             return ContainerExecutor
         except ImportError:
@@ -281,7 +281,7 @@ class TestContainerCapabilities:
 
     def test_supports_timeout(self, container_executor_class) -> None:
         """Container executor supports timeout."""
-        from py_code_mode.backends.container import ContainerConfig
+        from py_code_mode.execution.container import ContainerConfig
 
         config = ContainerConfig()
         executor = container_executor_class(config)
@@ -289,7 +289,7 @@ class TestContainerCapabilities:
 
     def test_supports_process_isolation(self, container_executor_class) -> None:
         """Container executor supports process isolation."""
-        from py_code_mode.backends.container import ContainerConfig
+        from py_code_mode.execution.container import ContainerConfig
 
         config = ContainerConfig()
         executor = container_executor_class(config)
@@ -297,7 +297,7 @@ class TestContainerCapabilities:
 
     def test_supports_reset(self, container_executor_class) -> None:
         """Container executor supports reset capability."""
-        from py_code_mode.backends.container import ContainerConfig
+        from py_code_mode.execution.container import ContainerConfig
 
         config = ContainerConfig()
         executor = container_executor_class(config)
@@ -305,7 +305,7 @@ class TestContainerCapabilities:
 
     def test_does_not_support_network_isolation(self, container_executor_class) -> None:
         """Container executor does NOT support network isolation."""
-        from py_code_mode.backends.container import ContainerConfig
+        from py_code_mode.execution.container import ContainerConfig
 
         config = ContainerConfig()
         executor = container_executor_class(config)
@@ -313,7 +313,7 @@ class TestContainerCapabilities:
 
     def test_capabilities_set(self, container_executor_class) -> None:
         """supported_capabilities() returns correct set."""
-        from py_code_mode.backends.container import ContainerConfig
+        from py_code_mode.execution.container import ContainerConfig
 
         config = ContainerConfig()
         executor = container_executor_class(config)

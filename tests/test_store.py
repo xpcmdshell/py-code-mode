@@ -21,9 +21,9 @@ class TestGetStore:
 
     def test_redis_scheme_creates_redis_store(self) -> None:
         """redis:// scheme creates RedisSkillStore."""
-        from py_code_mode.store import _get_store
+        from py_code_mode.cli.store import _get_store
 
-        with patch("py_code_mode.store.redis_lib") as mock_redis_lib:
+        with patch("py_code_mode.cli.store.redis_lib") as mock_redis_lib:
             mock_client = MagicMock()
             mock_redis_lib.from_url.return_value = mock_client
 
@@ -34,9 +34,9 @@ class TestGetStore:
 
     def test_rediss_scheme_creates_redis_store(self) -> None:
         """rediss:// (TLS) scheme creates RedisSkillStore."""
-        from py_code_mode.store import _get_store
+        from py_code_mode.cli.store import _get_store
 
-        with patch("py_code_mode.store.redis_lib") as mock_redis_lib:
+        with patch("py_code_mode.cli.store.redis_lib") as mock_redis_lib:
             mock_client = MagicMock()
             mock_redis_lib.from_url.return_value = mock_client
 
@@ -46,21 +46,21 @@ class TestGetStore:
 
     def test_unknown_scheme_raises_valueerror(self) -> None:
         """Unknown scheme raises ValueError."""
-        from py_code_mode.store import _get_store
+        from py_code_mode.cli.store import _get_store
 
         with pytest.raises(ValueError, match="Unknown scheme"):
             _get_store("unknown://localhost", prefix="test")
 
     def test_s3_scheme_not_implemented(self) -> None:
         """s3:// scheme raises NotImplementedError."""
-        from py_code_mode.store import _get_store
+        from py_code_mode.cli.store import _get_store
 
         with pytest.raises(NotImplementedError, match="S3"):
             _get_store("s3://bucket/path", prefix="test")
 
     def test_cosmos_scheme_not_implemented(self) -> None:
         """cosmos:// scheme raises NotImplementedError."""
-        from py_code_mode.store import _get_store
+        from py_code_mode.cli.store import _get_store
 
         with pytest.raises(NotImplementedError, match="Cosmos"):
             _get_store("cosmos://account.documents.azure.com", prefix="test")
@@ -71,7 +71,7 @@ class TestSkillHash:
 
     def test_same_skill_same_hash(self) -> None:
         """Same skill content produces same hash."""
-        from py_code_mode.store import _skill_hash
+        from py_code_mode.cli.store import _skill_hash
 
         skill = _make_skill("test", "Test skill", "def run():\n    return 'hello'")
 
@@ -81,7 +81,7 @@ class TestSkillHash:
 
     def test_different_content_different_hash(self) -> None:
         """Different skill content produces different hash."""
-        from py_code_mode.store import _skill_hash
+        from py_code_mode.cli.store import _skill_hash
 
         skill1 = _make_skill("test", "Desc 1", "def run(): return 1")
         skill2 = _make_skill("test", "Desc 2", "def run(): return 1")
@@ -90,7 +90,7 @@ class TestSkillHash:
 
     def test_hash_is_short(self) -> None:
         """Hash is truncated to 12 characters."""
-        from py_code_mode.store import _skill_hash
+        from py_code_mode.cli.store import _skill_hash
 
         skill = _make_skill("test", "desc", "def run(): pass")
         assert len(_skill_hash(skill)) == 12
@@ -101,7 +101,7 @@ class TestBootstrap:
 
     def test_bootstrap_loads_skills_from_directory(self, tmp_path: Path) -> None:
         """Bootstrap loads skills from source directory."""
-        from py_code_mode.store import bootstrap
+        from py_code_mode.cli.store import bootstrap
 
         # Create test skill
         skill_file = tmp_path / "my_skill.py"
@@ -116,7 +116,7 @@ def run(x: int) -> int:
         mock_store = MagicMock()
         mock_store.list_all.return_value = []
 
-        with patch("py_code_mode.store._get_store", return_value=mock_store):
+        with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
             count = bootstrap(tmp_path, "redis://localhost", "test-prefix")
 
         assert count == 1
@@ -125,7 +125,7 @@ def run(x: int) -> int:
 
     def test_bootstrap_with_clear_removes_existing(self, tmp_path: Path) -> None:
         """Bootstrap with clear=True removes existing skills first."""
-        from py_code_mode.store import bootstrap
+        from py_code_mode.cli.store import bootstrap
 
         # Create test skill
         skill_file = tmp_path / "new_skill.py"
@@ -136,7 +136,7 @@ def run(x: int) -> int:
         existing_skill = _make_skill("old_skill", "Old", "def run(): pass")
         mock_store.list_all.return_value = [existing_skill]
 
-        with patch("py_code_mode.store._get_store", return_value=mock_store):
+        with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
             bootstrap(tmp_path, "redis://localhost", "test-prefix", clear=True)
 
         # Should have deleted old skill
@@ -144,7 +144,7 @@ def run(x: int) -> int:
 
     def test_bootstrap_returns_count(self, tmp_path: Path) -> None:
         """Bootstrap returns number of skills added."""
-        from py_code_mode.store import bootstrap
+        from py_code_mode.cli.store import bootstrap
 
         # Create multiple skills
         (tmp_path / "skill1.py").write_text('"""S1."""\ndef run(): return 1')
@@ -153,7 +153,7 @@ def run(x: int) -> int:
         mock_store = MagicMock()
         mock_store.list_all.return_value = []
 
-        with patch("py_code_mode.store._get_store", return_value=mock_store):
+        with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
             count = bootstrap(tmp_path, "redis://localhost", "test-prefix")
 
         assert count == 2
@@ -164,7 +164,7 @@ class TestPull:
 
     def test_pull_writes_skills_to_files(self, tmp_path: Path) -> None:
         """Pull writes skills to destination directory."""
-        from py_code_mode.store import pull
+        from py_code_mode.cli.store import pull
 
         dest = tmp_path / "pulled"
 
@@ -176,7 +176,7 @@ class TestPull:
         skill.source = '"""First skill."""\ndef run():\n    print("one")'
         mock_store.list_all.return_value = [skill]
 
-        with patch("py_code_mode.store._get_store", return_value=mock_store):
+        with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
             count = pull("redis://localhost", "test-prefix", dest)
 
         assert count == 1
@@ -185,7 +185,7 @@ class TestPull:
 
     def test_pull_creates_destination_directory(self, tmp_path: Path) -> None:
         """Pull creates destination directory if it doesn't exist."""
-        from py_code_mode.store import pull
+        from py_code_mode.cli.store import pull
 
         dest = tmp_path / "new" / "nested" / "dir"
         assert not dest.exists()
@@ -193,7 +193,7 @@ class TestPull:
         mock_store = MagicMock()
         mock_store.list_all.return_value = []
 
-        with patch("py_code_mode.store._get_store", return_value=mock_store):
+        with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
             pull("redis://localhost", "test-prefix", dest)
 
         assert dest.exists()
@@ -204,7 +204,7 @@ class TestDiff:
 
     def test_diff_finds_added_skills(self, tmp_path: Path) -> None:
         """Diff identifies skills only in remote (agent-created)."""
-        from py_code_mode.store import diff
+        from py_code_mode.cli.store import diff
 
         # Empty local directory
         local = tmp_path / "local"
@@ -218,7 +218,7 @@ class TestDiff:
         remote_skill.source = '"""Created by agent."""\ndef run(): pass'
         mock_store.list_all.return_value = [remote_skill]
 
-        with patch("py_code_mode.store._get_store", return_value=mock_store):
+        with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
             result = diff(local, "redis://localhost", "test-prefix")
 
         assert "agent_created" in result["added"]
@@ -227,7 +227,7 @@ class TestDiff:
 
     def test_diff_finds_removed_skills(self, tmp_path: Path) -> None:
         """Diff identifies skills only in local (removed from remote)."""
-        from py_code_mode.store import diff
+        from py_code_mode.cli.store import diff
 
         # Local has a skill
         local = tmp_path / "local"
@@ -238,7 +238,7 @@ class TestDiff:
         mock_store = MagicMock()
         mock_store.list_all.return_value = []
 
-        with patch("py_code_mode.store._get_store", return_value=mock_store):
+        with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
             result = diff(local, "redis://localhost", "test-prefix")
 
         assert "local_only" in result["removed"]
@@ -246,7 +246,7 @@ class TestDiff:
 
     def test_diff_finds_modified_skills(self, tmp_path: Path) -> None:
         """Diff identifies skills with different content."""
-        from py_code_mode.store import diff
+        from py_code_mode.cli.store import diff
 
         # Local skill
         local = tmp_path / "local"
@@ -261,14 +261,14 @@ class TestDiff:
         remote_skill.source = '"""Remote version."""\ndef run(): return "remote"'
         mock_store.list_all.return_value = [remote_skill]
 
-        with patch("py_code_mode.store._get_store", return_value=mock_store):
+        with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
             result = diff(local, "redis://localhost", "test-prefix")
 
         assert "shared_skill" in result["modified"]
 
     def test_diff_finds_unchanged_skills(self, tmp_path: Path) -> None:
         """Diff identifies identical skills."""
-        from py_code_mode.store import diff
+        from py_code_mode.cli.store import diff
 
         # Local skill
         local = tmp_path / "local"
@@ -284,7 +284,7 @@ class TestDiff:
         remote_skill.source = skill_content
         mock_store.list_all.return_value = [remote_skill]
 
-        with patch("py_code_mode.store._get_store", return_value=mock_store):
+        with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
             result = diff(local, "redis://localhost", "test-prefix")
 
         assert "same_skill" in result["unchanged"]
@@ -295,7 +295,7 @@ class TestCLI:
 
     def test_bootstrap_command_parses_args(self) -> None:
         """Bootstrap command parses arguments correctly."""
-        from py_code_mode.store import create_parser
+        from py_code_mode.cli.store import create_parser
 
         parser = create_parser()
         args = parser.parse_args(
@@ -319,7 +319,7 @@ class TestCLI:
 
     def test_pull_command_parses_args(self) -> None:
         """Pull command parses arguments correctly."""
-        from py_code_mode.store import create_parser
+        from py_code_mode.cli.store import create_parser
 
         parser = create_parser()
         args = parser.parse_args(
@@ -341,7 +341,7 @@ class TestCLI:
 
     def test_diff_command_parses_args(self) -> None:
         """Diff command parses arguments correctly."""
-        from py_code_mode.store import create_parser
+        from py_code_mode.cli.store import create_parser
 
         parser = create_parser()
         args = parser.parse_args(
@@ -363,7 +363,7 @@ class TestCLI:
 
     def test_default_prefix(self) -> None:
         """Default prefix is 'skills'."""
-        from py_code_mode.store import create_parser
+        from py_code_mode.cli.store import create_parser
 
         parser = create_parser()
         args = parser.parse_args(

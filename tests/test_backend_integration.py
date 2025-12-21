@@ -11,13 +11,12 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from py_code_mode import Capability, InProcessExecutor
-from py_code_mode.adapters.cli import CLIAdapter
 from py_code_mode.artifacts import FileArtifactStore
-from py_code_mode.registry import ToolRegistry
-from py_code_mode.semantic import create_skill_library
-from py_code_mode.skill_store import FileSkillStore
-from py_code_mode.skills import PythonSkill
+from py_code_mode.execution import Capability
+from py_code_mode.execution.in_process import InProcessExecutor
+from py_code_mode.skills import FileSkillStore, PythonSkill, create_skill_library
+from py_code_mode.tools.adapters.cli import CLIAdapter
+from py_code_mode.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
     pass

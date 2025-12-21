@@ -2,7 +2,7 @@
 
 import pytest
 
-from py_code_mode.backends.container.config import SessionConfig
+from py_code_mode.execution.container.config import SessionConfig
 
 
 class TestSessionConfig:
@@ -56,7 +56,7 @@ class TestSessionServer:
         except ImportError:
             pytest.skip("FastAPI not installed")
 
-        from py_code_mode.backends.container.server import create_app
+        from py_code_mode.execution.container.server import create_app
 
         # Use temp directory for artifacts
         config = SessionConfig(artifacts_path=tmp_path / "artifacts")
@@ -165,20 +165,21 @@ class TestSessionServerWithTools:
             artifacts_path=tmp_path / "artifacts",
         )
 
-    def test_session_creates_isolated_artifact_store(self, config_with_artifacts) -> None:
-        """Sessions have isolated artifact directories."""
+    def test_session_creates_artifact_store(self, config_with_artifacts) -> None:
+        """Sessions have artifact store initialized."""
         import asyncio
 
-        from py_code_mode.backends.container.server import initialize_server
+        from py_code_mode.execution.container.server import initialize_server
 
         # Initialize server
         asyncio.run(initialize_server(config_with_artifacts))
 
-        from py_code_mode.backends.container.server import create_session
+        from py_code_mode.execution.container.server import create_session
 
         session = create_session("test-session")
 
         from py_code_mode.artifacts import FileArtifactStore
 
+        # Session has a file artifact store pointing to artifacts_path
         assert isinstance(session.artifact_store, FileArtifactStore)
-        assert "test-session" in str(session.artifact_store._path)
+        assert "artifacts" in str(session.artifact_store._path)

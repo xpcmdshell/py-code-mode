@@ -192,7 +192,7 @@ description: Fetch web pages with full content extraction
 **HTTP tools** - wrap REST APIs (defined in Python):
 
 ```python
-from py_code_mode import HTTPAdapter, Endpoint
+from py_code_mode.tools.adapters import HTTPAdapter, Endpoint
 
 adapter = HTTPAdapter(base_url="https://api.example.com")
 adapter.add_endpoint(Endpoint(
@@ -220,6 +220,31 @@ def run(url: str) -> dict:
 
 Or let agents create them at runtime via `skills.create()`.
 
+**Managing skills:**
+
+```python
+# Delete a skill
+skills.delete("scrape_hn_stories")
+```
+
+## Artifacts
+
+Store and retrieve data across sessions:
+
+```python
+# Save data
+artifacts.save("research_results", {"findings": [...], "sources": [...]})
+
+# Load data
+data = artifacts.load("research_results")
+
+# List all artifacts
+artifacts.list()
+
+# Delete an artifact
+artifacts.delete("research_results")
+```
+
 ## Production
 
 - **Redis storage** - One agent learns, all agents benefit
@@ -227,7 +252,7 @@ Or let agents create them at runtime via `skills.create()`.
 
 ```python
 from py_code_mode import Session, RedisStorage
-from py_code_mode.backends.container import ContainerExecutor, ContainerConfig
+from py_code_mode.execution import ContainerExecutor, ContainerConfig
 
 storage = RedisStorage(redis=client, prefix="my-agents")
 executor = ContainerExecutor(ContainerConfig(timeout=60.0))

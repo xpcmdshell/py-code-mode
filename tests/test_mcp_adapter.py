@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from py_code_mode.tool_types import Tool
+from py_code_mode.tools import Tool
 
 
 # Mock MCP types for testing without the mcp package installed
@@ -30,8 +30,8 @@ class TestMCPAdapterInterface:
 
     def test_implements_tool_adapter_protocol(self) -> None:
         """MCPAdapter satisfies ToolAdapter protocol."""
-        from py_code_mode.adapters import ToolAdapter
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters import ToolAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         # Create with mocked session
         mock_session = MagicMock()
@@ -78,7 +78,7 @@ class TestMCPAdapterListTools:
 
     @pytest.fixture
     async def adapter(self, mock_session):
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         adapter = MCPAdapter(session=mock_session)
         await adapter._refresh_tools()  # Populate the cache
@@ -149,7 +149,7 @@ class TestMCPAdapterCallTool:
 
     @pytest.fixture
     def adapter(self, mock_session):
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         return MCPAdapter(session=mock_session)
 
@@ -197,7 +197,7 @@ class TestMCPAdapterConnection:
     @pytest.mark.asyncio
     async def test_connect_to_stdio_server(self) -> None:
         """Can connect to MCP server via stdio."""
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         # This test verifies the factory method exists
         # Actual connection would require a real server
@@ -206,7 +206,7 @@ class TestMCPAdapterConnection:
     @pytest.mark.asyncio
     async def test_connect_to_sse_server(self) -> None:
         """Can connect to MCP server via SSE transport."""
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         # This test verifies the factory method exists
         assert hasattr(MCPAdapter, "connect_sse")
@@ -214,7 +214,7 @@ class TestMCPAdapterConnection:
     @pytest.mark.asyncio
     async def test_close_cleans_up(self) -> None:
         """close() cleans up resources."""
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         mock_session = AsyncMock()
         adapter = MCPAdapter(session=mock_session)
@@ -230,7 +230,7 @@ class TestMCPAdapterSSETransport:
     @pytest.mark.asyncio
     async def test_connect_sse_uses_sse_client(self) -> None:
         """connect_sse uses mcp.client.sse.sse_client."""
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         # Mock the MCP imports at their source
         with (
@@ -263,7 +263,7 @@ class TestMCPAdapterSSETransport:
     @pytest.mark.asyncio
     async def test_connect_sse_passes_headers(self) -> None:
         """connect_sse forwards headers to sse_client."""
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         with (
             patch("mcp.client.sse.sse_client") as mock_sse_client,
@@ -292,7 +292,7 @@ class TestMCPAdapterSSETransport:
     @pytest.mark.asyncio
     async def test_connect_sse_initializes_session(self) -> None:
         """connect_sse calls session.initialize()."""
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         with (
             patch("mcp.client.sse.sse_client") as mock_sse_client,
@@ -319,7 +319,7 @@ class TestMCPAdapterSSETransport:
     @pytest.mark.asyncio
     async def test_connect_sse_method_exists(self) -> None:
         """connect_sse method exists on MCPAdapter."""
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         assert hasattr(MCPAdapter, "connect_sse")
         assert callable(MCPAdapter.connect_sse)
@@ -331,8 +331,8 @@ class TestMCPAdapterWithRegistry:
     @pytest.mark.asyncio
     async def test_register_with_registry(self) -> None:
         """MCPAdapter can be registered with ToolRegistry."""
-        from py_code_mode import ToolRegistry
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
+        from py_code_mode.tools.registry import ToolRegistry
 
         # Create adapter with mock session
         mock_session = AsyncMock()
@@ -358,8 +358,8 @@ class TestMCPAdapterWithRegistry:
     @pytest.mark.asyncio
     async def test_call_through_registry(self) -> None:
         """Can call MCP tools through registry."""
-        from py_code_mode import ToolRegistry
-        from py_code_mode.mcp_adapter import MCPAdapter
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
+        from py_code_mode.tools.registry import ToolRegistry
 
         mock_session = AsyncMock()
         mock_session.list_tools = AsyncMock(

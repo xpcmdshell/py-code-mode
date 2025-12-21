@@ -4,10 +4,10 @@ Provides a pre-built tool that can be registered with AutoGen agents.
 Supports both in-process execution and remote session server.
 
 Usage (standalone):
-    from py_code_mode import CodeExecutor, ToolRegistry
+    from py_code_mode.execution import InProcessExecutor
     from py_code_mode.integrations.autogen import create_run_code_tool
 
-    executor = CodeExecutor(registry=registry)
+    executor = InProcessExecutor(registry=registry)
     run_code = create_run_code_tool(executor=executor)
 
     agent.register_for_llm()(run_code)
@@ -27,11 +27,11 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from py_code_mode import CodeExecutor
+    from py_code_mode.execution import InProcessExecutor
 
 
 def create_run_code_tool(
-    executor: CodeExecutor | None = None,
+    executor: InProcessExecutor | None = None,
     session_url: str | None = None,
     timeout: float = 30.0,
     session_id: str | None = None,
@@ -67,7 +67,7 @@ def create_run_code_tool(
 
 
 def _create_local_tool(
-    executor: CodeExecutor,
+    executor: InProcessExecutor,
     timeout: float,
 ) -> Callable[[str], str]:
     """Create tool using local CodeExecutor."""
@@ -164,7 +164,7 @@ def _create_remote_tool(
 
 
 def get_tools_description(
-    session_url: str | None = None, executor: CodeExecutor | None = None
+    session_url: str | None = None, executor: InProcessExecutor | None = None
 ) -> str:
     """Get a description of available tools for the system prompt.
 

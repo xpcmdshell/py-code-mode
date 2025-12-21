@@ -2,7 +2,8 @@
 
 import pytest
 
-from py_code_mode import ToolNotFoundError, ToolRegistry
+from py_code_mode.errors import ToolNotFoundError
+from py_code_mode.tools.registry import ToolRegistry
 from tests.conftest import ControllableEmbedder, MockAdapter
 
 
@@ -391,7 +392,7 @@ class TestToolRegistrySemanticIntegration:
     ) -> None:
         """End-to-end: semantic search finds tools by intent."""
         # Use real embedder for integration test
-        from py_code_mode.semantic import Embedder
+        from py_code_mode.skills.embeddings import Embedder
 
         registry = ToolRegistry(embedder=Embedder())
         registry.register_adapter(web_adapter)

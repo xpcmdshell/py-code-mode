@@ -49,7 +49,7 @@ class TestSessionConstruction:
 
     def test_create_session_with_executor_type(self, storage: FileStorage) -> None:
         """Session can be created with executor instance."""
-        from py_code_mode.backends.in_process import InProcessExecutor
+        from py_code_mode.execution.in_process import InProcessExecutor
 
         executor = InProcessExecutor()
         session = Session(storage=storage, executor=executor)
@@ -360,7 +360,7 @@ class TestSessionWithDifferentExecutors:
     @pytest.mark.asyncio
     async def test_session_with_in_process_executor(self, storage: FileStorage) -> None:
         """Session works with in-process executor."""
-        from py_code_mode.backends.in_process import InProcessExecutor
+        from py_code_mode.execution.in_process import InProcessExecutor
 
         executor = InProcessExecutor()
         async with Session(storage=storage, executor=executor) as session:
@@ -378,7 +378,7 @@ class TestSessionWithDifferentExecutors:
         if shutil.which("docker") is None:
             pytest.skip("Docker not available")
 
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 
         config = ContainerConfig(timeout=30.0)
         executor = ContainerExecutor(config)
@@ -456,19 +456,19 @@ class TestStorageAccessTypes:
 
     def test_file_storage_access_exists(self) -> None:
         """FileStorageAccess type is importable."""
-        from py_code_mode.backend import FileStorageAccess
+        from py_code_mode.execution.protocol import FileStorageAccess
 
         assert FileStorageAccess is not None
 
     def test_redis_storage_access_exists(self) -> None:
         """RedisStorageAccess type is importable."""
-        from py_code_mode.backend import RedisStorageAccess
+        from py_code_mode.execution.protocol import RedisStorageAccess
 
         assert RedisStorageAccess is not None
 
     def test_file_storage_access_has_paths(self) -> None:
         """FileStorageAccess has tools_path, skills_path, artifacts_path."""
-        from py_code_mode.backend import FileStorageAccess
+        from py_code_mode.execution.protocol import FileStorageAccess
 
         access = FileStorageAccess(
             tools_path=Path("/tmp/tools"),
@@ -481,7 +481,7 @@ class TestStorageAccessTypes:
 
     def test_file_storage_access_paths_optional(self) -> None:
         """FileStorageAccess allows None for tools_path and skills_path."""
-        from py_code_mode.backend import FileStorageAccess
+        from py_code_mode.execution.protocol import FileStorageAccess
 
         access = FileStorageAccess(
             tools_path=None,
@@ -493,7 +493,7 @@ class TestStorageAccessTypes:
 
     def test_redis_storage_access_has_url_and_prefixes(self) -> None:
         """RedisStorageAccess has redis_url and prefix fields."""
-        from py_code_mode.backend import RedisStorageAccess
+        from py_code_mode.execution.protocol import RedisStorageAccess
 
         access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
@@ -522,7 +522,7 @@ class TestSessionTypedExecutorAPI:
 
     def test_session_accepts_executor_instance(self, storage: FileStorage) -> None:
         """Session accepts an Executor instance."""
-        from py_code_mode.backends.in_process import InProcessExecutor
+        from py_code_mode.execution.in_process import InProcessExecutor
 
         executor = InProcessExecutor()
         session = Session(storage=storage, executor=executor)
@@ -537,7 +537,7 @@ class TestSessionTypedExecutorAPI:
 
     def test_session_defaults_to_in_process_executor(self, storage: FileStorage) -> None:
         """Session defaults to InProcessExecutor when executor=None."""
-        from py_code_mode.backends.in_process import InProcessExecutor
+        from py_code_mode.execution.in_process import InProcessExecutor
 
         session = Session(storage=storage)
         # After start, should have InProcessExecutor
@@ -548,7 +548,7 @@ class TestSessionTypedExecutorAPI:
     @pytest.mark.asyncio
     async def test_session_with_explicit_in_process_executor(self, storage: FileStorage) -> None:
         """Session works with explicitly passed InProcessExecutor."""
-        from py_code_mode.backends.in_process import InProcessExecutor
+        from py_code_mode.execution.in_process import InProcessExecutor
 
         executor = InProcessExecutor()
         async with Session(storage=storage, executor=executor) as session:
@@ -561,7 +561,7 @@ class TestSessionTypedExecutorAPI:
     @pytest.mark.xdist_group("docker")
     async def test_session_with_container_executor(self, storage: FileStorage) -> None:
         """Session works with ContainerExecutor instance."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 
         config = ContainerConfig(timeout=30.0)
         executor = ContainerExecutor(config)
@@ -601,7 +601,7 @@ def run(n: int) -> int:
         self, storage_with_skills: FileStorage
     ) -> None:
         """skills namespace works when using typed executor."""
-        from py_code_mode.backends.in_process import InProcessExecutor
+        from py_code_mode.execution.in_process import InProcessExecutor
 
         executor = InProcessExecutor()
         async with Session(storage=storage_with_skills, executor=executor) as session:
@@ -612,7 +612,7 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_skills_are_loaded_from_storage(self, storage_with_skills: FileStorage) -> None:
         """skills from storage are available in executor."""
-        from py_code_mode.backends.in_process import InProcessExecutor
+        from py_code_mode.execution.in_process import InProcessExecutor
 
         executor = InProcessExecutor()
         async with Session(storage=storage_with_skills, executor=executor) as session:
@@ -635,7 +635,7 @@ class TestContainerExecutorStorageAccess:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_container_receives_file_storage_access(self, tmp_path: Path) -> None:
         """ContainerExecutor receives FileStorageAccess and sets up mounts."""
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 
         # Create storage with artifacts dir
         artifacts_dir = tmp_path / "artifacts"
@@ -654,7 +654,7 @@ class TestContainerExecutorStorageAccess:
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     async def test_container_config_no_storage_fields(self) -> None:
         """ContainerConfig should NOT have storage-related fields."""
-        from py_code_mode.backends.container import ContainerConfig
+        from py_code_mode.execution.container import ContainerConfig
 
         # These fields should NOT exist on ContainerConfig
         config = ContainerConfig(timeout=30.0)
@@ -677,8 +677,8 @@ class TestExecutorStartSignature:
     @pytest.mark.asyncio
     async def test_in_process_executor_start_accepts_storage_access(self) -> None:
         """InProcessExecutor.start() accepts storage_access parameter."""
-        from py_code_mode.backend import FileStorageAccess
-        from py_code_mode.backends.in_process import InProcessExecutor
+        from py_code_mode.execution.in_process import InProcessExecutor
+        from py_code_mode.execution.protocol import FileStorageAccess
 
         executor = InProcessExecutor()
         access = FileStorageAccess(
@@ -696,8 +696,8 @@ class TestExecutorStartSignature:
     @pytest.mark.xdist_group("docker")
     async def test_container_executor_start_accepts_storage_access(self, tmp_path: Path) -> None:
         """ContainerExecutor.start() accepts storage_access parameter."""
-        from py_code_mode.backend import FileStorageAccess
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.execution.protocol import FileStorageAccess
 
         artifacts_path = tmp_path / "artifacts"
         artifacts_path.mkdir()
@@ -762,8 +762,8 @@ class TestCapabilityPreservation:
     @pytest.mark.asyncio
     async def test_in_process_capabilities_unchanged(self, storage: FileStorage) -> None:
         """InProcessExecutor capabilities unchanged with new API."""
-        from py_code_mode.backend import Capability
-        from py_code_mode.backends.in_process import InProcessExecutor
+        from py_code_mode.execution.in_process import InProcessExecutor
+        from py_code_mode.execution.protocol import Capability
 
         executor = InProcessExecutor()
         async with Session(storage=storage, executor=executor) as session:
@@ -776,8 +776,8 @@ class TestCapabilityPreservation:
     @pytest.mark.xdist_group("docker")
     async def test_container_capabilities_unchanged(self, storage: FileStorage) -> None:
         """ContainerExecutor capabilities unchanged with new API."""
-        from py_code_mode.backend import Capability
-        from py_code_mode.backends.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.execution.protocol import Capability
 
         config = ContainerConfig(timeout=30.0)
         executor = ContainerExecutor(config)

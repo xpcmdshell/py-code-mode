@@ -200,7 +200,7 @@ class MockAdapter:
         tools: list[ToolDefinition] | list[str],
         call_results: dict[str, Any] | None = None,
     ) -> None:
-        from py_code_mode.tool_types import Tool, ToolCallable
+        from py_code_mode.tools.types import Tool, ToolCallable
 
         self._call_log: list[tuple[str, dict[str, Any]]] = []
         self._responses: dict[str, Any] = call_results or {}

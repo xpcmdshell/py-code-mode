@@ -2,7 +2,7 @@
 set -e
 
 # Run session server
-exec python -m uvicorn py_code_mode.backends.container.server:app \
+exec python -m uvicorn py_code_mode.execution.container.server:app \
     --host "${HOST:-0.0.0.0}" \
     --port "${PORT:-8080}" \
     --log-level info

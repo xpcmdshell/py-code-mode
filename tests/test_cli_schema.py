@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from py_code_mode.adapters.cli_schema import (
+from py_code_mode.tools.adapters.cli.schema import (
     CLICommandBuilder,
     CLIToolDefinition,
     parse_cli_tool_yaml,

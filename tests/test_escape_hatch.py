@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from py_code_mode.adapters.cli import CLIAdapter
+from py_code_mode.tools.adapters.cli import CLIAdapter
 
 
 class TestEscapeHatchParameterPassing:

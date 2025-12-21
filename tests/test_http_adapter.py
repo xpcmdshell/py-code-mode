@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from py_code_mode.tool_types import Tool
+from py_code_mode.tools import Tool
 from py_code_mode.types import JsonSchema
 
 
@@ -13,8 +13,8 @@ class TestHTTPAdapterInterface:
 
     def test_implements_tool_adapter_protocol(self) -> None:
         """HTTPAdapter satisfies ToolAdapter protocol."""
-        from py_code_mode.adapters import ToolAdapter
-        from py_code_mode.http_adapter import HTTPAdapter
+        from py_code_mode.tools.adapters import ToolAdapter
+        from py_code_mode.tools.adapters.http import HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
         assert isinstance(adapter, ToolAdapter)
@@ -25,14 +25,14 @@ class TestHTTPAdapterConfiguration:
 
     def test_accepts_base_url(self) -> None:
         """HTTPAdapter takes base_url parameter."""
-        from py_code_mode.http_adapter import HTTPAdapter
+        from py_code_mode.tools.adapters.http import HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
         assert adapter.base_url == "http://api.example.com"
 
     def test_accepts_default_headers(self) -> None:
         """HTTPAdapter takes optional default headers."""
-        from py_code_mode.http_adapter import HTTPAdapter
+        from py_code_mode.tools.adapters.http import HTTPAdapter
 
         headers = {"Authorization": "Bearer token123"}
         adapter = HTTPAdapter(base_url="http://api.example.com", headers=headers)
@@ -40,7 +40,7 @@ class TestHTTPAdapterConfiguration:
 
     def test_registers_endpoint(self) -> None:
         """HTTPAdapter can register API endpoints as tools."""
-        from py_code_mode.http_adapter import Endpoint, HTTPAdapter
+        from py_code_mode.tools.adapters.http import Endpoint, HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
         adapter.add_endpoint(
@@ -61,7 +61,7 @@ class TestEndpointDefinition:
 
     def test_endpoint_has_required_fields(self) -> None:
         """Endpoint has name, method, path."""
-        from py_code_mode.http_adapter import Endpoint
+        from py_code_mode.tools.adapters.http import Endpoint
 
         endpoint = Endpoint(
             name="get_users", method="GET", path="/users", description="List all users"
@@ -74,7 +74,7 @@ class TestEndpointDefinition:
 
     def test_endpoint_has_optional_parameters(self) -> None:
         """Endpoint can define parameters schema."""
-        from py_code_mode.http_adapter import Endpoint
+        from py_code_mode.tools.adapters.http import Endpoint
 
         endpoint = Endpoint(
             name="create_user",
@@ -92,7 +92,7 @@ class TestEndpointDefinition:
 
     def test_endpoint_path_parameters(self) -> None:
         """Endpoint can have path parameters like {id}."""
-        from py_code_mode.http_adapter import Endpoint
+        from py_code_mode.tools.adapters.http import Endpoint
 
         endpoint = Endpoint(
             name="get_user",
@@ -111,7 +111,7 @@ class TestHTTPAdapterListTools:
     @pytest.mark.asyncio
     async def test_list_tools_returns_tool_objects(self) -> None:
         """list_tools() returns Tool objects for each endpoint."""
-        from py_code_mode.http_adapter import Endpoint, HTTPAdapter
+        from py_code_mode.tools.adapters.http import Endpoint, HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
         adapter.add_endpoint(
@@ -129,7 +129,7 @@ class TestHTTPAdapterListTools:
     @pytest.mark.asyncio
     async def test_list_tools_maps_names(self) -> None:
         """Tool names come from endpoint names."""
-        from py_code_mode.http_adapter import Endpoint, HTTPAdapter
+        from py_code_mode.tools.adapters.http import Endpoint, HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
         adapter.add_endpoint(
@@ -142,7 +142,7 @@ class TestHTTPAdapterListTools:
     @pytest.mark.asyncio
     async def test_list_tools_maps_descriptions(self) -> None:
         """Tool descriptions come from endpoints."""
-        from py_code_mode.http_adapter import Endpoint, HTTPAdapter
+        from py_code_mode.tools.adapters.http import Endpoint, HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
         adapter.add_endpoint(
@@ -164,7 +164,7 @@ class TestHTTPAdapterCallTool:
     @pytest.fixture
     def adapter(self):
         """Create adapter with test endpoints."""
-        from py_code_mode.http_adapter import Endpoint, HTTPAdapter
+        from py_code_mode.tools.adapters.http import Endpoint, HTTPAdapter
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
         adapter.add_endpoint(
@@ -291,8 +291,8 @@ class TestHTTPAdapterWithRegistry:
     @pytest.mark.asyncio
     async def test_register_with_registry(self) -> None:
         """HTTPAdapter can be registered with ToolRegistry."""
-        from py_code_mode import ToolRegistry
-        from py_code_mode.http_adapter import Endpoint, HTTPAdapter
+        from py_code_mode.tools.adapters.http import Endpoint, HTTPAdapter
+        from py_code_mode.tools.registry import ToolRegistry
 
         adapter = HTTPAdapter(base_url="http://api.example.com")
         adapter.add_endpoint(

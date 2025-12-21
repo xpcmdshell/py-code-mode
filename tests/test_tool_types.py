@@ -2,7 +2,7 @@
 
 import pytest
 
-from py_code_mode.tool_types import Tool, ToolCallable, ToolParameter
+from py_code_mode.tools import Tool, ToolCallable, ToolParameter
 
 
 class TestToolParameter:

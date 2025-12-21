@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from py_code_mode.backend import Executor, StorageAccess
+from py_code_mode.execution import Executor, StorageAccess, StorageBackendAccess
 from py_code_mode.types import ExecutionResult
 
 if TYPE_CHECKING:
@@ -73,24 +73,38 @@ class Session:
         self._started = False
         self._closed = False
 
-    def _derive_storage_access(self) -> StorageAccess:
+    def _derive_storage_access(self, for_container: bool = False) -> StorageAccess:
         """Derive StorageAccess descriptor from storage backend.
 
-        Maps FileStorage to FileStorageAccess (paths).
-        Maps RedisStorage to RedisStorageAccess (url + prefixes).
+        For in-process executors, returns StorageBackendAccess to directly
+        share the storage's internal resources (avoids issues with mock Redis).
+
+        For container executors, returns FileStorageAccess or RedisStorageAccess
+        with connection info that can be passed to another process.
+
+        Args:
+            for_container: If True, returns serializable access descriptors.
+                          If False, returns StorageBackendAccess for direct access.
 
         Returns:
-            FileStorageAccess or RedisStorageAccess.
+            StorageAccess descriptor appropriate for the executor type.
 
         Raises:
             ValueError: If storage type is unsupported.
         """
-        from py_code_mode.backend import (
+        from py_code_mode.execution import (
             FileStorageAccess,
             RedisStorageAccess,
         )
         from py_code_mode.storage import FileStorage, RedisStorage
 
+        # For in-process execution, use direct storage access
+        # This shares the storage's internal adapters/stores rather than
+        # creating new connections (important for mock Redis in tests)
+        if not for_container:
+            return StorageBackendAccess(storage=self._storage)
+
+        # For container execution, need serializable connection info
         if isinstance(self._storage, FileStorage):
             base_path = self._storage.root
             return FileStorageAccess(
@@ -141,21 +155,31 @@ class Session:
         if self._started:
             return
 
-        # Derive storage access descriptor
-        storage_access = self._derive_storage_access()
-
         # Use provided executor or default to InProcessExecutor
         if self._executor_spec is None:
-            from py_code_mode.backends.in_process import InProcessExecutor
+            from py_code_mode.execution.in_process import InProcessExecutor
 
             self._executor = InProcessExecutor()
         else:
             self._executor = self._executor_spec
 
+        # Determine if executor needs serializable access (container execution)
+        # ContainerExecutor runs code in a separate process and needs
+        # connection info rather than direct object references
+        for_container = self._is_container_executor(self._executor)
+
+        # Derive storage access descriptor
+        storage_access = self._derive_storage_access(for_container=for_container)
+
         # Start executor with storage access
         # Executor.start() handles namespace injection based on storage_access
         await self._executor.start(storage_access=storage_access)
         self._started = True
+
+    def _is_container_executor(self, executor: Executor) -> bool:
+        """Check if executor is a ContainerExecutor (needs serializable access)."""
+        # Check by class name to avoid import
+        return type(executor).__name__ == "ContainerExecutor"
 
     async def run(self, code: str, timeout: float | None = None) -> ExecutionResult:
         """Run Python code and return result.
@@ -194,7 +218,7 @@ class Session:
         if self._executor is None:
             return
 
-        from py_code_mode.backend import Capability
+        from py_code_mode.execution import Capability
 
         # Use executor's reset if supported
         if self._executor.supports(Capability.RESET):
