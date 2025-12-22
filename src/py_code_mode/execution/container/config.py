@@ -53,6 +53,9 @@ class SessionConfig:
     host: str = "0.0.0.0"
     port: int = 8080
 
+    # Deps configuration
+    allow_runtime_deps: bool = True
+
     @classmethod
     def from_yaml(cls, path: Path) -> SessionConfig:
         """Load configuration from YAML file."""
@@ -90,6 +93,10 @@ class SessionConfig:
         if port := os.environ.get("PORT"):
             config.port = int(port)
 
+        # Deps configuration
+        if allow_runtime_deps_str := os.environ.get("ALLOW_RUNTIME_DEPS"):
+            config.allow_runtime_deps = allow_runtime_deps_str.lower() in ("true", "1", "yes")
+
         # Load tools config if specified
         if tools_config := os.environ.get("TOOLS_CONFIG"):
             tools_path = Path(tools_config)
@@ -115,6 +122,7 @@ class SessionConfig:
             max_execution_time=data.get("max_execution_time", 300.0),
             host=data.get("host", "0.0.0.0"),
             port=data.get("port", 8080),
+            allow_runtime_deps=data.get("allow_runtime_deps", True),
         )
 
     @staticmethod
@@ -158,15 +166,20 @@ class ContainerConfig:
     remove_on_exit: bool = True
     name: str | None = None  # Container name (auto-generated if None)
 
+    # Deps configuration
+    allow_runtime_deps: bool = True
+
     def to_docker_config(
         self,
         tools_path: Path | None = None,
         skills_path: Path | None = None,
         artifacts_path: Path | None = None,
+        deps_path: Path | None = None,
         redis_url: str | None = None,
         tools_prefix: str | None = None,
         skills_prefix: str | None = None,
         artifacts_prefix: str | None = None,
+        deps_prefix: str | None = None,
     ) -> dict[str, Any]:
         """Convert to Docker SDK configuration.
 
@@ -174,10 +187,12 @@ class ContainerConfig:
             tools_path: Host path to tools directory (volume mount).
             skills_path: Host path to skills directory (volume mount).
             artifacts_path: Host path to artifacts directory (volume mount).
+            deps_path: Host path to deps directory (volume mount).
             redis_url: Redis URL for Redis-based storage (sets env vars).
             tools_prefix: Redis key prefix for tools.
             skills_prefix: Redis key prefix for skills.
             artifacts_prefix: Redis key prefix for artifacts.
+            deps_prefix: Redis key prefix for dependencies.
 
         Returns:
             Docker SDK run() configuration dict.
@@ -215,6 +230,12 @@ class ContainerConfig:
                 "mode": "rw",
             }
             config["environment"]["ARTIFACTS_PATH"] = "/workspace/artifacts"
+        if deps_path:
+            volumes[str(deps_path.absolute())] = {
+                "bind": "/workspace/deps",
+                "mode": "rw",  # Agents can add/remove deps at runtime
+            }
+            config["environment"]["DEPS_PATH"] = "/workspace/deps"
         if volumes:
             config["volumes"] = volumes
 
@@ -229,6 +250,11 @@ class ContainerConfig:
                 config["environment"]["REDIS_SKILLS_PREFIX"] = skills_prefix
             if artifacts_prefix:
                 config["environment"]["REDIS_ARTIFACTS_PREFIX"] = artifacts_prefix
+            if deps_prefix:
+                config["environment"]["REDIS_DEPS_PREFIX"] = deps_prefix
+
+        # Deps configuration
+        config["environment"]["ALLOW_RUNTIME_DEPS"] = "true" if self.allow_runtime_deps else "false"
 
         # Add host.docker.internal mapping for Linux
         # macOS/Windows Docker Desktop provides this natively, but Linux needs it

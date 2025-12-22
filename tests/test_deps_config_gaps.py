@@ -1203,3 +1203,293 @@ class TestSubprocessExecutorDepsConfigGaps:
             # Should fail with AttributeError
             assert not result.is_ok
             assert "AttributeError" in result.error or "Cannot access" in result.error
+
+
+# =============================================================================
+# Track 5: ContainerExecutor Deps Configuration Tests
+# =============================================================================
+
+
+@pytest.mark.slow
+@pytest.mark.xdist_group("container")
+class TestContainerExecutorDepsConfigGaps:
+    """Tests for ContainerExecutor with deps configuration features.
+
+    These tests verify that the allow_runtime_deps configuration and
+    sync_deps_on_start work correctly with the ContainerExecutor backend.
+
+    NOTE: These tests are written TDD-style - they WILL FAIL initially because
+    ContainerExecutor does not yet inject the deps namespace. Expected failures:
+    - NameError: name 'deps' is not defined (deps namespace not injected)
+    - ContainerConfig() got an unexpected keyword argument 'allow_runtime_deps'
+
+    Once the builder implements deps namespace injection for ContainerExecutor,
+    these tests should pass.
+    """
+
+    # -------------------------------------------------------------------------
+    # F1: Pre-configure deps
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_pre_configure_deps_visible_in_container(self, tmp_path: Path) -> None:
+        """Pre-configured deps via storage.get_deps_store().add() appear in deps.list().
+
+        User action: Add deps via storage before session, then list via deps.list().
+        Verification: deps.list() shows the pre-configured package.
+        Breaks when: ContainerExecutor doesn't inject deps namespace or doesn't
+                     use the same storage backend for deps.
+        """
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import FileStorage
+
+        storage = FileStorage(tmp_path)
+
+        # Pre-configure deps before session
+        deps_store = storage.get_deps_store()
+        deps_store.add("six")
+
+        config = ContainerConfig()
+        executor = ContainerExecutor(config=config)
+
+        async with Session(storage=storage, executor=executor) as session:
+            result = await session.run("deps.list()")
+
+            assert result.is_ok, f"deps.list() failed: {result.error}"
+            assert "six" in result.value
+
+    # -------------------------------------------------------------------------
+    # F2: sync_deps_on_start
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_sync_deps_on_start_installs_in_container(self, tmp_path: Path) -> None:
+        """sync_deps_on_start=True installs pre-configured deps in container.
+
+        User action: Pre-configure deps, start session with sync_deps_on_start=True.
+        Verification: Package is importable after session start.
+        Breaks when: sync_deps_on_start doesn't trigger installation in container.
+        """
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import FileStorage
+
+        storage = FileStorage(tmp_path)
+
+        # Pre-configure deps
+        deps_store = storage.get_deps_store()
+        deps_store.add("six")
+
+        config = ContainerConfig()
+        executor = ContainerExecutor(config=config)
+
+        async with Session(
+            storage=storage, executor=executor, sync_deps_on_start=True
+        ) as session:
+            # Verify six is importable (proves it was installed)
+            result = await session.run("import six; six.__version__")
+
+            assert result.is_ok, f"import six failed: {result.error}"
+            assert result.value is not None  # Has a version string
+
+    # -------------------------------------------------------------------------
+    # F3: deps.list() always works
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_deps_list_always_works_in_container(self, tmp_path: Path) -> None:
+        """deps.list() works in container regardless of allow_runtime_deps setting.
+
+        User action: Call deps.list() in container with allow_runtime_deps=False.
+        Verification: Returns list without error.
+        Breaks when: deps.list() blocked or deps namespace not injected.
+        """
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import FileStorage
+
+        config = ContainerConfig(allow_runtime_deps=False)
+        executor = ContainerExecutor(config=config)
+        storage = FileStorage(tmp_path)
+
+        async with Session(storage=storage, executor=executor) as session:
+            result = await session.run("deps.list()")
+
+            assert result.is_ok, f"deps.list() should always work: {result.error}"
+            assert isinstance(result.value, list)
+
+    # -------------------------------------------------------------------------
+    # F4: deps.add() blocked when disabled
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_deps_add_blocked_when_disabled_container(self, tmp_path: Path) -> None:
+        """deps.add() raises error in container when allow_runtime_deps=False.
+
+        User action: Try to add dep at runtime when disabled.
+        Verification: Error raised, dep not added.
+        Breaks when: deps.add() succeeds despite being disabled.
+        """
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import FileStorage
+
+        config = ContainerConfig(allow_runtime_deps=False)
+        executor = ContainerExecutor(config=config)
+        storage = FileStorage(tmp_path)
+
+        async with Session(storage=storage, executor=executor) as session:
+            result = await session.run('deps.add("pandas")')
+
+            assert not result.is_ok
+            assert "runtime" in result.error.lower() or "disabled" in result.error.lower()
+
+    # -------------------------------------------------------------------------
+    # F5: deps.remove() blocked when disabled
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_deps_remove_blocked_when_disabled_container(self, tmp_path: Path) -> None:
+        """deps.remove() raises error in container when allow_runtime_deps=False.
+
+        User action: Try to remove dep from config when runtime deps disabled.
+        Verification: Removal fails with RuntimeDepsDisabledError.
+        Breaks when: deps.remove() allowed despite disabled flag.
+        """
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import FileStorage
+
+        storage = FileStorage(tmp_path)
+        # Pre-add a dep
+        storage.get_deps_store().add("six")
+
+        config = ContainerConfig(allow_runtime_deps=False)
+        executor = ContainerExecutor(config=config)
+
+        async with Session(storage=storage, executor=executor) as session:
+            result = await session.run('deps.remove("six")')
+
+            assert not result.is_ok
+            assert "RuntimeDepsDisabledError" in result.error or "disabled" in result.error.lower()
+
+    # -------------------------------------------------------------------------
+    # F6: deps.sync() allowed even when runtime deps disabled
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_deps_sync_allowed_when_disabled_container(self, tmp_path: Path) -> None:
+        """deps.sync() works in container when allow_runtime_deps=False.
+
+        User action: Try to sync deps at runtime when add/remove disabled.
+        Verification: Sync succeeds (only installs pre-configured deps).
+        Breaks when: deps.sync() incorrectly blocked by disabled flag.
+
+        Note: sync() only installs packages already in the deps store.
+        It does NOT add new dependencies, so it should always be allowed.
+        """
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import FileStorage
+
+        config = ContainerConfig(allow_runtime_deps=False)
+        executor = ContainerExecutor(config=config)
+        storage = FileStorage(tmp_path)
+
+        async with Session(storage=storage, executor=executor) as session:
+            result = await session.run("deps.sync()")
+
+            assert result.is_ok, f"deps.sync() should work: {result.error}"
+
+    # -------------------------------------------------------------------------
+    # F7: Bypass prevention (_wrapped access blocked)
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_bypass_via_wrapped_blocked_container(self, tmp_path: Path) -> None:
+        """Bypass attempt via deps._wrapped.add() blocked in container.
+
+        User action: Agent tries deps._wrapped.add() via run_code in container.
+        Verification: AttributeError returned in result.
+        Breaks when: Agent can bypass controls via _wrapped access in container.
+        """
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import FileStorage
+
+        config = ContainerConfig(allow_runtime_deps=False)
+        executor = ContainerExecutor(config=config)
+        storage = FileStorage(tmp_path)
+
+        async with Session(storage=storage, executor=executor) as session:
+            result = await session.run('deps._wrapped.add("malicious-package")')
+
+            assert not result.is_ok
+            assert "AttributeError" in result.error or "Cannot access" in result.error
+
+    # -------------------------------------------------------------------------
+    # F8: Import works after sync
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_import_works_after_sync_container(self, tmp_path: Path) -> None:
+        """Pre-configured packages can be imported after sync in container.
+
+        User action: Pre-configure dep, sync, then import.
+        Verification: Import succeeds.
+        Breaks when: Package not actually installed or import path wrong.
+        """
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import FileStorage
+
+        storage = FileStorage(tmp_path)
+
+        # Pre-configure deps
+        deps_store = storage.get_deps_store()
+        deps_store.add("six")
+
+        config = ContainerConfig()
+        executor = ContainerExecutor(config=config)
+
+        async with Session(storage=storage, executor=executor) as session:
+            # Sync deps
+            sync_result = await session.run("deps.sync()")
+            assert sync_result.is_ok, f"deps.sync() failed: {sync_result.error}"
+
+            # Now import should work
+            result = await session.run("import six; six.__version__")
+            assert result.is_ok, f"import six failed: {result.error}"
+
+    # -------------------------------------------------------------------------
+    # F9: Persistence across sessions
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_deps_persist_across_sessions_container(self, tmp_path: Path) -> None:
+        """Deps configured in one session are visible in subsequent sessions.
+
+        User action: Add dep in session 1, list in session 2 (same storage).
+        Verification: Session 2 sees the dep from session 1.
+        Breaks when: Deps not persisted to storage or not loaded in new session.
+        """
+        from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
+        from py_code_mode.session import Session
+        from py_code_mode.storage import FileStorage
+
+        storage = FileStorage(tmp_path)
+        config = ContainerConfig(allow_runtime_deps=True)
+
+        # Session 1: add a dep
+        executor1 = ContainerExecutor(config=config)
+        async with Session(storage=storage, executor=executor1) as session1:
+            result = await session1.run('deps.add("six")')
+            assert result.is_ok, f"deps.add() failed: {result.error}"
+
+        # Session 2: verify dep persisted (new executor, same storage)
+        executor2 = ContainerExecutor(config=config)
+        async with Session(storage=storage, executor=executor2) as session2:
+            result = await session2.run("deps.list()")
+            assert result.is_ok, f"deps.list() failed: {result.error}"
+            assert "six" in result.value, f"six not found in {result.value}"

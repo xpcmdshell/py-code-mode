@@ -130,11 +130,15 @@ class FileStorage:
         """Return FileStorageAccess for cross-process communication."""
         base_path = self._base_path
         tools_path = base_path / "tools"
+        deps_path = base_path / "deps"
+        # Ensure deps directory exists for volume mount
+        deps_path.mkdir(parents=True, exist_ok=True)
 
         return FileStorageAccess(
             tools_path=tools_path if tools_path.exists() else None,
             skills_path=base_path / "skills",
             artifacts_path=base_path / "artifacts",
+            deps_path=deps_path,
         )
 
     def get_tool_registry(self) -> ToolRegistry:
@@ -285,6 +289,7 @@ class RedisStorage:
             tools_prefix=f"{prefix}:tools",
             skills_prefix=f"{prefix}:skills",
             artifacts_prefix=f"{prefix}:artifacts",
+            deps_prefix=f"{prefix}:deps",
         )
 
     def get_tool_registry(self) -> ToolRegistry:

@@ -1,0 +1,14 @@
+[project]
+name = "py-code-mode-deps-example"
+version = "0.1.0"
+description = "Dependency management example using deps namespace"
+requires-python = ">=3.11"
+dependencies = [
+    "py-code-mode",
+]
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.uv.sources]
+py-code-mode = { path = "../..", editable = true }

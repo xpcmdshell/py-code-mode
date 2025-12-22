@@ -341,10 +341,12 @@ class ContainerExecutor:
         tools_path = None
         skills_path = None
         artifacts_path = None
+        deps_path = None
         redis_url = None
         tools_prefix = None
         skills_prefix = None
         artifacts_prefix = None
+        deps_prefix = None
 
         if storage is not None:
             # Get serializable access descriptor from storage
@@ -354,6 +356,7 @@ class ContainerExecutor:
                 tools_path = access.tools_path
                 skills_path = access.skills_path
                 artifacts_path = access.artifacts_path
+                deps_path = access.deps_path
                 # Create directories on host before mounting
                 # Skills need to exist for volume mount
                 if skills_path:
@@ -361,6 +364,7 @@ class ContainerExecutor:
                 # Artifacts need to exist for volume mount
                 if artifacts_path:
                     artifacts_path.mkdir(parents=True, exist_ok=True)
+                # Deps directory created in get_serializable_access()
             elif isinstance(access, RedisStorageAccess):
                 redis_url = access.redis_url
                 # Transform localhost URLs for Docker container access
@@ -370,6 +374,7 @@ class ContainerExecutor:
                 tools_prefix = access.tools_prefix
                 skills_prefix = access.skills_prefix
                 artifacts_prefix = access.artifacts_prefix
+                deps_prefix = access.deps_prefix
             else:
                 raise TypeError(
                     f"Unexpected storage access type: {type(access).__name__}. "
@@ -381,10 +386,12 @@ class ContainerExecutor:
             tools_path=tools_path,
             skills_path=skills_path,
             artifacts_path=artifacts_path,
+            deps_path=deps_path,
             redis_url=redis_url,
             tools_prefix=tools_prefix,
             skills_prefix=skills_prefix,
             artifacts_prefix=artifacts_prefix,
+            deps_prefix=deps_prefix,
         )
 
         # Start container

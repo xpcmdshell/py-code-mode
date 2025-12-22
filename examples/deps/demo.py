@@ -8,7 +8,7 @@ This script demonstrates:
 4. Listing and removing dependencies
 5. Persistence across sessions
 
-Run with: uv run python examples/deps_demo.py
+Run with: uv run python demo.py
 """
 
 from __future__ import annotations

@@ -474,10 +474,12 @@ class TestStorageAccessTypes:
             tools_path=Path("/tmp/tools"),
             skills_path=Path("/tmp/skills"),
             artifacts_path=Path("/tmp/artifacts"),
+            deps_path=Path("/tmp/deps"),
         )
         assert access.tools_path == Path("/tmp/tools")
         assert access.skills_path == Path("/tmp/skills")
         assert access.artifacts_path == Path("/tmp/artifacts")
+        assert access.deps_path == Path("/tmp/deps")
 
     def test_file_storage_access_paths_optional(self) -> None:
         """FileStorageAccess allows None for tools_path and skills_path."""
@@ -487,9 +489,11 @@ class TestStorageAccessTypes:
             tools_path=None,
             skills_path=None,
             artifacts_path=Path("/tmp/artifacts"),
+            deps_path=None,
         )
         assert access.tools_path is None
         assert access.skills_path is None
+        assert access.deps_path is None
 
     def test_redis_storage_access_has_url_and_prefixes(self) -> None:
         """RedisStorageAccess has redis_url and prefix fields."""
@@ -500,11 +504,13 @@ class TestStorageAccessTypes:
             tools_prefix="app:tools",
             skills_prefix="app:skills",
             artifacts_prefix="app:artifacts",
+            deps_prefix="app:deps",
         )
         assert access.redis_url == "redis://localhost:6379"
         assert access.tools_prefix == "app:tools"
         assert access.skills_prefix == "app:skills"
         assert access.artifacts_prefix == "app:artifacts"
+        assert access.deps_prefix == "app:deps"
 
 
 # =============================================================================

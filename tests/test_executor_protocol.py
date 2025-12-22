@@ -219,6 +219,7 @@ class TestInProcessExecutorRejectsOldTypes:
             tools_path=tmp_path / "tools",
             skills_path=tmp_path / "skills",
             artifacts_path=tmp_path / "artifacts",
+            deps_path=tmp_path / "deps",
         )
 
         executor = InProcessExecutor()
@@ -238,6 +239,7 @@ class TestInProcessExecutorRejectsOldTypes:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
 
         executor = InProcessExecutor()
@@ -335,6 +337,7 @@ class TestContainerExecutorAcceptsStorageBackend:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
         storage.get_serializable_access = MagicMock(return_value=expected_access)
 
@@ -377,6 +380,7 @@ class TestContainerExecutorRejectsOldTypes:
             tools_path=tmp_path / "tools",
             skills_path=tmp_path / "skills",
             artifacts_path=tmp_path / "artifacts",
+            deps_path=tmp_path / "deps",
         )
 
         config = ContainerConfig(image="py-code-mode:test")
@@ -457,6 +461,7 @@ class TestSubprocessExecutorRejectsOldTypes:
             tools_path=tmp_path / "tools",
             skills_path=tmp_path / "skills",
             artifacts_path=tmp_path / "artifacts",
+            deps_path=tmp_path / "deps",
         )
 
         config = SubprocessConfig(

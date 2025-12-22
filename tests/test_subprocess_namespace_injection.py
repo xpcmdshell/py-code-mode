@@ -705,6 +705,7 @@ class TestRedisNamespaceSetup:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Expected non-empty code for RedisStorageAccess"
@@ -724,6 +725,7 @@ class TestRedisNamespaceSetup:
             tools_prefix="myapp:tools",
             skills_prefix="myapp:skills",
             artifacts_prefix="myapp:artifacts",
+            deps_prefix="myapp:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -748,6 +750,7 @@ class TestRedisNamespaceSetup:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -771,6 +774,7 @@ class TestRedisNamespaceSetup:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -790,11 +794,14 @@ class TestRedisNamespaceSetup:
         skills_prefix = "unique_app_v1:skills"
         artifacts_prefix = "unique_app_v1:artifacts"
 
+        deps_prefix = "unique_app_v1:deps"
+
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
             tools_prefix=tools_prefix,
             skills_prefix=skills_prefix,
             artifacts_prefix=artifacts_prefix,
+            deps_prefix=deps_prefix,
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -820,6 +827,7 @@ class TestRedisNamespaceSetup:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -842,6 +850,7 @@ class TestRedisNamespaceSetup:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -864,6 +873,7 @@ class TestRedisNamespaceSetup:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -932,6 +942,7 @@ class TestRedisCodeGenerationDetails:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -953,6 +964,7 @@ class TestRedisCodeGenerationDetails:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -973,6 +985,7 @@ class TestRedisCodeGenerationDetails:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -991,6 +1004,7 @@ class TestRedisCodeGenerationDetails:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -1012,6 +1026,7 @@ class TestRedisCodeGenerationDetails:
             tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
+            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
