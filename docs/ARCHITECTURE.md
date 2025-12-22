@@ -24,8 +24,7 @@ Storage handles where tools, skills, and artifacts live. Two implementations:
 from pathlib import Path
 from redis import Redis
 from py_code_mode import Session, FileStorage, RedisStorage
-from py_code_mode.backends.in_process import InProcessExecutor
-from py_code_mode.backends.container import ContainerExecutor, ContainerConfig
+from py_code_mode.execution import InProcessExecutor, ContainerExecutor, ContainerConfig
 
 # File-based storage (single base_path creates subdirs)
 storage = FileStorage(base_path=Path("./storage"))
@@ -46,11 +45,45 @@ async with Session(storage=storage, executor=executor) as session:
     result = await session.run('tools.curl(url="...")')
 ```
 
-**Key changes from legacy API:**
+**Key design:**
 - `Session` accepts typed `Executor` instances, not `backend="container"` strings
 - `FileStorage` takes single `base_path`, creates subdirs automatically
 - `RedisStorage` takes Redis client instance and prefix, not separate URL/prefix params
-- Session derives `StorageAccess` from storage backend, passes to `executor.start()`
+- Session uses `StorageBackend` protocol to get components directly
+
+## StorageBackend Protocol
+
+The `StorageBackend` protocol provides a clean interface for storage backends:
+
+```python
+class StorageBackend(Protocol):
+    """Protocol for unified storage backend."""
+
+    def get_serializable_access(self) -> FileStorageAccess | RedisStorageAccess:
+        """Return serializable access descriptor for cross-process communication.
+
+        Used by executors that run in separate processes and need
+        connection info rather than direct object references.
+        """
+        ...
+
+    def get_tool_registry(self) -> ToolRegistry:
+        """Return ToolRegistry for in-process execution."""
+        ...
+
+    def get_skill_library(self) -> SkillLibrary:
+        """Return SkillLibrary for in-process execution."""
+        ...
+
+    def get_artifact_store(self) -> ArtifactStoreProtocol:
+        """Return artifact store for in-process execution."""
+        ...
+```
+
+**Design rationale:**
+- `get_serializable_access()`: Returns path/connection info that can be sent to other processes (containers, subprocesses)
+- `get_tool_registry()`, `get_skill_library()`, `get_artifact_store()`: Return live objects for in-process execution
+- No wrapper layers or dict-like access - components are accessed directly
 
 ## Session Architecture
 
@@ -58,41 +91,83 @@ Session orchestrates storage and execution:
 
 ```
 Session(storage=StorageBackend, executor=Executor)
-    │
-    ├─ Storage (where data lives):
-    │   ├─ FileStorage(base_path) → creates tools/, skills/, artifacts/
-    │   └─ RedisStorage(redis, prefix) → keys with prefix:tools:*, etc.
-    │
-    ├─ Storage Access Pattern:
-    │   │
-    │   ├─ Session._derive_storage_access() converts:
-    │   │   │
-    │   │   ├─ FileStorage → FileStorageAccess(tools_path, skills_path, artifacts_path)
-    │   │   └─ RedisStorage → RedisStorageAccess(redis_url, tools_prefix, skills_prefix, artifacts_prefix)
-    │   │
-    │   └─ Passed to executor.start(storage_access=...) during session startup
-    │
-    └─ Executor (where code runs):
-        │
-        ├─ InProcessExecutor (default, same process)
-        │   └─ start(storage_access) loads tools/skills/artifacts from paths or Redis
-        │
-        └─ ContainerExecutor (Docker isolation)
-            └─ start(storage_access) configures container environment
-
+    |
+    +-- Storage provides components directly:
+    |       storage.get_tool_registry()    -> ToolRegistry
+    |       storage.get_skill_library()    -> SkillLibrary
+    |       storage.get_artifact_store()   -> ArtifactStoreProtocol
+    |
+    +-- For cross-process executors:
+    |       storage.get_serializable_access() -> FileStorageAccess | RedisStorageAccess
+    |
+    +-- Executor (where code runs):
+            +-- InProcessExecutor (default)
+            |       Uses components directly from storage
+            |
+            +-- ContainerExecutor (Docker)
+            |       Receives serializable access, reconstructs components
+            |
+            +-- SubprocessExecutor (Jupyter kernel)
+                    Receives serializable access, reconstructs components
 ```
 
 **Key Flow:**
 1. User creates `Session(storage=storage, executor=executor)`
-2. Session calls `executor.start(storage_access=derived_access)`
-3. Executor loads tools, skills, artifacts from storage_access descriptor
-4. Executor injects namespaces: `tools.*`, `skills.*`, `artifacts.*`
-5. User calls `session.run(code)` which delegates to executor
+2. Session starts executor with storage access
+3. In-process executor gets components directly from storage
+4. Cross-process executors receive serializable access descriptor
+5. Executor builds namespaces: `tools.*`, `skills.*`, `artifacts.*`
+6. User calls `session.run(code)` which delegates to executor
 
-**Current state:**
-- `Session` API fully supports FileStorage and RedisStorage
-- `Session` defaults to InProcessExecutor if executor not specified
-- ContainerExecutor works with Session when explicitly passed
+---
+
+## SkillsNamespace Decoupling
+
+`SkillsNamespace` is decoupled from executors and accepts a plain namespace dict:
+
+```python
+class SkillsNamespace:
+    def __init__(self, library: SkillLibrary, namespace: dict[str, Any]) -> None:
+        """Initialize SkillsNamespace.
+
+        Args:
+            library: The skill library for skill lookup and storage.
+            namespace: Dict containing tools, skills, artifacts for skill execution.
+                       Must be a plain dict, not an executor object.
+        """
+```
+
+**Design rationale:**
+- Any executor (InProcess, Container, Subprocess) can use `SkillsNamespace`
+- No coupling to specific executor implementations
+- Skills execute with `tools`, `skills`, `artifacts` from the namespace dict
+- Explicit rejection of executor-like objects prevents accidental coupling
+
+---
+
+## ToolProxy Explicit Methods
+
+`ToolProxy` provides explicit sync/async methods for predictable behavior:
+
+```python
+# Explicit methods (recommended for clarity)
+result = await tools.curl.call_async(url="...")  # Always async
+result = tools.curl.call_sync(url="...")          # Always sync, blocks
+
+# Context-aware __call__ (backward compatible)
+result = tools.curl(url="...")  # Sync in sync context, returns coroutine in async
+```
+
+**Methods:**
+- `call_async(**kwargs)`: Always returns awaitable, use in async code
+- `call_sync(**kwargs)`: Always blocks and returns result, use in sync code
+- `__call__(**kwargs)`: Context-aware, detects if running in async context
+
+**Same pattern applies to `CallableProxy`** for recipe invocations:
+```python
+result = await tools.curl.get.call_async(url="...")
+result = tools.curl.get.call_sync(url="...")
+```
 
 ---
 
@@ -101,38 +176,38 @@ Session(storage=StorageBackend, executor=Executor)
 **Best for:** Local development, single-machine deployments.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Host Machine                             │
-│                                                                 │
-│   ┌───────────────────────────────────────────────────────┐     │
-│   │                     Your Agent                        │     │
-│   │                                                       │     │
-│   │   storage = FileStorage(                              │     │
-│   │       base_path=Path("./storage")                    │     │
-│   │   )  # Creates tools/, skills/, artifacts/ subdirs   │     │
-│   │                                                       │     │
-│   │   async with Session(storage=storage) as session:     │     │
-│   │       result = await session.run('tools.curl(...)')   │     │
-│   └───────────────────────┬───────────────────────────────┘     │
-│                           │                                     │
-│                           │ runs in same process                │
-│                           │                                     │
-│   ┌───────────────────────▼───────────────────────────────┐     │
-│   │                InProcessExecutor                      │     │
-│   │                                                       │     │
-│   │   ┌─────────────┐ ┌─────────────┐ ┌───────────────┐   │     │
-│   │   │ ToolRegistry│ │SkillLibrary│ │FileArtifactStore  │     │
-│   │   │ (file)      │ │ (file)     │ │ (file)        │   │     │
-│   │   └──────┬──────┘ └──────┬──────┘ └───────┬───────┘   │     │
-│   └──────────┼───────────────┼────────────────┼───────────┘     │
-│              │               │                │                 │
-│   ┌──────────▼──────┐ ┌──────▼──────┐ ┌───────▼───────┐         │
-│   │  ./tools/       │ │  ./skills/  │ │  ./artifacts/ │         │
-│   │  ├─ curl.yaml   │ │  └─ *.py    │ │  └─ *.bin     │         │
-│   │  └─ nmap.yaml   │ │             │ │               │         │
-│   └─────────────────┘ └─────────────┘ └───────────────┘         │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
++------------------------------------------------------------------+
+|                        Host Machine                              |
+|                                                                  |
+|   +----------------------------------------------------------+   |
+|   |                     Your Agent                           |   |
+|   |                                                          |   |
+|   |   storage = FileStorage(                                 |   |
+|   |       base_path=Path("./storage")                        |   |
+|   |   )  # Creates tools/, skills/, artifacts/ subdirs       |   |
+|   |                                                          |   |
+|   |   async with Session(storage=storage) as session:        |   |
+|   |       result = await session.run('tools.curl(...)')      |   |
+|   +-------------------------+--------------------------------+   |
+|                             |                                    |
+|                             | runs in same process               |
+|                             v                                    |
+|   +-------------------------+--------------------------------+   |
+|   |                InProcessExecutor                         |   |
+|   |                                                          |   |
+|   |   +-------------+ +-------------+ +------------------+   |   |
+|   |   |ToolRegistry | |SkillLibrary | |FileArtifactStore |   |   |
+|   |   | (file)      | | (file)      | | (file)           |   |   |
+|   |   +------+------+ +------+------+ +--------+---------+   |   |
+|   +----------|--------------+|-----------------+-------------+   |
+|              |               |                 |                 |
+|   +----------v------+ +------v------+ +--------v--------+        |
+|   |  ./tools/       | |  ./skills/  | |  ./artifacts/   |        |
+|   |  +-- curl.yaml  | |  +-- *.py   | |  +-- *.bin      |        |
+|   |  +-- nmap.yaml  | |             | |                 |        |
+|   +-----------------+ +-------------+ +-----------------+        |
+|                                                                  |
++------------------------------------------------------------------+
 ```
 
 **Code:**
@@ -155,41 +230,41 @@ async with Session(storage=storage) as session:
 **Best for:** Distributed deployments, shared state across instances.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Host Machine                             │
-│                                                                 │
-│   ┌───────────────────────────────────────────────────────┐     │
-│   │                     Your Agent                        │     │
-│   │                                                       │     │
-│   │   from redis import Redis                             │     │
-│   │   redis = Redis.from_url("redis://localhost:6379")   │     │
-│   │   storage = RedisStorage(                             │     │
-│   │       redis=redis,                                    │     │
-│   │       prefix="agent"                                  │     │
-│   │   )  # Uses agent:tools:*, agent:skills:*, etc.      │     │
-│   │                                                       │     │
-│   │   async with Session(storage=storage) as session:     │     │
-│   │       result = await session.run('tools.curl(...)')   │     │
-│   └───────────────────────┬───────────────────────────────┘     │
-│                           │                                     │
-│   ┌───────────────────────▼───────────────────────────────┐     │
-│   │                InProcessExecutor                      │     │
-│   │                                                       │     │
-│   │   ┌─────────────┐ ┌─────────────┐ ┌───────────────┐   │     │
-│   │   │ ToolRegistry│ │SkillLibrary│ │RedisArtifactStore │     │
-│   │   │ (Redis)     │ │ (Redis)    │ │ (Redis)       │   │     │
-│   │   └──────┬──────┘ └──────┬──────┘ └───────┬───────┘   │     │
-│   └──────────┼───────────────┼────────────────┼───────────┘     │
-│              │               │                │                 │
-└──────────────┼───────────────┼────────────────┼─────────────────┘
-               │               │                │
-    ┌──────────▼───────────────▼────────────────▼──────────┐
-    │                       Redis                          │
-    │                                                      │
-    │  agent:tools:*  │  agent:skills:*  │ agent:artifacts:*│
-    │  (yaml configs) │  (python code)   │ (binary data)   │
-    │                                                      │
-    └──────────────────────────────────────────────────────┘
++------------------------------------------------------------------+
+|                        Host Machine                              |
+|                                                                  |
+|   +----------------------------------------------------------+   |
+|   |                     Your Agent                           |   |
+|   |                                                          |   |
+|   |   from redis import Redis                                |   |
+|   |   redis = Redis.from_url("redis://localhost:6379")       |   |
+|   |   storage = RedisStorage(                                |   |
+|   |       redis=redis,                                       |   |
+|   |       prefix="agent"                                     |   |
+|   |   )  # Uses agent:tools:*, agent:skills:*, etc.          |   |
+|   |                                                          |   |
+|   |   async with Session(storage=storage) as session:        |   |
+|   |       result = await session.run('tools.curl(...)')      |   |
+|   +-------------------------+--------------------------------+   |
+|                             |                                    |
+|   +-------------------------v--------------------------------+   |
+|   |                InProcessExecutor                         |   |
+|   |                                                          |   |
+|   |   +-------------+ +-------------+ +------------------+   |   |
+|   |   |ToolRegistry | |SkillLibrary | |RedisArtifactStore|   |   |
+|   |   | (Redis)     | | (Redis)     | | (Redis)          |   |   |
+|   |   +------+------+ +------+------+ +--------+---------+   |   |
+|   +----------|--------------+|-----------------+-------------+   |
+|              |               |                 |                 |
++--------------|---------------|-----------------|-----------------+
+               |               |                 |
+    +----------v---------------v-----------------v-----------+
+    |                       Redis                            |
+    |                                                        |
+    |  agent:tools:*  |  agent:skills:*  | agent:artifacts:* |
+    |  (yaml configs) |  (python code)   | (binary data)     |
+    |                                                        |
+    +--------------------------------------------------------+
 ```
 
 **Code:**
@@ -229,65 +304,63 @@ python -m py_code_mode.store bootstrap \
 
 **Best for:** Process isolation with local development.
 
-**Note:** Container backend can be used with Session by passing `ContainerExecutor` explicitly.
+**Note:** Container backend is used with Session by passing `ContainerExecutor` explicitly.
 Storage is provided via volume mounts for tools, skills, and artifacts.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Host Machine                             │
-│                                                                 │
-│   ┌───────────────────────────────────────────────────────┐     │
-│   │                     Your Agent                        │     │
-│   │                                                       │     │
-│   │   from py_code_mode.backends.container import (       │     │
-│   │       ContainerExecutor, ContainerConfig              │     │
-│   │   )                                                   │     │
-│   │                                                       │     │
-│   │   storage = FileStorage(base_path=Path("./storage")) │     │
-│   │   executor = ContainerExecutor(config=ContainerConfig(│     │
-│   │       image="py-code-mode:latest",                    │     │
-│   │       # Storage access derived by Session             │     │
-│   │   ))                                                  │     │
-│   │                                                       │     │
-│   │   async with Session(storage=storage,                 │     │
-│   │                      executor=executor) as session:   │     │
-│   │       result = await session.run('tools.curl(...)')   │     │
-│   └───────────────────────┬───────────────────────────────┘     │
-│                           │ HTTP                                │
-│                           │                                     │
-│   ╔═══════════════════════▼═══════════════════════════════════╗ │
-│   ║               Docker Container                            ║ │
-│   ║               (FileStorageAccess passed via Session)      ║ │
-│   ║                                                           ║ │
-│   ║   ┌─────────────────────────────────────────────────┐     ║ │
-│   ║   │            SessionServer (FastAPI)              │     ║ │
-│   ║   │                                                 │     ║ │
-│   ║   │   ┌─────────────┐ ┌─────────────┐ ┌──────────┐  │     ║ │
-│   ║   │   │ ToolRegistry│ │SkillLibrary│ │FileArtifact  │     ║ │
-│   ║   │   │ (from       │ │ (mounted)  │ │(mounted) │  │     ║ │
-│   ║   │   │ TOOLS_CONFIG│ │             │ │          │  │     ║ │
-│   ║   │   └──────┬──────┘ └──────┬──────┘ └────┬─────┘  │     ║ │
-│   ║   └──────────┼───────────────┼─────────────┼────────┘     ║ │
-│   ║              │               │             │              ║ │
-│   ║   ┌──────────▼──────┐ ┌──────▼──────┐ ┌────▼────────┐     ║ │
-│   ║   │TOOLS_CONFIG yaml│ │ /app/skills/│ │/workspace/  │     ║ │
-│   ║   │(in container or │ │ (volume)    │ │artifacts/   │     ║ │
-│   ║   │ mounted)        │ │             │ │(volume)     │     ║ │
-│   ║   └─────────────────┘ └──────▲──────┘ └─────▲───────┘     ║ │
-│   ╚══════════════════════════════╬══════════════╬═════════════╝ │
-│                                  │              │               │
-│                         volume   │     volume   │               │
-│                         mount    │     mount    │               │
-│                                  │              │               │
-│   ┌──────────────────────────────┴──────────────┴─────────────┐ │
-│   │                     Host Filesystem                       │ │
-│   │                                                           │ │
-│   │   ./skills/              ./artifacts/                     │ │
-│   │   └─ *.py                └─ (agent-created files)         │ │
-│   │                                                           │ │
-│   └───────────────────────────────────────────────────────────┘ │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
++------------------------------------------------------------------+
+|                        Host Machine                              |
+|                                                                  |
+|   +----------------------------------------------------------+   |
+|   |                     Your Agent                           |   |
+|   |                                                          |   |
+|   |   from py_code_mode.execution import (                   |   |
+|   |       ContainerExecutor, ContainerConfig                 |   |
+|   |   )                                                      |   |
+|   |                                                          |   |
+|   |   storage = FileStorage(base_path=Path("./storage"))     |   |
+|   |   executor = ContainerExecutor(config=ContainerConfig(   |   |
+|   |       image="py-code-mode:latest",                       |   |
+|   |   ))                                                     |   |
+|   |                                                          |   |
+|   |   async with Session(storage=storage,                    |   |
+|   |                      executor=executor) as session:      |   |
+|   |       result = await session.run('tools.curl(...)')      |   |
+|   +-------------------------+--------------------------------+   |
+|                             | HTTP                               |
+|                             v                                    |
+|   +=========================================================+   |
+|   ||               Docker Container                        ||   |
+|   ||               (FileStorageAccess passed via Session)  ||   |
+|   ||                                                       ||   |
+|   ||   +-----------------------------------------------+   ||   |
+|   ||   |            SessionServer (FastAPI)            |   ||   |
+|   ||   |                                               |   ||   |
+|   ||   |   +-------------+ +-------------+ +--------+  |   ||   |
+|   ||   |   |ToolRegistry | |SkillLibrary | |FileArt.|  |   ||   |
+|   ||   |   | (mounted)   | | (mounted)   | |(mount) |  |   ||   |
+|   ||   |   +------+------+ +------+------+ +---+----+  |   ||   |
+|   ||   +----------|--------------|-------------|-------+   ||   |
+|   ||              |              |             |           ||   |
+|   ||   +----------v------+ +-----v-----+ +-----v-------+   ||   |
+|   ||   |TOOLS_CONFIG yaml| |/app/skills| |/workspace/  |   ||   |
+|   ||   |(in container or | | (volume)  | |artifacts/   |   ||   |
+|   ||   | mounted)        | |           | |(volume)     |   ||   |
+|   ||   +-----------------+ +-----^-----+ +------^------+   ||   |
+|   +=============================|===============|==========+   |
+|                                 |               |               |
+|                         volume  |       volume  |               |
+|                         mount   |       mount   |               |
+|                                 |               |               |
+|   +-----------------------------+--------------+-------------+  |
+|   |                     Host Filesystem                      |  |
+|   |                                                          |  |
+|   |   ./skills/              ./artifacts/                    |  |
+|   |   +-- *.py               +-- (agent-created files)       |  |
+|   |                                                          |  |
+|   +----------------------------------------------------------+  |
+|                                                                  |
++------------------------------------------------------------------+
 ```
 
 **Environment:**
@@ -304,68 +377,68 @@ ARTIFACTS_PATH=/workspace/artifacts   # Volume mounted from host
 
 **Best for:** Cloud deployments, horizontal scaling, shared state.
 
-**Note:** Container backend can be used with Session by passing `ContainerExecutor` explicitly.
+**Note:** Container backend is used with Session by passing `ContainerExecutor` explicitly.
 Session derives RedisStorageAccess from RedisStorage and passes to container.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Host / Cloud                             │
-│                                                                 │
-│   ┌───────────────────────────────────────────────────────┐     │
-│   │                     Your Agent                        │     │
-│   │                                                       │     │
-│   │   from redis import Redis                             │     │
-│   │   from py_code_mode.backends.container import (       │     │
-│   │       ContainerExecutor, ContainerConfig              │     │
-│   │   )                                                   │     │
-│   │                                                       │     │
-│   │   redis = Redis.from_url("redis://redis:6379")        │     │
-│   │   storage = RedisStorage(redis=redis, prefix="agent") │     │
-│   │   executor = ContainerExecutor(config=ContainerConfig(│     │
-│   │       image="py-code-mode:latest"                     │     │
-│   │   ))                                                  │     │
-│   │                                                       │     │
-│   │   async with Session(storage=storage,                 │     │
-│   │                      executor=executor) as session:   │     │
-│   │       result = await session.run('tools.curl(...)')   │     │
-│   └───────────────────────┬───────────────────────────────┘     │
-│                           │ HTTP                                │
-│                           │                                     │
-│   ╔═══════════════════════▼═══════════════════════════════════╗ │
-│   ║               Docker Container                            ║ │
-│   ║               (RedisStorageAccess passed via Session)     ║ │
-│   ║                                                           ║ │
-│   ║   ┌─────────────────────────────────────────────────┐     ║ │
-│   ║   │            SessionServer (FastAPI)              │     ║ │
-│   ║   │                                                 │     ║ │
-│   ║   │   Receives RedisStorageAccess from Session:     │     ║ │
-│   ║   │   - redis_url: connection string                │     ║ │
-│   ║   │   - tools_prefix, skills_prefix, artifacts_prefix   ║ │
-│   ║   │                                                 │     ║ │
-│   ║   │   Loads from Redis:                             │     ║ │
-│   ║   │   - registry = registry_from_redis(tool_store)  │     ║ │
-│   ║   │   - skill_library from RedisSkillStore          │     ║ │
-│   ║   │   - artifact_store = RedisArtifactStore         │     ║ │
-│   ║   │                                                 │     ║ │
-│   ║   │   ┌─────────────┐ ┌─────────────┐ ┌──────────┐  │     ║ │
-│   ║   │   │ ToolRegistry│ │SkillLibrary│ │RedisArtifact │     ║ │
-│   ║   │   │ (Redis)     │ │ (Redis)    │ │ (Redis)  │  │     ║ │
-│   ║   │   └──────┬──────┘ └──────┬──────┘ └────┬─────┘  │     ║ │
-│   ║   └──────────┼───────────────┼─────────────┼────────┘     ║ │
-│   ╚══════════════╬═══════════════╬═════════════╬══════════════╝ │
-│                  │               │             │                │
-└──────────────────┼───────────────┼─────────────┼────────────────┘
-                   │               │             │
-        ┌──────────▼───────────────▼─────────────▼──────────┐
-        │                       Redis                       │
-        │                                                   │
-        │   agent-tools:*  │  agent-skills:*  │  agent-artifacts:*
-        │   (yaml configs) │  (python code)   │  (binary data)
-        │                                                   │
-        │   Provisioned via:                                │
-        │   python -m py_code_mode.store bootstrap ...      │
-        │                                                   │
-        └───────────────────────────────────────────────────┘
++------------------------------------------------------------------+
+|                        Host / Cloud                              |
+|                                                                  |
+|   +----------------------------------------------------------+   |
+|   |                     Your Agent                           |   |
+|   |                                                          |   |
+|   |   from redis import Redis                                |   |
+|   |   from py_code_mode.execution import (                   |   |
+|   |       ContainerExecutor, ContainerConfig                 |   |
+|   |   )                                                      |   |
+|   |                                                          |   |
+|   |   redis = Redis.from_url("redis://redis:6379")           |   |
+|   |   storage = RedisStorage(redis=redis, prefix="agent")    |   |
+|   |   executor = ContainerExecutor(config=ContainerConfig(   |   |
+|   |       image="py-code-mode:latest"                        |   |
+|   |   ))                                                     |   |
+|   |                                                          |   |
+|   |   async with Session(storage=storage,                    |   |
+|   |                      executor=executor) as session:      |   |
+|   |       result = await session.run('tools.curl(...)')      |   |
+|   +-------------------------+--------------------------------+   |
+|                             | HTTP                               |
+|                             v                                    |
+|   +=========================================================+   |
+|   ||               Docker Container                        ||   |
+|   ||               (RedisStorageAccess passed via Session) ||   |
+|   ||                                                       ||   |
+|   ||   +-----------------------------------------------+   ||   |
+|   ||   |            SessionServer (FastAPI)            |   ||   |
+|   ||   |                                               |   ||   |
+|   ||   |   Receives RedisStorageAccess from Session:   |   ||   |
+|   ||   |   - redis_url: connection string              |   ||   |
+|   ||   |   - tools_prefix, skills_prefix, etc.         |   ||   |
+|   ||   |                                               |   ||   |
+|   ||   |   Loads from Redis:                           |   ||   |
+|   ||   |   - registry = registry_from_redis(store)     |   ||   |
+|   ||   |   - skill_library from RedisSkillStore        |   ||   |
+|   ||   |   - artifact_store = RedisArtifactStore       |   ||   |
+|   ||   |                                               |   ||   |
+|   ||   |   +-------------+ +-------------+ +--------+  |   ||   |
+|   ||   |   |ToolRegistry | |SkillLibrary | |RedisArt|  |   ||   |
+|   ||   |   | (Redis)     | | (Redis)     | |(Redis) |  |   ||   |
+|   ||   |   +------+------+ +------+------+ +---+----+  |   ||   |
+|   ||   +----------|--------------|-------------|-------+   ||   |
+|   +===============|==============|=============|===========+   |
+|                   |              |             |                |
++-------------------|--------------|-------------|----------------+
+                    |              |             |
+         +----------v--------------v-------------v----------+
+         |                       Redis                      |
+         |                                                  |
+         |  agent-tools:*  |  agent-skills:*  |  agent-artifacts:*
+         |  (yaml configs) |  (python code)   |  (binary data)
+         |                                                  |
+         |  Provisioned via:                                |
+         |  python -m py_code_mode.store bootstrap ...      |
+         |                                                  |
+         +--------------------------------------------------+
 ```
 
 **Key flow:**
@@ -407,14 +480,15 @@ python -m py_code_mode.store bootstrap \
 
 ```
 Choose storage backend:
-    │
-    ├─ Single machine, local dev?  → FileStorage(base_path=Path("./storage"))
-    └─ Distributed, production?    → RedisStorage(redis=client, prefix="app")
+    |
+    +-- Single machine, local dev?  -> FileStorage(base_path=Path("./storage"))
+    +-- Distributed, production?    -> RedisStorage(redis=client, prefix="app")
 
 Choose executor:
-    │
-    ├─ Same-process execution?     → InProcessExecutor() (default)
-    └─ Process isolation needed?   → ContainerExecutor(config=ContainerConfig(...))
+    |
+    +-- Same-process execution?     -> InProcessExecutor() (default)
+    +-- Process isolation needed?   -> ContainerExecutor(config=ContainerConfig(...))
+    +-- Jupyter kernel?             -> SubprocessExecutor(config=SubprocessConfig(...))
 
 Combine:
     Session(storage=storage, executor=executor)  # or omit executor for default
@@ -428,60 +502,89 @@ Combine:
 
 ```
 Agent writes: "tools.curl.get(url='...')"
-        │
-        ▼
-┌───────────────────────┐
-│ ToolsNamespace        │
-│                       │
-│ tools.curl(url=...)   │──▶ Escape hatch (direct invocation)
-│ tools.curl.get(...)   │──▶ Recipe invocation
-│ tools.search(...)     │                │
-│ tools.list()          │                ▼
-└───────────────────────┘         ┌────────────┐
-                                  │ CLIAdapter │ → subprocess
-                                  │ MCPAdapter │ → MCP server
-                                  │ HTTPAdapter│ → HTTP request
-                                  └────────────┘
+        |
+        v
++------------------------+
+| ToolsNamespace         |
+|                        |
+| tools.curl(url=...)    |--> Escape hatch (direct invocation)
+| tools.curl.get(...)    |--> Recipe invocation
+| tools.search(...)      |                |
+| tools.list()           |                v
++------------------------+         +--------------+
+                                   | CLIAdapter   | -> subprocess
+                                   | MCPAdapter   | -> MCP server
+                                   | HTTPAdapter  | -> HTTP request
+                                   +--------------+
+```
+
+### ToolProxy Methods
+
+```
+Agent writes: "tools.curl.get(url='...')"
+        |
+        v
++------------------------+
+| ToolProxy              |
+|                        |
+| .call_async(**kwargs)  |--> Always returns awaitable
+| .call_sync(**kwargs)   |--> Always blocks, returns result
+| .__call__(**kwargs)    |--> Context-aware (sync/async detection)
++------------------------+
+        |
+        v
++------------------------+
+| CallableProxy (recipe) |
+|                        |
+| .call_async(**kwargs)  |--> Always returns awaitable
+| .call_sync(**kwargs)   |--> Always blocks, returns result
+| .__call__(**kwargs)    |--> Context-aware (sync/async detection)
++------------------------+
 ```
 
 ### Skill Execution
 
 ```
 Agent writes: "skills.analyze_repo(repo='...')"
-        │
-        ▼
-┌───────────────────────┐
-│ SkillsNamespace       │
-│                       │
-│ skills.invoke("name") │──▶ SkillLibrary.get("analyze_repo")
-│ skills.analyze_repo() │                │
-│ skills.search("...")  │                ▼
-│ skills.list()         │         ┌─────────────┐
-└───────────────────────┘         │ SkillStore  │
-                                  │ (File/Redis)│
-                                  └──────┬──────┘
-                                         │
-                                         ▼
-                                  ┌─────────────────┐
-                                  │ compile(source) │
-                                  │ exec(code)      │
-                                  │ return run()    │
-                                  └─────────────────┘
+        |
+        v
++------------------------+
+| SkillsNamespace        |
+|                        |
+| skills.invoke("name")  |--> SkillLibrary.get("analyze_repo")
+| skills.analyze_repo()  |                |
+| skills.search("...")   |                v
+| skills.list()          |         +--------------+
++------------------------+         | SkillStore   |
+                                   | (File/Redis) |
+                                   +------+-------+
+                                          |
+                                          v
+                                   +-----------------+
+                                   | compile(source) |
+                                   | exec(code)      |
+                                   | return run()    |
+                                   +-----------------+
+                                          |
+                                   Skill has access to:
+                                   - tools (ToolsNamespace)
+                                   - skills (SkillsNamespace)
+                                   - artifacts (ArtifactStore)
 ```
 
 ### Artifact Storage
 
 ```
 Agent writes: "artifacts.save('data.json', b'...', 'description')"
-        │
-        ▼
-┌───────────────────────┐
-│ ArtifactStore         │
-│                       │
-│ artifacts.save(...)   │──▶ FileArtifactStore.save()  → disk
-│ artifacts.load(...)   │    or
-│ artifacts.list()      │    RedisArtifactStore.save() → Redis
-└───────────────────────┘
+        |
+        v
++------------------------+
+| ArtifactStore          |
+|                        |
+| artifacts.save(...)    |--> FileArtifactStore.save()  -> disk
+| artifacts.load(...)    |    or
+| artifacts.list()       |    RedisArtifactStore.save() -> Redis
++------------------------+
 ```
 
 ---
@@ -638,6 +741,7 @@ recipes:                          # Named presets
 | **Recipes merge presets + args** | Agent provides only what varies; preset handles boilerplate |
 | **`asyncio.create_subprocess_exec`** | Avoids shell injection - args passed as list, not string |
 | **Escape hatch (`ToolProxy.__call__`)** | Experts can bypass recipes when full control is needed |
+| **Explicit `call_async`/`call_sync`** | Predictable behavior regardless of calling context |
 | **No backward compatibility** | Clean interface, no legacy code paths to maintain |
 
 ---
