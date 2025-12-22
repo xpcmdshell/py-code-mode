@@ -30,6 +30,23 @@ class FileArtifactStore:
         self._path.mkdir(parents=True, exist_ok=True)
         self._index: dict[str, dict[str, Any]] = self._load_index()
 
+    def _safe_path(self, name: str) -> Path:
+        """Resolve path and verify it's contained within storage directory.
+
+        Args:
+            name: Artifact name (may include subdirectories like "scans/nmap.json").
+
+        Returns:
+            Resolved path within storage directory.
+
+        Raises:
+            ValueError: If path would escape storage directory.
+        """
+        resolved = (self._path / name).resolve()
+        if not resolved.is_relative_to(self._path.resolve()):
+            raise ValueError(f"Path traversal attempt detected: {name!r}")
+        return resolved
+
     @property
     def path(self) -> str:
         """Base path for raw file access."""
@@ -69,8 +86,11 @@ class FileArtifactStore:
 
         Returns:
             Artifact metadata object.
+
+        Raises:
+            ValueError: If name contains path traversal sequences.
         """
-        file_path = self._path / name
+        file_path = self._safe_path(name)
 
         # Create subdirectories if needed
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -115,8 +135,9 @@ class FileArtifactStore:
 
         Raises:
             ArtifactNotFoundError: If artifact doesn't exist.
+            ValueError: If name contains path traversal sequences.
         """
-        file_path = self._path / name
+        file_path = self._safe_path(name)
 
         if not file_path.exists():
             raise ArtifactNotFoundError(f"Artifact not found: {name}")
@@ -150,14 +171,20 @@ class FileArtifactStore:
 
         Returns:
             Artifact metadata or None if not found.
+
+        Raises:
+            ValueError: If name contains path traversal sequences.
         """
+        # Validate path even for metadata lookups to prevent index poisoning
+        file_path = self._safe_path(name)
+
         if name not in self._index:
             return None
 
         entry = self._index[name]
         return Artifact(
             name=name,
-            path=str(self._path / name),
+            path=str(file_path),
             description=entry["description"],
             metadata=entry.get("metadata", {}),
             created_at=datetime.fromisoformat(entry["created_at"]),
@@ -168,13 +195,22 @@ class FileArtifactStore:
 
         Returns:
             List of Artifact objects.
+
+        Note:
+            Only returns artifacts with valid paths. Any index entries with
+            path traversal attempts are silently skipped.
         """
         artifacts = []
         for name, entry in self._index.items():
+            try:
+                file_path = self._safe_path(name)
+            except ValueError:
+                # Skip any corrupted/malicious index entries
+                continue
             artifacts.append(
                 Artifact(
                     name=name,
-                    path=str(self._path / name),
+                    path=str(file_path),
                     description=entry["description"],
                     metadata=entry.get("metadata", {}),
                     created_at=datetime.fromisoformat(entry["created_at"]),
@@ -190,7 +226,11 @@ class FileArtifactStore:
 
         Returns:
             True if artifact exists in index.
+
+        Raises:
+            ValueError: If name contains path traversal sequences.
         """
+        self._safe_path(name)  # Validate before checking index
         return name in self._index
 
     def delete(self, name: str) -> None:
@@ -198,8 +238,11 @@ class FileArtifactStore:
 
         Args:
             name: Artifact name.
+
+        Raises:
+            ValueError: If name contains path traversal sequences.
         """
-        file_path = self._path / name
+        file_path = self._safe_path(name)
         if file_path.exists():
             file_path.unlink()
 
@@ -225,8 +268,9 @@ class FileArtifactStore:
 
         Raises:
             ArtifactNotFoundError: If file doesn't exist.
+            ValueError: If name contains path traversal sequences.
         """
-        file_path = self._path / name
+        file_path = self._safe_path(name)
         if not file_path.exists():
             raise ArtifactNotFoundError(f"File not found: {name}")
 

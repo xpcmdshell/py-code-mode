@@ -338,3 +338,101 @@ class TestRedisSkillStore:
 
         # Check the key in mock redis
         assert "my-prefix:__skills__" in mock_redis._data
+
+
+# --- FileSkillStore Name Validation Tests ---
+
+
+def _make_skill_with_invalid_name(name: str) -> PythonSkill:
+    """Create a PythonSkill with an arbitrary name, bypassing from_source validation.
+
+    This is for testing the store-level validation, not skill construction.
+    In production, PythonSkill.from_source already validates names, but
+    FileSkillStore should also validate as defense-in-depth.
+    """
+    # Create a valid skill first
+    valid_skill = PythonSkill.from_source(
+        name="temp_valid_name",
+        source="def run(): pass",
+        description="test",
+    )
+    # Replace the name with the invalid one for testing
+    # This simulates what could happen if someone constructs a PythonSkill directly
+    return PythonSkill(
+        name=name,
+        description=valid_skill.description,
+        parameters=valid_skill.parameters,
+        source=valid_skill.source,
+        _func=valid_skill._func,
+        metadata=valid_skill.metadata,
+    )
+
+
+class TestFileSkillStoreNameValidation:
+    """Security tests for skill name validation to prevent path traversal."""
+
+    def test_invalid_skill_name_rejected_dotdot_save(self, tmp_path: Path) -> None:
+        """save() rejects path traversal names with ../"""
+        store = FileSkillStore(tmp_path / "skills")
+        skill = _make_skill_with_invalid_name("../malicious")
+        with pytest.raises(ValueError, match="Invalid skill name"):
+            store.save(skill)
+
+    def test_invalid_skill_name_rejected_dotdot_load(self, tmp_path: Path) -> None:
+        """load() rejects path traversal names with ../"""
+        store = FileSkillStore(tmp_path / "skills")
+        with pytest.raises(ValueError, match="Invalid skill name"):
+            store.load("../malicious")
+
+    def test_invalid_skill_name_rejected_dotdot_delete(self, tmp_path: Path) -> None:
+        """delete() rejects path traversal names with ../"""
+        store = FileSkillStore(tmp_path / "skills")
+        with pytest.raises(ValueError, match="Invalid skill name"):
+            store.delete("../malicious")
+
+    def test_invalid_skill_name_rejected_dotdot_exists(self, tmp_path: Path) -> None:
+        """exists() rejects path traversal names with ../"""
+        store = FileSkillStore(tmp_path / "skills")
+        with pytest.raises(ValueError, match="Invalid skill name"):
+            store.exists("../malicious")
+
+    def test_invalid_skill_name_rejected_slash(self, tmp_path: Path) -> None:
+        """save() rejects names with forward slashes."""
+        store = FileSkillStore(tmp_path / "skills")
+        skill = _make_skill_with_invalid_name("foo/bar")
+        with pytest.raises(ValueError, match="Invalid skill name"):
+            store.save(skill)
+
+    def test_invalid_skill_name_rejected_backslash(self, tmp_path: Path) -> None:
+        """save() rejects names with backslashes."""
+        store = FileSkillStore(tmp_path / "skills")
+        skill = _make_skill_with_invalid_name("foo\\bar")
+        with pytest.raises(ValueError, match="Invalid skill name"):
+            store.save(skill)
+
+    def test_invalid_skill_name_rejected_starts_with_digit(self, tmp_path: Path) -> None:
+        """save() rejects names starting with a digit (invalid Python identifier)."""
+        store = FileSkillStore(tmp_path / "skills")
+        skill = _make_skill_with_invalid_name("123skill")
+        with pytest.raises(ValueError, match="Invalid skill name"):
+            store.save(skill)
+
+    def test_invalid_skill_name_rejected_special_chars(self, tmp_path: Path) -> None:
+        """save() rejects names with special characters."""
+        store = FileSkillStore(tmp_path / "skills")
+        for name in ["skill@name", "skill-name", "skill.name", "skill name"]:
+            skill = _make_skill_with_invalid_name(name)
+            with pytest.raises(ValueError, match="Invalid skill name"):
+                store.save(skill)
+
+    def test_valid_skill_names_accepted(self, tmp_path: Path) -> None:
+        """Valid Python identifiers are accepted."""
+        store = FileSkillStore(tmp_path / "skills")
+        for name in ["my_skill", "skill123", "_private", "CamelCase", "__dunder__"]:
+            skill = PythonSkill.from_source(
+                name=name,
+                source="def run(): pass",
+                description="test",
+            )
+            store.save(skill)
+            assert store.exists(name)

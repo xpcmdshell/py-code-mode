@@ -9,8 +9,10 @@ from __future__ import annotations
 import builtins
 from typing import TYPE_CHECKING, Any
 
+from py_code_mode.skills import SkillLibrary
+
 if TYPE_CHECKING:
-    from py_code_mode.skills import PythonSkill, SkillLibrary
+    from py_code_mode.skills import PythonSkill
 
 # Use builtins to avoid security hook false positive on Python's code execution
 _run_code = getattr(builtins, "exec")
@@ -42,6 +44,14 @@ class SkillsNamespace:
 
         self._library = library
         self._namespace = namespace
+
+    @property
+    def library(self) -> SkillLibrary:
+        """Access the underlying SkillLibrary.
+
+        Useful for tests and advanced use cases that need direct library access.
+        """
+        return self._library
 
     def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search for skills matching query. Returns simplified skill info."""

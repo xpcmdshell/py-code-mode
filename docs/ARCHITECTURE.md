@@ -67,6 +67,14 @@ class StorageBackend(Protocol):
         """
         ...
 
+    def to_bootstrap_config(self) -> dict:
+        """Serialize storage config for subprocess bootstrap.
+
+        Returns a dict that can be passed to bootstrap_namespaces()
+        in a subprocess to reconstruct tools, skills, artifacts namespaces.
+        """
+        ...
+
     def get_tool_registry(self) -> ToolRegistry:
         """Return ToolRegistry for in-process execution."""
         ...
@@ -82,8 +90,65 @@ class StorageBackend(Protocol):
 
 **Design rationale:**
 - `get_serializable_access()`: Returns path/connection info that can be sent to other processes (containers, subprocesses)
+- `to_bootstrap_config()`: Returns serializable dict for subprocess namespace reconstruction (see Bootstrap Architecture below)
 - `get_tool_registry()`, `get_skill_library()`, `get_artifact_store()`: Return live objects for in-process execution
 - No wrapper layers or dict-like access - components are accessed directly
+
+---
+
+## Bootstrap Architecture
+
+Cross-process executors (SubprocessExecutor, ContainerExecutor) need to reconstruct the `tools`, `skills`, `artifacts` namespaces in their isolated environment. The bootstrap pattern handles this:
+
+```
+Host Process                          Subprocess/Container
+-----------                          --------------------
+storage.to_bootstrap_config()
+        |
+        v
+    {                                 bootstrap_namespaces(config)
+      "type": "file",                         |
+      "tools_path": "/path/to/tools",         v
+      "skills_path": "/path/to/skills",   +-------------------+
+      "artifacts_path": "/path/to/..."    | tools namespace   |
+    }                                     | skills namespace  |
+        |                                 | artifacts namespace|
+        +---- (serialized) ------------> +-------------------+
+```
+
+**Key functions:**
+
+| Function | Location | Purpose |
+|----------|----------|---------|
+| `storage.to_bootstrap_config()` | `storage/backends.py` | Serialize storage config |
+| `bootstrap_namespaces(config)` | `execution/bootstrap.py` | Reconstruct namespaces from config |
+
+**FileStorage bootstrap config:**
+```python
+{
+    "type": "file",
+    "tools_path": "/absolute/path/to/tools",
+    "skills_path": "/absolute/path/to/skills",
+    "artifacts_path": "/absolute/path/to/artifacts"
+}
+```
+
+**RedisStorage bootstrap config:**
+```python
+{
+    "type": "redis",
+    "redis_url": "redis://localhost:6379",
+    "tools_prefix": "myapp:tools",
+    "skills_prefix": "myapp:skills",
+    "artifacts_prefix": "myapp:artifacts"
+}
+```
+
+**Why this matters:**
+- Subprocess needs to create its own ToolRegistry, SkillLibrary, ArtifactStore from scratch
+- Cannot pass live Python objects across process boundaries
+- Config dict is JSON-serializable and can be sent via IPC, HTTP, environment variables
+- `bootstrap_namespaces()` returns a dict with `tools`, `skills`, `artifacts` ready for code execution
 
 ## Session Architecture
 
@@ -638,27 +703,42 @@ Agent writes: "skills.analyze_repo(repo='...')"
         |
         v
 +------------------------+
-| SkillsNamespace        |
+| SkillsNamespace        |  Agent-facing API:
 |                        |
-| skills.invoke("name")  |--> SkillLibrary.get("analyze_repo")
-| skills.analyze_repo()  |                |
-| skills.search("...")   |                v
-| skills.list()          |         +--------------+
-+------------------------+         | SkillStore   |
-                                   | (File/Redis) |
-                                   +------+-------+
-                                          |
-                                          v
-                                   +-----------------+
-                                   | compile(source) |
-                                   | exec(code)      |
-                                   | return run()    |
-                                   +-----------------+
-                                          |
-                                   Skill has access to:
-                                   - tools (ToolsNamespace)
-                                   - skills (SkillsNamespace)
-                                   - artifacts (ArtifactStore)
+| skills.analyze_repo()  |  # Direct attribute access (preferred)
+| skills.invoke("name")  |  # Explicit invocation
+| skills.search("...")   |  # Semantic search
+| skills.list()          |  # List all skills
+| skills.create(...)     |  # Create new skill
+| skills.delete("name")  |  # Delete skill
++------------------------+
+        |
+        | (internally calls SkillLibrary)
+        v
++------------------------+
+| SkillLibrary           |  Internal implementation:
+|                        |
+| .get("analyze_repo")   |  # Retrieve PythonSkill
+| .search("query")       |  # Semantic search
+| .list_all()            |  # All skills
++------------------------+
+        |
+        v
++------------------------+
+| SkillStore (File/Redis)|
++------------------------+
+        |
+        v
++-----------------+
+| compile(source) |
+| exec(code)      |
+| return run()    |
++-----------------+
+        |
+Skill has access to:
+- tools (ToolsNamespace)
+- skills (SkillsNamespace)
+- artifacts (ArtifactStore)
 ```
 
 ### Artifact Storage

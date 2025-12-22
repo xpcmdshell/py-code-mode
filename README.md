@@ -188,7 +188,7 @@ tools.curl.post(url="https://api.example.com/data", data='{"key": "value"}')
 tools.curl(url="https://example.com", silent=True, location=True, header=["Accept: application/json"])
 
 # Discovery
-tools.list()                    # List all tools
+tools.list()                    # Returns list[Tool] with .name, .description, .callables
 tools.search("http")            # Search tools by name/description
 tools.curl.list()               # List recipes for a tool
 ```

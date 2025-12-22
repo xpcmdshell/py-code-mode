@@ -166,6 +166,19 @@ class FileStorage:
         skills_path = self._get_skills_path()
         return FileSkillStore(skills_path)
 
+    def to_bootstrap_config(self) -> dict[str, str]:
+        """Serialize storage configuration for subprocess bootstrap.
+
+        Returns:
+            Dict with type="file" and base_path as string.
+            This config can be passed to bootstrap_namespaces() to reconstruct
+            the storage in a subprocess.
+        """
+        return {
+            "type": "file",
+            "base_path": str(self._base_path),
+        }
+
 
 class RedisStorage:
     """Redis-based storage for tools, skills, and artifacts."""
@@ -280,3 +293,35 @@ class RedisStorage:
     def get_skill_store(self) -> SkillStore:
         """Return the underlying SkillStore for direct access."""
         return RedisSkillStore(self._redis, prefix=f"{self._prefix}:skills")
+
+    def to_bootstrap_config(self) -> dict[str, str]:
+        """Serialize storage configuration for subprocess bootstrap.
+
+        Returns:
+            Dict with type="redis", url, and prefix.
+            This config can be passed to bootstrap_namespaces() to reconstruct
+            the storage in a subprocess.
+        """
+        # Reconstruct Redis URL from client connection pool
+        pool = self._redis.connection_pool
+        kwargs = pool.connection_kwargs
+        host = kwargs.get("host", "localhost")
+        port = kwargs.get("port", 6379)
+        db = kwargs.get("db", 0)
+        username = kwargs.get("username")
+        password = kwargs.get("password")
+
+        if username and password:
+            encoded_user = quote(username, safe="")
+            encoded_pass = quote(password, safe="")
+            redis_url = f"redis://{encoded_user}:{encoded_pass}@{host}:{port}/{db}"
+        elif password:
+            redis_url = f"redis://:{quote(password, safe='')}@{host}:{port}/{db}"
+        else:
+            redis_url = f"redis://{host}:{port}/{db}"
+
+        return {
+            "type": "redis",
+            "url": redis_url,
+            "prefix": self._prefix,
+        }

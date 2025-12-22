@@ -257,3 +257,61 @@ class TestArtifactStoreSubdirectories:
         data = store.load("deep/path/data.json")
 
         assert data == {"nested": True}
+
+
+class TestFileArtifactStorePathTraversal:
+    """Security tests for path traversal prevention."""
+
+    def test_path_traversal_blocked_dotdot_save(self, tmp_path: Path) -> None:
+        """save() rejects path traversal with ../"""
+        store = FileArtifactStore(tmp_path / "artifacts")
+        with pytest.raises(ValueError, match="Path traversal"):
+            store.save("../../../etc/passwd", {"malicious": True}, "")
+
+    def test_path_traversal_blocked_dotdot_load(self, tmp_path: Path) -> None:
+        """load() rejects path traversal with ../"""
+        store = FileArtifactStore(tmp_path / "artifacts")
+        with pytest.raises(ValueError, match="Path traversal"):
+            store.load("../../../etc/passwd")
+
+    def test_path_traversal_blocked_dotdot_get(self, tmp_path: Path) -> None:
+        """get() rejects path traversal with ../"""
+        store = FileArtifactStore(tmp_path / "artifacts")
+        with pytest.raises(ValueError, match="Path traversal"):
+            store.get("../../../etc/passwd")
+
+    def test_path_traversal_blocked_dotdot_exists(self, tmp_path: Path) -> None:
+        """exists() rejects path traversal with ../"""
+        store = FileArtifactStore(tmp_path / "artifacts")
+        with pytest.raises(ValueError, match="Path traversal"):
+            store.exists("../../../etc/passwd")
+
+    def test_path_traversal_blocked_dotdot_delete(self, tmp_path: Path) -> None:
+        """delete() rejects path traversal with ../"""
+        store = FileArtifactStore(tmp_path / "artifacts")
+        with pytest.raises(ValueError, match="Path traversal"):
+            store.delete("../../../etc/passwd")
+
+    def test_path_traversal_blocked_dotdot_register(self, tmp_path: Path) -> None:
+        """register() rejects path traversal with ../"""
+        store = FileArtifactStore(tmp_path / "artifacts")
+        with pytest.raises(ValueError, match="Path traversal"):
+            store.register("../../../etc/passwd", description="malicious")
+
+    def test_path_traversal_blocked_absolute(self, tmp_path: Path) -> None:
+        """save() rejects absolute paths."""
+        store = FileArtifactStore(tmp_path / "artifacts")
+        with pytest.raises(ValueError, match="Path traversal"):
+            store.save("/etc/passwd", {"malicious": True}, "")
+
+    def test_subdirectories_still_allowed(self, tmp_path: Path) -> None:
+        """Legitimate subdirectory paths still work."""
+        store = FileArtifactStore(tmp_path / "artifacts")
+        store.save("scans/nmap.json", {"ports": [22, 80]}, "Nmap scan")
+        assert store.load("scans/nmap.json") == {"ports": [22, 80]}
+
+    def test_deeply_nested_subdirectories_allowed(self, tmp_path: Path) -> None:
+        """Deeply nested legitimate paths work."""
+        store = FileArtifactStore(tmp_path / "artifacts")
+        store.save("a/b/c/d/e/f.json", {"deep": True}, "Deep nesting")
+        assert store.load("a/b/c/d/e/f.json") == {"deep": True}

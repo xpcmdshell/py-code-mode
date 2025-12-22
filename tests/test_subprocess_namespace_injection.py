@@ -672,3 +672,445 @@ class TestNamespaceErrors:
         # Should fail with SyntaxError during creation, not silently save
         assert result.error is not None
         assert "Syntax" in result.error or "syntax" in result.error.lower()
+
+
+# =============================================================================
+# Unit Tests - Redis Storage Code Generation
+# =============================================================================
+
+
+class TestRedisNamespaceSetup:
+    """Unit tests for Redis storage namespace setup code generation.
+
+    These tests verify that build_namespace_setup_code() generates correct
+    Python code for RedisStorageAccess WITHOUT requiring a running Redis server.
+
+    The tests validate:
+    1. Code is generated (non-empty string)
+    2. Code is valid Python syntax
+    3. Code contains expected imports, variables, and structure
+    """
+
+    def test_redis_storage_generates_code(self) -> None:
+        """Should generate non-empty code for RedisStorageAccess.
+
+        Breaks when: build_namespace_setup_code returns empty string or None
+        for RedisStorageAccess instead of generating setup code.
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        storage_access = RedisStorageAccess(
+            redis_url="redis://localhost:6379",
+            tools_prefix="test:tools",
+            skills_prefix="test:skills",
+            artifacts_prefix="test:artifacts",
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Expected non-empty code for RedisStorageAccess"
+        assert len(code) > 100, "Generated code should be substantial"
+
+    def test_redis_storage_code_is_valid_python(self) -> None:
+        """Generated code should be syntactically valid Python.
+
+        Breaks when: Code generation has syntax errors, missing quotes,
+        unbalanced brackets, or other Python syntax violations.
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        storage_access = RedisStorageAccess(
+            redis_url="redis://localhost:6379/0",
+            tools_prefix="myapp:tools",
+            skills_prefix="myapp:skills",
+            artifacts_prefix="myapp:artifacts",
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Code must be generated first"
+
+        # compile() raises SyntaxError if code is invalid
+        try:
+            compile(code, "<generated>", "exec")
+        except SyntaxError as e:
+            pytest.fail(f"Generated code is not valid Python: {e}\n\nGenerated code:\n{code}")
+
+    def test_redis_storage_code_imports_redis(self) -> None:
+        """Generated code should import Redis client.
+
+        Breaks when: Code doesn't import redis module, preventing
+        Redis client creation in the kernel subprocess.
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        storage_access = RedisStorageAccess(
+            redis_url="redis://localhost:6379",
+            tools_prefix="test:tools",
+            skills_prefix="test:skills",
+            artifacts_prefix="test:artifacts",
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Code must be generated first"
+        assert "from redis import Redis" in code or "import redis" in code, (
+            "Generated code must import Redis client"
+        )
+
+    def test_redis_storage_code_uses_provided_url(self) -> None:
+        """Generated code should use the exact redis_url provided.
+
+        Breaks when: Code hardcodes a URL or doesn't properly inject
+        the provided redis_url into Redis.from_url() call.
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        # Use a distinctive URL that's easy to find
+        test_url = "redis://testhost:12345/7"
+        storage_access = RedisStorageAccess(
+            redis_url=test_url,
+            tools_prefix="test:tools",
+            skills_prefix="test:skills",
+            artifacts_prefix="test:artifacts",
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Code must be generated first"
+        assert test_url in code, f"Generated code should contain redis_url: {test_url}"
+
+    def test_redis_storage_code_uses_provided_prefixes(self) -> None:
+        """Generated code should use the exact prefixes provided.
+
+        Breaks when: Code hardcodes prefixes or doesn't properly inject
+        the provided prefix values for tools, skills, and artifacts.
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        # Use distinctive prefixes that are easy to find
+        tools_prefix = "unique_app_v1:tools"
+        skills_prefix = "unique_app_v1:skills"
+        artifacts_prefix = "unique_app_v1:artifacts"
+
+        storage_access = RedisStorageAccess(
+            redis_url="redis://localhost:6379",
+            tools_prefix=tools_prefix,
+            skills_prefix=skills_prefix,
+            artifacts_prefix=artifacts_prefix,
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Code must be generated first"
+        assert tools_prefix in code, f"Generated code should contain tools_prefix: {tools_prefix}"
+        assert skills_prefix in code, (
+            f"Generated code should contain skills_prefix: {skills_prefix}"
+        )
+        assert artifacts_prefix in code, (
+            f"Generated code should contain artifacts_prefix: {artifacts_prefix}"
+        )
+
+    def test_redis_storage_code_sets_up_tools(self) -> None:
+        """Generated code should set up tools namespace with RedisToolStore.
+
+        Breaks when: Tools namespace not created, or uses wrong store type
+        (FileToolStore instead of RedisToolStore).
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        storage_access = RedisStorageAccess(
+            redis_url="redis://localhost:6379",
+            tools_prefix="test:tools",
+            skills_prefix="test:skills",
+            artifacts_prefix="test:artifacts",
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Code must be generated first"
+        assert "tools = " in code or "tools=" in code, (
+            "Generated code should assign tools namespace"
+        )
+        assert "RedisToolStore" in code, "Generated code should use RedisToolStore for tools"
+
+    def test_redis_storage_code_sets_up_skills(self) -> None:
+        """Generated code should set up skills namespace with RedisSkillStore.
+
+        Breaks when: Skills namespace not created, or uses wrong store type
+        (FileSkillStore instead of RedisSkillStore).
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        storage_access = RedisStorageAccess(
+            redis_url="redis://localhost:6379",
+            tools_prefix="test:tools",
+            skills_prefix="test:skills",
+            artifacts_prefix="test:artifacts",
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Code must be generated first"
+        assert "skills = " in code or "skills=" in code, (
+            "Generated code should assign skills namespace"
+        )
+        assert "RedisSkillStore" in code, "Generated code should use RedisSkillStore for skills"
+
+    def test_redis_storage_code_sets_up_artifacts(self) -> None:
+        """Generated code should set up artifacts namespace with RedisArtifactStore.
+
+        Breaks when: Artifacts namespace not created, or uses wrong store type
+        (FileArtifactStore instead of RedisArtifactStore).
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        storage_access = RedisStorageAccess(
+            redis_url="redis://localhost:6379",
+            tools_prefix="test:tools",
+            skills_prefix="test:skills",
+            artifacts_prefix="test:artifacts",
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Code must be generated first"
+        assert "artifacts = " in code or "artifacts=" in code, (
+            "Generated code should assign artifacts namespace"
+        )
+        assert "RedisArtifactStore" in code, (
+            "Generated code should use RedisArtifactStore for artifacts"
+        )
+
+
+class TestUnknownStorageType:
+    """Tests for handling unknown storage access types."""
+
+    def test_unknown_storage_type_raises_type_error(self) -> None:
+        """Unknown storage access type should raise TypeError.
+
+        Breaks when: Function silently returns empty string or ignores
+        unknown types instead of failing explicitly.
+        """
+        from dataclasses import dataclass
+
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        # Create a fake storage access type that isn't FileStorageAccess or RedisStorageAccess
+        @dataclass(frozen=True)
+        class FakeStorageAccess:
+            connection_string: str
+
+        fake_storage = FakeStorageAccess(connection_string="fake://localhost")
+
+        with pytest.raises(TypeError) as exc_info:
+            build_namespace_setup_code(fake_storage)  # type: ignore[arg-type]
+
+        # Verify error message is helpful
+        assert "storage" in str(exc_info.value).lower() or "FakeStorageAccess" in str(
+            exc_info.value
+        )
+
+    def test_none_storage_returns_empty_string(self) -> None:
+        """None storage should return empty string (preserve existing behavior).
+
+        Breaks when: None handling changes from returning empty string
+        to raising exception.
+        """
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        result = build_namespace_setup_code(None)
+        assert result == "", "None storage should return empty string"
+
+
+class TestRedisCodeGenerationDetails:
+    """Detailed tests for Redis code generation structure and behavior."""
+
+    def test_redis_code_uses_from_url_pattern(self) -> None:
+        """Generated code should use Redis.from_url() pattern.
+
+        Breaks when: Code uses host/port separately instead of URL-based connection,
+        which would require different handling of auth credentials.
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        storage_access = RedisStorageAccess(
+            redis_url="redis://localhost:6379",
+            tools_prefix="test:tools",
+            skills_prefix="test:skills",
+            artifacts_prefix="test:artifacts",
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Code must be generated first"
+        assert "from_url" in code.lower() or "Redis(" in code, (
+            "Generated code should use Redis.from_url() or Redis constructor"
+        )
+
+    def test_redis_code_handles_nest_asyncio(self) -> None:
+        """Generated code should apply nest_asyncio for sync wrappers.
+
+        Breaks when: Code doesn't handle nested event loops, causing
+        'This event loop is already running' errors in Jupyter kernel.
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        storage_access = RedisStorageAccess(
+            redis_url="redis://localhost:6379",
+            tools_prefix="test:tools",
+            skills_prefix="test:skills",
+            artifacts_prefix="test:artifacts",
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Code must be generated first"
+        assert "nest_asyncio" in code, (
+            "Generated code should import and apply nest_asyncio for nested event loop support"
+        )
+
+    def test_redis_code_imports_cli_adapter(self) -> None:
+        """Generated code should import CLIAdapter for tool execution.
+
+        Breaks when: Tools can't be executed because CLIAdapter isn't imported.
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        storage_access = RedisStorageAccess(
+            redis_url="redis://localhost:6379",
+            tools_prefix="test:tools",
+            skills_prefix="test:skills",
+            artifacts_prefix="test:artifacts",
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Code must be generated first"
+        assert "CLIAdapter" in code, "Generated code should use CLIAdapter for tool execution"
+
+    def test_redis_code_imports_skill_library(self) -> None:
+        """Generated code should import create_skill_library for semantic search.
+
+        Breaks when: Skill semantic search doesn't work because library not created.
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        storage_access = RedisStorageAccess(
+            redis_url="redis://localhost:6379",
+            tools_prefix="test:tools",
+            skills_prefix="test:skills",
+            artifacts_prefix="test:artifacts",
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Code must be generated first"
+        assert "create_skill_library" in code or "SkillLibrary" in code, (
+            "Generated code should use create_skill_library or SkillLibrary for semantic search"
+        )
+
+    def test_redis_code_wires_skills_namespace_with_tools(self) -> None:
+        """Generated code should wire skills namespace so skills can access tools.
+
+        Breaks when: Skills that internally call tools.* fail with NameError
+        because namespace dict wasn't properly wired.
+        """
+        from py_code_mode.execution.protocol import RedisStorageAccess
+        from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+
+        storage_access = RedisStorageAccess(
+            redis_url="redis://localhost:6379",
+            tools_prefix="test:tools",
+            skills_prefix="test:skills",
+            artifacts_prefix="test:artifacts",
+        )
+        code = build_namespace_setup_code(storage_access)
+        assert code, "Code must be generated first"
+        # Look for namespace dict wiring pattern (like FileStorage does)
+        assert "SkillsNamespace" in code, "Generated code should create SkillsNamespace"
+        # The namespace dict should wire tools into skills
+        has_wiring = (
+            '"tools"' in code
+            or "'tools'" in code
+            or "namespace" in code.lower()
+            or "_ns_dict" in code
+        )
+        assert has_wiring, "Generated code should wire tools into skills namespace"
+
+
+# =============================================================================
+# Integration Tests - Redis Storage with SubprocessExecutor
+# =============================================================================
+
+
+@pytest.mark.slow
+@pytest.mark.xdist_group("subprocess")
+class TestRedisStorageIntegration:
+    """Integration tests for Redis storage with SubprocessExecutor.
+
+    These tests require a running Redis server and are marked slow.
+    They verify that the generated code actually works end-to-end.
+    """
+
+    @pytest.fixture
+    def redis_storage(self, tmp_path: Path) -> "RedisStorage":
+        """Create RedisStorage connected to local Redis.
+
+        Skips if Redis is not available.
+        """
+        pytest.importorskip("redis")
+        from redis import Redis
+
+        from py_code_mode.storage import RedisStorage
+
+        try:
+            client = Redis.from_url("redis://localhost:6379", decode_responses=False)
+            client.ping()
+        except Exception:
+            pytest.skip("Redis server not available")
+
+        # Use unique prefix for test isolation
+        import uuid
+
+        prefix = f"test_subprocess_{uuid.uuid4().hex[:8]}"
+        storage = RedisStorage(redis=client, prefix=prefix)
+        yield storage
+
+        # Cleanup: delete all keys with this prefix
+        for key in client.scan_iter(f"{prefix}:*"):
+            client.delete(key)
+
+    @pytest.mark.asyncio
+    async def test_redis_namespace_full_execution(
+        self, tmp_path: Path, redis_storage: "RedisStorage"
+    ) -> None:
+        """Full E2E test: SubprocessExecutor with RedisStorage.
+
+        Breaks when: Generated code fails to execute, namespaces aren't
+        accessible, or tools/skills/artifacts don't work.
+        """
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+        from py_code_mode.execution.subprocess.config import SubprocessConfig
+
+        config = SubprocessConfig(
+            venv_path=tmp_path / "redis_venv",
+            base_deps=("ipykernel", "py-code-mode", "redis"),
+        )
+        executor = SubprocessExecutor(config=config)
+
+        try:
+            await executor.start(storage=redis_storage)
+
+            # Verify namespaces are accessible
+            result = await executor.run(
+                "'tools' in dir() and 'skills' in dir() and 'artifacts' in dir()"
+            )
+            assert result.error is None, f"Namespace check failed: {result.error}"
+            assert result.value in (True, "True"), "Namespaces should be available"
+
+            # Verify artifacts work with Redis backend
+            result = await executor.run(
+                'artifacts.save("redis_test", {"from": "redis"}) or True'
+            )
+            assert result.error is None, f"Artifact save failed: {result.error}"
+
+            result = await executor.run('artifacts.load("redis_test")')
+            assert result.error is None, f"Artifact load failed: {result.error}"
+            assert "redis" in str(result.value), f"Unexpected artifact value: {result.value}"
+
+        finally:
+            await executor.close()
+
+
+# Import for type hints
+if False:  # TYPE_CHECKING equivalent that doesn't require import at runtime
+    from py_code_mode.storage import RedisStorage
