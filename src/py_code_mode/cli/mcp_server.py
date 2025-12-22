@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -63,6 +64,11 @@ async def run_code(code: str) -> str:
     - artifacts.* - Persist data across sessions:
       - artifacts.save("filename", data) - Save data
       - artifacts.load("filename") - Load data
+
+    - deps.* - Manage Python dependencies:
+      - deps.add("package") - Install a package
+      - deps.list() - List configured dependencies
+      - deps.remove("package") - Remove a dependency
 
     The namespace persists across calls - variables survive between run_code invocations.
     """
@@ -185,6 +191,67 @@ async def delete_skill(name: str) -> bool:
     if _session is None or _session._executor is None:
         return False
     return _session._executor._namespace["skills"].delete(name)
+
+
+async def list_deps() -> list[str]:
+    """List all configured dependencies."""
+    if _session is None or _session._executor is None:
+        return []
+    return _session._executor._namespace["deps"].list()
+
+
+async def _list_deps_json() -> str:
+    """List all configured dependencies (JSON-serialized for MCP).
+
+    FastMCP doesn't create TextContent for empty lists, so we serialize
+    to JSON string to ensure consistent MCP response format.
+    """
+    return json.dumps(await list_deps())
+
+
+async def add_dep(package: str) -> dict:
+    """Add and install a dependency.
+
+    Args:
+        package: Package name with optional version specifier (e.g., "pandas>=2.0")
+
+    Returns:
+        Dict with installation result (installed, already_present, failed lists)
+    """
+    if _session is None or _session._executor is None:
+        return {"error": "Session not initialized"}
+    try:
+        result = _session._executor._namespace["deps"].add(package)
+        return {
+            "installed": list(result.installed),
+            "already_present": list(result.already_present),
+            "failed": list(result.failed),
+        }
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+async def remove_dep(package: str) -> bool:
+    """Remove a dependency from configuration.
+
+    Args:
+        package: Package name to remove
+
+    Returns:
+        True if removed, False if not found
+    """
+    if _session is None or _session._executor is None:
+        return False
+    return _session._executor._namespace["deps"].remove(package)
+
+
+# Register deps tools with MCP (keeping original functions callable for testing)
+# Use _list_deps_json for MCP to ensure TextContent is always created (FastMCP
+# doesn't create TextContent for empty lists, which breaks MCP clients expecting
+# result.content[0].text)
+mcp.tool(_list_deps_json, name="list_deps", description="List all configured dependencies.")
+mcp.tool(add_dep)
+mcp.tool(remove_dep)
 
 
 async def create_session(args: argparse.Namespace) -> Session:

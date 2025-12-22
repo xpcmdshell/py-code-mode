@@ -258,16 +258,17 @@ class TestPackageInstallerSubprocess:
 
         installer = PackageInstaller()
 
-        with patch("shutil.which") as mock_which:
+        with patch("py_code_mode.deps.installer.shutil.which") as mock_which:
             mock_which.return_value = "/usr/local/bin/uv"  # uv is available
 
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
                 installer.sync(store)
 
-                # Verify uv was called
+                # Verify uv was called - first element of command list should contain 'uv'
                 call_args = mock_run.call_args
-                assert "uv" in call_args[0][0] or call_args.kwargs.get("args", [""])[0] == "uv"
+                cmd = call_args[0][0] if call_args[0] else call_args.kwargs.get("args", [])
+                assert "uv" in cmd[0]
 
     def test_sync_falls_back_to_pip(self, tmp_path: Path) -> None:
         """sync() uses 'pip install' when uv is not available.
@@ -281,7 +282,7 @@ class TestPackageInstallerSubprocess:
 
         installer = PackageInstaller()
 
-        with patch("shutil.which") as mock_which:
+        with patch("py_code_mode.deps.installer.shutil.which") as mock_which:
             mock_which.return_value = None  # uv not available
 
             with patch("subprocess.run") as mock_run:
@@ -307,7 +308,7 @@ class TestPackageInstallerSubprocess:
 
         installer = PackageInstaller()
 
-        with patch("shutil.which", return_value=None):
+        with patch("py_code_mode.deps.installer.shutil.which", return_value=None):
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
                 installer.sync(store)
@@ -590,7 +591,7 @@ class TestPackageInstallerConfiguration:
 
         installer = PackageInstaller(extra_args=["--quiet", "--no-cache-dir"])
 
-        with patch("shutil.which", return_value=None):
+        with patch("py_code_mode.deps.installer.shutil.which", return_value=None):
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=0)
                 installer.sync(store)

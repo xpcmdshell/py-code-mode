@@ -9,15 +9,31 @@ This document explains how tools, skills, and artifacts interact across differen
 | **Tools** | CLI commands, MCP servers, HTTP APIs | YAML definitions |
 | **Skills** | Reusable Python code recipes | `.py` files with `run()` function |
 | **Artifacts** | Persistent data storage | Binary data with metadata |
+| **Deps** | Python package dependencies | `requirements.txt` (file) or Redis keys |
+
+## Agent-Facing Namespaces
+
+When code executes, agents access four main namespaces:
+
+| Namespace | Purpose | Operations |
+|-----------|---------|-----------|
+| **tools.\*** | Call CLI commands, MCP servers, HTTP APIs | `call()`, `list()`, `search()` |
+| **skills.\*** | Execute or manage reusable Python recipes | `invoke()`, `create()`, `delete()`, `list()`, `search()` |
+| **artifacts.\*** | Save and retrieve persistent data | `save()`, `load()`, `delete()`, `list()` |
+| **deps.\*** | Manage Python package dependencies | `add()`, `remove()`, `list()`, `sync()` |
+
+All namespaces are automatically injected into code execution. Skills also have access to these namespaces.
+
+---
 
 ## Storage Abstraction
 
-Storage handles where tools, skills, and artifacts live. Two implementations:
+Storage handles where tools, skills, artifacts, and deps live. Two implementations:
 
-| Storage Type | Use Case | Implementation |
-|-------------|----------|----------------|
-| `FileStorage` | Local development | Directories for tools, skills, artifacts |
-| `RedisStorage` | Distributed/production | Redis keys with prefixes |
+| Storage Type | Use Case | Tools | Skills | Artifacts | Deps |
+|-------------|----------|-------|--------|-----------|------|
+| `FileStorage` | Local development | YAML files | `.py` files | Binary files | `requirements.txt` |
+| `RedisStorage` | Distributed/production | Redis keys | Redis keys | Redis keys | Redis keys |
 
 **Current API:**
 ```python
@@ -183,6 +199,85 @@ Session(storage=StorageBackend, executor=Executor)
 4. Cross-process executors receive serializable access descriptor
 5. Executor builds namespaces: `tools.*`, `skills.*`, `artifacts.*`
 6. User calls `session.run(code)` which delegates to executor
+
+---
+
+## Dependency Management (Deps)
+
+The `deps` namespace manages Python package dependencies for code execution:
+
+```python
+# Agent code can manage dependencies on demand
+deps.add("pandas")        # Install pandas
+deps.list()               # See configured dependencies
+deps.remove("pandas")     # Remove from configuration
+deps.sync()               # Ensure all configured deps are installed
+```
+
+**DepsStore Protocol:**
+
+```python
+class DepsStore(Protocol):
+    """Protocol for dependency persistence."""
+
+    def add(self, package: str) -> None:
+        """Add a dependency to configuration."""
+        ...
+
+    def remove(self, package: str) -> bool:
+        """Remove a dependency from configuration."""
+        ...
+
+    def list_all(self) -> list[str]:
+        """List all configured dependencies."""
+        ...
+
+    def exists(self, package: str) -> bool:
+        """Check if a dependency is configured."""
+        ...
+```
+
+**Implementations:**
+
+| Implementation | Storage | Format | Use Case |
+|---|---|---|---|
+| `FileDepsStore` | Local filesystem | `requirements.txt` | Local development |
+| `RedisDepsStore` | Redis | JSON-serialized keys | Production/distributed |
+
+**PackageInstaller:**
+
+The `PackageInstaller` handles actual installation:
+
+```python
+class PackageInstaller(Protocol):
+    """Protocol for installing packages."""
+
+    async def install(self, packages: list[str]) -> InstallResult:
+        """Install packages and return result with installed/failed lists."""
+        ...
+```
+
+**Workflow:**
+
+1. Agent calls `deps.add("package")`
+2. `DepsStore` persists the dependency
+3. `PackageInstaller` installs the package into the environment
+4. Future code execution includes the package
+5. `deps.sync()` ensures all configured deps are installed
+
+**With FileStorage:**
+
+```python
+storage = FileStorage(base_path=Path("./storage"))
+# Creates: ./storage/requirements.txt (managed by deps namespace)
+```
+
+**With RedisStorage:**
+
+```python
+storage = RedisStorage(redis=client, prefix="myapp")
+# Uses keys: myapp:deps (JSON list of package names)
+```
 
 ---
 
@@ -921,6 +1016,7 @@ recipes:                          # Named presets
 - [ ] Create base storage directory
 - [ ] Add YAML tool definitions to `<base_path>/tools/`
 - [ ] Add Python skill files to `<base_path>/skills/`
+- [ ] Initialize `<base_path>/requirements.txt` (optional, created on first dep.add())
 - [ ] Use `Session(storage=FileStorage(base_path=Path("./storage")))`
 
 ### Local with Container Isolation (Container + File)
@@ -928,18 +1024,21 @@ recipes:                          # Named presets
 - [ ] Configure `TOOLS_CONFIG` in image or mount tools directory
 - [ ] Mount skills directory: `-v ./skills:/app/skills:ro`
 - [ ] Mount artifacts directory: `-v ./artifacts:/workspace/artifacts:rw`
+- [ ] Mount deps directory: `-v ./requirements.txt:/app/requirements.txt:rw`
 - [ ] Use `Session(storage=FileStorage(...), executor=ContainerExecutor(config))`
 
 ### Production (Session + RedisStorage)
 - [ ] Provision Redis instance
 - [ ] Bootstrap tools: `python -m py_code_mode.store bootstrap --type tools --target redis://... --prefix myapp:tools`
 - [ ] Bootstrap skills: `python -m py_code_mode.store bootstrap --target redis://... --prefix myapp:skills`
+- [ ] Initialize deps (optional): Pre-populate `myapp:deps` Redis key if needed
 - [ ] Create storage: `RedisStorage(redis=Redis.from_url("redis://..."), prefix="myapp")`
 - [ ] Use `Session(storage=storage)`
 
 ### Production with Container Isolation
 - [ ] Provision Redis instance
 - [ ] Bootstrap tools and skills to Redis (as above)
+- [ ] Initialize deps in Redis (optional)
 - [ ] Create storage: `RedisStorage(redis=redis_client, prefix="myapp")`
 - [ ] Create executor: `ContainerExecutor(config=ContainerConfig(...))`
 - [ ] Use `Session(storage=storage, executor=executor)`

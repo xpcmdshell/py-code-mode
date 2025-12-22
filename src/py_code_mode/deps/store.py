@@ -227,17 +227,31 @@ class FileDepsStore:
         self._save()
 
     def remove(self, package: str) -> bool:
-        """Remove a package from the store."""
+        """Remove a package from the store.
+
+        Matches by base package name, so remove("requests") will remove
+        "requests>=2.0" if present.
+        """
         if not package or not package.strip():
             return False
 
         normalized = _normalize_package_name(package)
+        base_name = re.split(r"[\[<>=!~]", normalized)[0]
 
-        if normalized in self._packages:
-            self._packages.discard(normalized)
-            self._save()
-            return True
-        return False
+        # Find and remove any package with matching base name
+        to_remove = []
+        for existing in self._packages:
+            existing_base = re.split(r"[\[<>=!~]", existing)[0]
+            if existing_base == base_name:
+                to_remove.append(existing)
+
+        if not to_remove:
+            return False
+
+        for pkg in to_remove:
+            self._packages.discard(pkg)
+        self._save()
+        return True
 
     def clear(self) -> None:
         """Remove all packages from the store."""
@@ -295,14 +309,27 @@ class RedisDepsStore:
         self._redis.sadd(self._key, normalized)
 
     def remove(self, package: str) -> bool:
-        """Remove a package from the store."""
+        """Remove a package from the store.
+
+        Matches by base package name, so remove("requests") will remove
+        "requests>=2.0" if present.
+        """
         if not package or not package.strip():
             return False
 
         normalized = _normalize_package_name(package)
+        base_name = re.split(r"[\[<>=!~]", normalized)[0]
 
-        result = self._redis.srem(self._key, normalized)
-        return result > 0
+        # Find and remove any package with matching base name
+        existing = self.list()
+        removed = False
+        for pkg in existing:
+            existing_base = re.split(r"[\[<>=!~]", pkg)[0]
+            if existing_base == base_name:
+                self._redis.srem(self._key, pkg)
+                removed = True
+
+        return removed
 
     def clear(self) -> None:
         """Remove all packages from the store."""

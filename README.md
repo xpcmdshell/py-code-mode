@@ -267,7 +267,7 @@ Manage execution environment dependencies on demand:
 
 ```python
 # Add a package and install immediately
-deps.add("pandas")
+deps.add("pandas>=2.0")
 
 # List configured dependencies
 deps.list()
@@ -279,7 +279,23 @@ deps.remove("pandas")
 deps.sync()
 ```
 
-Dependencies are persisted alongside your tools, skills, and artifacts. With `FileStorage`, they're stored in `requirements.txt`. With `RedisStorage`, they're maintained in Redis keys.
+Dependencies are persisted alongside your tools, skills, and artifacts:
+
+- **FileStorage**: Stored in `requirements.txt` in the storage directory
+- **RedisStorage**: Maintained in Redis keys with your configured prefix
+
+### MCP Deps Tools
+
+When using the MCP server integration, agents also get access to deps management tools:
+
+```python
+# Run via Claude Code MCP
+tools.list_deps()              # List all configured dependencies
+tools.add_dep("package")       # Add and install a dependency
+tools.remove_dep("package")    # Remove a dependency
+```
+
+These tools are automatically available through the MCP server, complementing the `deps` namespace.
 
 ## Executors
 

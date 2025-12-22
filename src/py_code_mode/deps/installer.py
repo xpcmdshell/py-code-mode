@@ -11,6 +11,7 @@ __all__ = [
     "clear_install_cache",
 ]
 
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -97,15 +98,19 @@ class PackageInstaller:
                 raise ValueError(f"Disallowed extra argument: {arg}")
 
     def _get_installer_command(self) -> list[str]:
-        """Get pip install command using current Python interpreter.
+        """Get pip install command using the best available installer.
 
-        Uses sys.executable to ensure we install to the current Python environment,
-        which is crucial when running inside virtual environments or subprocess kernels.
-        The uv tool requires explicit --python flag to target a specific venv, but
-        using python -m pip always installs to the current interpreter's environment.
+        Prefers uv if available (faster, doesn't require pip in venv), falls back
+        to pip via current interpreter. Uses --python flag with uv to target
+        the current interpreter's environment.
         """
-        # Always use the current Python interpreter to ensure correct venv
-        # This is crucial when running inside a subprocess kernel's venv
+        # Check if uv is available
+        uv_path = shutil.which("uv")
+        if uv_path is not None:
+            # Use uv pip install with explicit --python to target current venv
+            return [uv_path, "pip", "install", "--python", sys.executable]
+
+        # Fall back to pip via current interpreter
         return [sys.executable, "-m", "pip", "install"]
 
     def _build_install_command(self, packages: list[str]) -> list[str]:
