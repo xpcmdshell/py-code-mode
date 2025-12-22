@@ -481,7 +481,6 @@ class TestInProcessExecutorConfig:
         configuration should be immutable. Blocking only add() but allowing
         remove() would let agents modify the dep configuration by deletion.
         """
-        from py_code_mode.deps.namespace import RuntimeDepsDisabledError
         from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
@@ -1284,9 +1283,7 @@ class TestContainerExecutorDepsConfigGaps:
         config = ContainerConfig()
         executor = ContainerExecutor(config=config)
 
-        async with Session(
-            storage=storage, executor=executor, sync_deps_on_start=True
-        ) as session:
+        async with Session(storage=storage, executor=executor, sync_deps_on_start=True) as session:
             # Verify six is importable (proves it was installed)
             result = await session.run("import six; six.__version__")
 

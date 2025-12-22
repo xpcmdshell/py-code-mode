@@ -1113,9 +1113,7 @@ class TestRedisStorageIntegration:
             assert result.value in (True, "True"), "Namespaces should be available"
 
             # Verify artifacts work with Redis backend
-            result = await executor.run(
-                'artifacts.save("redis_test", {"from": "redis"}) or True'
-            )
+            result = await executor.run('artifacts.save("redis_test", {"from": "redis"}) or True')
             assert result.error is None, f"Artifact save failed: {result.error}"
 
             result = await executor.run('artifacts.load("redis_test")')

@@ -56,8 +56,7 @@ class SubprocessConfig:
             raise ValueError("python_version cannot be empty or whitespace-only")
         if not _PYTHON_VERSION_PATTERN.match(stripped):
             raise ValueError(
-                f"python_version must be in major.minor format (e.g., '3.11'), "
-                f"got: {version!r}"
+                f"python_version must be in major.minor format (e.g., '3.11'), got: {version!r}"
             )
 
         # Validate timeouts

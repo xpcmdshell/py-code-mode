@@ -1314,9 +1314,7 @@ class TestMCPServerDepsTools:
                 await session.initialize()
 
                 # Try to remove non-existent package (should return False)
-                result = await session.call_tool(
-                    "remove_dep", {"package": "nonexistent-pkg-xyz"}
-                )
+                result = await session.call_tool("remove_dep", {"package": "nonexistent-pkg-xyz"})
                 result_data = json.loads(result.content[0].text)
 
                 assert isinstance(result_data, bool)
@@ -1350,7 +1348,11 @@ class TestMCPServerDepsTools:
                 # Should be a dict with sync result info
                 assert isinstance(result_data, dict)
                 # Should have standard sync result fields
-                assert "installed" in result_data or "already_present" in result_data or "failed" in result_data
+                assert (
+                    "installed" in result_data
+                    or "already_present" in result_data
+                    or "failed" in result_data
+                )
 
     # -------------------------------------------------------------------------
     # User Journey Tests (E2E)
@@ -1574,9 +1576,7 @@ class TestMCPServerDepsTools:
                 await session.initialize()
 
                 # Try command injection
-                result = await session.call_tool(
-                    "add_dep", {"package": "pandas; rm -rf /"}
-                )
+                result = await session.call_tool("add_dep", {"package": "pandas; rm -rf /"})
                 text = result.content[0].text.lower()
 
                 # Should indicate an error (invalid package name)
