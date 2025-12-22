@@ -83,15 +83,26 @@ class TestNamespaceBundle:
         field_names = [f.name for f in fields(NamespaceBundle)]
         assert "artifacts" in field_names
 
-    def test_namespace_bundle_has_exactly_three_fields(self) -> None:
-        """NamespaceBundle has exactly three fields (tools, skills, artifacts).
+    def test_namespace_bundle_has_deps_field(self) -> None:
+        """NamespaceBundle has a 'deps' field.
 
-        Contract: Bundle should contain only the three namespace fields.
+        Contract: Must have deps field for DepsNamespace access.
+        Breaks when: Field is missing or renamed.
+        """
+        from py_code_mode.bootstrap import NamespaceBundle
+
+        field_names = [f.name for f in fields(NamespaceBundle)]
+        assert "deps" in field_names
+
+    def test_namespace_bundle_has_exactly_four_fields(self) -> None:
+        """NamespaceBundle has exactly four fields (tools, skills, artifacts, deps).
+
+        Contract: Bundle should contain the four namespace fields.
         Breaks when: Extra fields are added without updating tests.
         """
         from py_code_mode.bootstrap import NamespaceBundle
 
-        assert len(fields(NamespaceBundle)) == 3
+        assert len(fields(NamespaceBundle)) == 4
 
 
 # =============================================================================
@@ -199,6 +210,56 @@ class TestBootstrapNamespaces:
         result = bootstrap_namespaces(config)
 
         assert isinstance(result.artifacts, ArtifactStoreProtocol)
+
+    def test_bootstrap_file_storage_bundle_has_deps_namespace(self, tmp_path: Path) -> None:
+        """File bootstrap returns bundle with DepsNamespace for deps.
+
+        Contract: Bundle.deps is DepsNamespace instance
+        Breaks when: Deps namespace is wrong type or missing.
+        """
+        from py_code_mode.bootstrap import bootstrap_namespaces
+        from py_code_mode.deps import DepsNamespace
+
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "skills").mkdir()
+        (tmp_path / "artifacts").mkdir()
+
+        config = {
+            "type": "file",
+            "base_path": str(tmp_path),
+        }
+
+        result = bootstrap_namespaces(config)
+
+        assert isinstance(result.deps, DepsNamespace)
+
+    def test_bootstrap_file_storage_deps_namespace_is_functional(self, tmp_path: Path) -> None:
+        """File bootstrap deps namespace can list/add/remove packages.
+
+        Contract: deps.list(), deps.add(), deps.remove() work correctly
+        Breaks when: Deps namespace not wired up to storage correctly.
+        """
+        from py_code_mode.bootstrap import bootstrap_namespaces
+
+        config = {
+            "type": "file",
+            "base_path": str(tmp_path),
+        }
+
+        result = bootstrap_namespaces(config)
+
+        # Initial state - no packages
+        assert result.deps.list() == []
+
+        # Add a package (just to store, not actually install for this test)
+        # We're testing the namespace wiring, not actual installation
+        result.deps._store.add("requests>=2.0")
+        packages = result.deps.list()
+        assert "requests>=2.0" in packages
+
+        # Remove package
+        result.deps._store.remove("requests>=2.0")
+        assert result.deps.list() == []
 
     def test_bootstrap_file_storage_creates_directories_if_missing(self, tmp_path: Path) -> None:
         """File bootstrap creates subdirectories if they don't exist.
@@ -311,6 +372,59 @@ class TestBootstrapNamespaces:
             result = bootstrap_namespaces(config)
 
         assert isinstance(result.artifacts, ArtifactStoreProtocol)
+
+    def test_bootstrap_redis_storage_bundle_has_deps_namespace(
+        self, mock_redis: MockRedisClient
+    ) -> None:
+        """Redis bootstrap returns bundle with DepsNamespace for deps.
+
+        Contract: Bundle.deps is DepsNamespace instance
+        Breaks when: Deps namespace is wrong type or missing.
+        """
+        from py_code_mode.bootstrap import bootstrap_namespaces
+        from py_code_mode.deps import DepsNamespace
+
+        config = {
+            "type": "redis",
+            "url": "redis://localhost:6379/0",
+            "prefix": "test",
+        }
+
+        with patch("redis.from_url", return_value=mock_redis):
+            result = bootstrap_namespaces(config)
+
+        assert isinstance(result.deps, DepsNamespace)
+
+    def test_bootstrap_redis_storage_deps_namespace_is_functional(
+        self, mock_redis: MockRedisClient
+    ) -> None:
+        """Redis bootstrap deps namespace can list/add/remove packages.
+
+        Contract: deps.list(), deps.add(), deps.remove() work correctly
+        Breaks when: Deps namespace not wired up to Redis storage correctly.
+        """
+        from py_code_mode.bootstrap import bootstrap_namespaces
+
+        config = {
+            "type": "redis",
+            "url": "redis://localhost:6379/0",
+            "prefix": "test",
+        }
+
+        with patch("redis.from_url", return_value=mock_redis):
+            result = bootstrap_namespaces(config)
+
+        # Initial state - no packages
+        assert result.deps.list() == []
+
+        # Add a package (just to store, not actually install for this test)
+        result.deps._store.add("pandas>=2.0")
+        packages = result.deps.list()
+        assert "pandas>=2.0" in packages
+
+        # Remove package
+        result.deps._store.remove("pandas>=2.0")
+        assert result.deps.list() == []
 
     def test_bootstrap_redis_storage_uses_url_from_config(
         self, mock_redis: MockRedisClient
@@ -553,7 +667,8 @@ class TestFileStorageBootstrapConfig:
         storage = FileStorage(tmp_path)
         (tmp_path / "skills").mkdir(exist_ok=True)
         skill_file = tmp_path / "skills" / "greet.py"
-        skill_file.write_text('"""Greet."""\ndef run(name: str) -> str:\n    return f"Hello, {name}!"')
+        skill_content = '"""Greet."""\ndef run(name: str) -> str:\n    return f"Hello, {name}!"'
+        skill_file.write_text(skill_content)
 
         # Serialize
         config = storage.to_bootstrap_config()
@@ -935,9 +1050,7 @@ class TestSubprocessExecutorBootstrapIntegration:
         deserialized = json.loads(serialized)
         assert deserialized == config
 
-    def test_redis_bootstrap_config_is_json_serializable(
-        self, mock_redis: MockRedisClient
-    ) -> None:
+    def test_redis_bootstrap_config_is_json_serializable(self, mock_redis: MockRedisClient) -> None:
         """Redis bootstrap config can be JSON serialized.
 
         Contract: Config must be serializable for IPC to subprocess
@@ -1040,7 +1153,7 @@ class TestBootstrapUserJourney:
         skill_store = storage.get_skill_store()
         skill = PythonSkill.from_source(
             name="triple",
-            source='def run(n: int) -> int:\n    return n * 3',
+            source="def run(n: int) -> int:\n    return n * 3",
             description="Triple a number",
         )
         skill_store.save(skill)

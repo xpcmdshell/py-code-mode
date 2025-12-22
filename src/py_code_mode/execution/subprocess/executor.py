@@ -247,7 +247,7 @@ class SubprocessExecutor:
             self._venv = None
 
     async def _setup_namespaces(self) -> None:
-        """Inject tools/skills/artifacts namespaces into kernel.
+        """Inject tools/skills/artifacts/deps namespaces into kernel.
 
         Uses build_namespace_setup_code() to generate Python code that sets up
         full py-code-mode namespaces in the kernel subprocess.
@@ -255,7 +255,10 @@ class SubprocessExecutor:
         if self._storage_access is None:
             return
 
-        setup_code = build_namespace_setup_code(self._storage_access)
+        setup_code = build_namespace_setup_code(
+            self._storage_access,
+            allow_runtime_deps=self._config.allow_runtime_deps,
+        )
         if setup_code:
             await self._run_setup_code(setup_code)
 

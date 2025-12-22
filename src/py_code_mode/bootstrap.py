@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from py_code_mode.artifacts import ArtifactStoreProtocol
+    from py_code_mode.deps import DepsNamespace
     from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
     from py_code_mode.tools import ToolsNamespace
 
@@ -27,15 +28,17 @@ if TYPE_CHECKING:
 class NamespaceBundle:
     """Container for reconstructed namespaces.
 
-    Provides the three namespaces needed for code execution:
+    Provides the four namespaces needed for code execution:
     - tools: ToolsNamespace for tool access
     - skills: SkillsNamespace for skill access
     - artifacts: ArtifactStoreProtocol for artifact storage
+    - deps: DepsNamespace for dependency management
     """
 
     tools: ToolsNamespace
     skills: SkillsNamespace
     artifacts: ArtifactStoreProtocol
+    deps: DepsNamespace
 
 
 def bootstrap_namespaces(config: dict[str, Any]) -> NamespaceBundle:
@@ -76,6 +79,7 @@ def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
         KeyError: If base_path is missing.
     """
     # Import lazily to avoid circular imports
+    from py_code_mode.deps import DepsNamespace, FileDepsStore, PackageInstaller
     from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
     from py_code_mode.storage import FileStorage
     from py_code_mode.tools import ToolsNamespace
@@ -87,6 +91,11 @@ def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
     tools_ns = ToolsNamespace(storage.get_tool_registry())
     artifact_store = storage.get_artifact_store()
 
+    # Create deps namespace
+    deps_store = FileDepsStore(base_path)
+    installer = PackageInstaller()
+    deps_ns = DepsNamespace(deps_store, installer)
+
     # SkillsNamespace needs a namespace dict for skill execution
     # Create the dict first, wire up after creation
     namespace_dict: dict[str, Any] = {}
@@ -96,11 +105,13 @@ def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
     namespace_dict["tools"] = tools_ns
     namespace_dict["skills"] = skills_ns
     namespace_dict["artifacts"] = artifact_store
+    namespace_dict["deps"] = deps_ns
 
     return NamespaceBundle(
         tools=tools_ns,
         skills=skills_ns,
         artifacts=artifact_store,
+        deps=deps_ns,
     )
 
 
@@ -119,6 +130,7 @@ def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
     # Import lazily to avoid circular imports
     import redis
 
+    from py_code_mode.deps import DepsNamespace, PackageInstaller, RedisDepsStore
     from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
     from py_code_mode.storage import RedisStorage
     from py_code_mode.tools import ToolsNamespace
@@ -134,6 +146,11 @@ def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
     tools_ns = ToolsNamespace(storage.get_tool_registry())
     artifact_store = storage.get_artifact_store()
 
+    # Create deps namespace
+    deps_store = RedisDepsStore(redis_client, prefix=f"{prefix}:deps")
+    installer = PackageInstaller()
+    deps_ns = DepsNamespace(deps_store, installer)
+
     # SkillsNamespace needs a namespace dict for skill execution
     namespace_dict: dict[str, Any] = {}
     skills_ns = SkillsNamespace(storage.get_skill_library(), namespace_dict)
@@ -142,9 +159,11 @@ def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
     namespace_dict["tools"] = tools_ns
     namespace_dict["skills"] = skills_ns
     namespace_dict["artifacts"] = artifact_store
+    namespace_dict["deps"] = deps_ns
 
     return NamespaceBundle(
         tools=tools_ns,
         skills=skills_ns,
         artifacts=artifact_store,
+        deps=deps_ns,
     )

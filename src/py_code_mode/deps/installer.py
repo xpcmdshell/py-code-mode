@@ -1,6 +1,6 @@
 """PackageInstaller for synchronizing dependencies.
 
-Handles installing packages via uv/pip with hash-based caching.
+Handles installing packages via pip with hash-based caching.
 """
 
 from __future__ import annotations
@@ -11,8 +11,8 @@ __all__ = [
     "clear_install_cache",
 ]
 
-import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -43,6 +43,20 @@ class PackageInstaller:
     DEFAULT_TIMEOUT = 120  # 2 minutes default
 
     # Allowlist of safe extra arguments for pip/uv
+    #
+    # SECURITY: Only add flags that cannot be used to:
+    # - Execute arbitrary code (--install-option, --global-option)
+    # - Install from untrusted sources (--index-url, --extra-index-url, --find-links)
+    # - Bypass security checks (--trusted-host, --no-verify)
+    # - Modify files outside the venv (--target, --prefix, --root)
+    # - Install editable packages (--editable, -e)
+    # - Install from URLs or VCS (handled by package validation, but these flags help)
+    #
+    # Current allowlist rationale:
+    # - --quiet/-q: Reduces output verbosity (safe)
+    # - --no-cache-dir: Disables pip cache (safe, may slow installs)
+    # - --upgrade/-U: Upgrades existing packages (safe)
+    # - --no-deps: Skips dependency resolution (safe, may break packages)
     ALLOWED_EXTRA_ARGS = frozenset(
         {
             "--quiet",
@@ -83,10 +97,16 @@ class PackageInstaller:
                 raise ValueError(f"Disallowed extra argument: {arg}")
 
     def _get_installer_command(self) -> list[str]:
-        """Determine which installer to use (uv or pip)."""
-        if shutil.which("uv"):
-            return ["uv", "pip", "install"]
-        return ["pip", "install"]
+        """Get pip install command using current Python interpreter.
+
+        Uses sys.executable to ensure we install to the current Python environment,
+        which is crucial when running inside virtual environments or subprocess kernels.
+        The uv tool requires explicit --python flag to target a specific venv, but
+        using python -m pip always installs to the current interpreter's environment.
+        """
+        # Always use the current Python interpreter to ensure correct venv
+        # This is crucial when running inside a subprocess kernel's venv
+        return [sys.executable, "-m", "pip", "install"]
 
     def _build_install_command(self, packages: list[str]) -> list[str]:
         """Build the full install command."""

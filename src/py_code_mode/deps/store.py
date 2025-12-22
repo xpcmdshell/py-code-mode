@@ -27,8 +27,12 @@ _VALID_PACKAGE_PATTERN = re.compile(
     r"^[a-zA-Z0-9]"  # Must start with alphanumeric
     r"[a-zA-Z0-9._-]*"  # Rest can have alphanumeric, dot, underscore, hyphen
     r"(?:\[[a-zA-Z0-9,._-]+\])?"  # Optional extras in brackets
-    r"(?:[<>=!~].*)?$"  # Optional version specifiers
+    r"(?:[<>=!~][a-zA-Z0-9.*,<>=!~ ]+)?$"  # Version specifiers: only safe characters
 )
+
+# Characters that must never appear in package specifications
+# These could enable URL-based installs (@) or environment marker injection (;)
+_BLOCKED_CHARACTERS = frozenset({"@", ";", "(", ")"})
 
 # Dangerous shell metacharacters to reject
 _SHELL_METACHARACTERS = re.compile(r"[;|&`$()]")
@@ -54,11 +58,19 @@ def _validate_package_name(package: str) -> None:
     if len(package) > 256:
         raise ValueError("Invalid package: name too long (max 256 characters)")
 
+    # Check for blocked characters that could enable attacks:
+    # - @ enables URL-based installs (git+https://, file://)
+    # - ; enables environment markers which could inject arbitrary expressions
+    # - () used in environment markers
+    for char in _BLOCKED_CHARACTERS:
+        if char in package:
+            raise ValueError(f"Invalid package: contains blocked character '{char}'")
+
     # Check for shell metacharacters (command injection prevention)
     if _SHELL_METACHARACTERS.search(package):
         raise ValueError(f"Invalid package name: contains shell metacharacters: {package}")
 
-    # Basic PEP 508 validation
+    # Basic PEP 508 validation with strict version specifier pattern
     if not _VALID_PACKAGE_PATTERN.match(package):
         raise ValueError(f"Invalid package name: {package}")
 

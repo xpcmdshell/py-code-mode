@@ -1,6 +1,6 @@
 """Namespace setup code generation for SubprocessExecutor.
 
-Generates Python code that sets up tools, skills, and artifacts namespaces
+Generates Python code that sets up tools, skills, artifacts, and deps namespaces
 in the kernel subprocess using full py-code-mode functionality.
 """
 
@@ -9,7 +9,10 @@ from __future__ import annotations
 from py_code_mode.execution.protocol import FileStorageAccess, StorageAccess
 
 
-def build_namespace_setup_code(storage_access: StorageAccess | None) -> str:
+def build_namespace_setup_code(
+    storage_access: StorageAccess | None,
+    allow_runtime_deps: bool = True,
+) -> str:
     """Generate Python code that sets up namespaces in the kernel.
 
     The generated code imports from py-code-mode (which must be installed
@@ -19,6 +22,8 @@ def build_namespace_setup_code(storage_access: StorageAccess | None) -> str:
     Args:
         storage_access: Storage access descriptor with paths or connection info.
                        If None, returns empty string.
+        allow_runtime_deps: Whether to allow deps.add() and deps.sync() calls.
+                           If False, these methods raise RuntimeError.
 
     Returns:
         Python code string to execute in the kernel to set up namespaces.
@@ -27,19 +32,25 @@ def build_namespace_setup_code(storage_access: StorageAccess | None) -> str:
         return ""
 
     if isinstance(storage_access, FileStorageAccess):
-        return _build_file_storage_setup_code(storage_access)
+        return _build_file_storage_setup_code(storage_access, allow_runtime_deps)
 
     # Other storage types not yet supported for subprocess
     return ""
 
 
-def _build_file_storage_setup_code(storage_access: FileStorageAccess) -> str:
+def _build_file_storage_setup_code(
+    storage_access: FileStorageAccess,
+    allow_runtime_deps: bool,
+) -> str:
     """Generate namespace setup code for FileStorageAccess."""
     tools_path_str = repr(str(storage_access.tools_path)) if storage_access.tools_path else "None"
     skills_path_str = (
         repr(str(storage_access.skills_path)) if storage_access.skills_path else "None"
     )
     artifacts_path_str = repr(str(storage_access.artifacts_path))
+    # Base path is parent of artifacts for deps store
+    base_path_str = repr(str(storage_access.artifacts_path.parent))
+    allow_deps_str = "True" if allow_runtime_deps else "False"
 
     return f'''# Auto-generated namespace setup for SubprocessExecutor
 # This code sets up full py-code-mode namespaces in the kernel
@@ -211,6 +222,71 @@ artifacts = _SimpleArtifactStore(_base_artifacts)
 _skills_ns_dict["artifacts"] = artifacts
 
 # =============================================================================
+# Deps Namespace (with optional runtime deps control)
+# =============================================================================
+
+from py_code_mode.deps import DepsNamespace, FileDepsStore, PackageInstaller
+
+_base_path = Path({base_path_str})
+_deps_store = FileDepsStore(_base_path)
+_installer = PackageInstaller()
+_base_deps = DepsNamespace(_deps_store, _installer)
+
+_allow_runtime_deps = {allow_deps_str}
+
+
+class _ControlledDepsNamespace:
+    """Wrapper that optionally blocks add() and sync() calls.
+
+    When allow_runtime_deps=False, add() and sync() raise RuntimeError
+    to prevent runtime package installation. list() and remove() always work.
+    """
+
+    def __init__(self, namespace, allow_runtime):
+        self._namespace = namespace
+        self._allow_runtime = allow_runtime
+
+    def add(self, package):
+        """Add a package (blocked if runtime deps disabled)."""
+        if not self._allow_runtime:
+            raise RuntimeError(
+                "Runtime dependency installation is disabled. "
+                "Set allow_runtime_deps=True in SubprocessConfig to enable."
+            )
+        return self._namespace.add(package)
+
+    def sync(self):
+        """Sync packages (blocked if runtime deps disabled)."""
+        if not self._allow_runtime:
+            raise RuntimeError(
+                "Runtime dependency installation is disabled. "
+                "Set allow_runtime_deps=True in SubprocessConfig to enable."
+            )
+        return self._namespace.sync()
+
+    def list(self):
+        """List packages (always allowed)."""
+        return self._namespace.list()
+
+    def remove(self, package):
+        """Remove a package from config (always allowed)."""
+        return self._namespace.remove(package)
+
+    @property
+    def _store(self):
+        """Access underlying store for testing."""
+        return self._namespace._store
+
+    def __repr__(self):
+        return self._namespace.__repr__()
+
+
+deps = _ControlledDepsNamespace(_base_deps, _allow_runtime_deps)
+
+# Complete the namespace wiring for skills to include deps
+_skills_ns_dict["deps"] = deps
+
+# =============================================================================
 # Cleanup temporary variables (keep wrapper classes for runtime use)
 # =============================================================================
 
@@ -221,6 +297,7 @@ except NameError:
     pass
 del _skills_path, _store, _library, _skills_ns_dict
 del _artifacts_path, _base_artifacts
+del _base_path, _deps_store, _installer, _base_deps, _allow_runtime_deps
 del Path
 del ToolRegistry, ToolsNamespace, CLIAdapter
 del FileSkillStore, create_skill_library, SkillsNamespace
@@ -229,6 +306,7 @@ try:
 except NameError:
     pass
 del FileArtifactStore
+del DepsNamespace, FileDepsStore, PackageInstaller
 # Note: Wrapper classes (_SyncToolsWrapper, _SyncToolProxy, _SyncCallableWrapper,
-# _SimpleArtifactStore) and asyncio/nest_asyncio are kept for runtime use
+# _SimpleArtifactStore, _ControlledDepsNamespace) and asyncio/nest_asyncio are kept for runtime use
 '''

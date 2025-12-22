@@ -1682,3 +1682,262 @@ class TestSubprocessExecutorErrors:
 
             assert result.error is not None
             assert "AttributeError" in result.error
+
+
+# =============================================================================
+# SubprocessExecutor Deps Namespace Integration Tests
+# =============================================================================
+
+
+@pytest.mark.slow
+@pytest.mark.xdist_group("subprocess")
+class TestSubprocessExecutorDepsNamespace:
+    """Tests for SubprocessExecutor deps namespace integration.
+
+    These tests verify that the deps namespace is properly injected into
+    the subprocess execution environment and can be used by agent code.
+
+    Requires py-code-mode in base_deps to have access to DepsNamespace.
+    """
+
+    @pytest.fixture
+    async def executor_with_storage(self, tmp_path: Path):
+        """Provide a started SubprocessExecutor with storage for deps tests."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+        from py_code_mode.storage.backends import FileStorage
+
+        storage = FileStorage(tmp_path)
+
+        config = SubprocessConfig(
+            python_version="3.12",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel", "py-code-mode"),
+        )
+        exec = SubprocessExecutor(config=config)
+        await exec.start(storage=storage)
+        yield exec
+        await exec.close()
+
+    @pytest.mark.asyncio
+    async def test_deps_namespace_is_available(self, executor_with_storage) -> None:
+        """deps namespace is available in subprocess execution context.
+
+        Contract: 'deps' must be in the global namespace
+        Breaks when: deps namespace not injected by bootstrap.
+        """
+        result = await executor_with_storage.run("'deps' in dir()")
+
+        assert result.error is None
+        assert result.value in (True, "True")
+
+    @pytest.mark.asyncio
+    async def test_deps_list_returns_list(self, executor_with_storage) -> None:
+        """deps.list() returns a list of packages.
+
+        Contract: deps.list() must return a list (empty initially)
+        Breaks when: DepsNamespace not properly wired.
+        """
+        result = await executor_with_storage.run("deps.list()")
+
+        assert result.error is None
+        # Should return empty list or list representation
+        assert result.value in ([], "[]")
+
+    @pytest.mark.asyncio
+    async def test_deps_has_add_method(self, executor_with_storage) -> None:
+        """deps namespace has add() method.
+
+        Contract: deps.add must be callable
+        Breaks when: DepsNamespace incomplete.
+        """
+        result = await executor_with_storage.run("callable(deps.add)")
+
+        assert result.error is None
+        assert result.value in (True, "True")
+
+    @pytest.mark.asyncio
+    async def test_deps_has_remove_method(self, executor_with_storage) -> None:
+        """deps namespace has remove() method.
+
+        Contract: deps.remove must be callable
+        Breaks when: DepsNamespace incomplete.
+        """
+        result = await executor_with_storage.run("callable(deps.remove)")
+
+        assert result.error is None
+        assert result.value in (True, "True")
+
+    @pytest.mark.asyncio
+    async def test_deps_has_sync_method(self, executor_with_storage) -> None:
+        """deps namespace has sync() method.
+
+        Contract: deps.sync must be callable
+        Breaks when: DepsNamespace incomplete.
+        """
+        result = await executor_with_storage.run("callable(deps.sync)")
+
+        assert result.error is None
+        assert result.value in (True, "True")
+
+    @pytest.mark.asyncio
+    async def test_deps_repr_shows_package_count(self, executor_with_storage) -> None:
+        """deps repr shows package count.
+
+        Contract: repr(deps) should indicate it's a DepsNamespace
+        Breaks when: DepsNamespace.__repr__ not implemented.
+        """
+        result = await executor_with_storage.run("repr(deps)")
+
+        assert result.error is None
+        assert "DepsNamespace" in str(result.value)
+
+    @pytest.mark.asyncio
+    async def test_reset_preserves_deps_namespace(self, executor_with_storage) -> None:
+        """reset() preserves deps namespace along with other namespaces.
+
+        Contract: deps must survive reset() calls
+        Breaks when: reset() removes deps from namespace.
+        """
+        # Verify deps exists before reset
+        result = await executor_with_storage.run("'deps' in dir()")
+        assert result.value in (True, "True")
+
+        await executor_with_storage.reset()
+
+        # deps should still exist after reset
+        result = await executor_with_storage.run("'deps' in dir()")
+        assert result.error is None
+        assert result.value in (True, "True")
+
+
+@pytest.mark.slow
+@pytest.mark.xdist_group("subprocess")
+class TestSubprocessExecutorDepsRuntimeInstall:
+    """Tests for deps.add() runtime package installation.
+
+    These tests verify that deps.add() can install packages at runtime
+    when allow_runtime_deps=True (the default).
+
+    WARNING: These tests actually install packages and are slow.
+    """
+
+    @pytest.fixture
+    async def executor_allow_deps(self, tmp_path: Path):
+        """Executor with allow_runtime_deps=True (default)."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+        from py_code_mode.storage.backends import FileStorage
+
+        storage = FileStorage(tmp_path)
+
+        config = SubprocessConfig(
+            python_version="3.12",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel", "py-code-mode"),
+            allow_runtime_deps=True,  # Explicitly enabled
+        )
+        exec = SubprocessExecutor(config=config)
+        await exec.start(storage=storage)
+        yield exec
+        await exec.close()
+
+    @pytest.fixture
+    async def executor_deny_deps(self, tmp_path: Path):
+        """Executor with allow_runtime_deps=False."""
+        from py_code_mode.execution.subprocess import SubprocessExecutor
+        from py_code_mode.storage.backends import FileStorage
+
+        storage = FileStorage(tmp_path)
+
+        config = SubprocessConfig(
+            python_version="3.12",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel", "py-code-mode"),
+            allow_runtime_deps=False,  # Disabled
+        )
+        exec = SubprocessExecutor(config=config)
+        await exec.start(storage=storage)
+        yield exec
+        await exec.close()
+
+    @pytest.mark.asyncio
+    async def test_deps_add_calls_installer(self, executor_allow_deps) -> None:
+        """deps.add() calls installer and returns SyncResult.
+
+        User action: Agent calls deps.add("requests") to add a dependency
+        Verification: deps.add() returns a SyncResult with expected structure
+        Breaks when: DepsNamespace or PackageInstaller not wired up.
+
+        Note: We don't verify installation success because pip install inside
+        a Jupyter kernel subprocess may fail for environmental reasons.
+        The key contract is that deps.add() stores the package and attempts
+        installation via PackageInstaller.sync().
+        """
+        # deps.add() should return a SyncResult object with installed/failed/already_present
+        code = (
+            "result = deps.add('requests'); "
+            "print(type(result).__name__, hasattr(result, 'installed'))"
+        )
+        result = await executor_allow_deps.run(code)
+        assert result.error is None, f"deps.add failed: {result.error}"
+
+        # Verify we get a SyncResult with the expected attributes
+        assert "SyncResult" in result.stdout
+        assert "True" in result.stdout
+
+    @pytest.mark.asyncio
+    async def test_deps_add_persists_to_store(self, executor_allow_deps) -> None:
+        """deps.add() persists package to store.
+
+        Contract: Package should appear in deps.list() after adding
+        Breaks when: Store not wired up.
+        """
+        # Add package
+        result = await executor_allow_deps.run("deps.add('requests')")
+        assert result.error is None
+
+        # Verify it's in the list
+        result = await executor_allow_deps.run("'requests' in str(deps.list())")
+        assert result.error is None
+        assert result.value in (True, "True")
+
+    @pytest.mark.asyncio
+    async def test_deps_add_raises_when_runtime_deps_disabled(self, executor_deny_deps) -> None:
+        """deps.add() raises error when allow_runtime_deps=False.
+
+        Contract: Runtime installation should be blocked for security
+        Breaks when: allow_runtime_deps flag is ignored.
+        """
+        result = await executor_deny_deps.run("deps.add('requests')")
+
+        # Should fail with clear error
+        assert result.error is not None
+        # Error should indicate deps are disabled
+        error_lower = result.error.lower()
+        assert "runtime" in error_lower or "disabled" in error_lower or "not allowed" in error_lower
+
+    @pytest.mark.asyncio
+    async def test_deps_list_still_works_when_runtime_deps_disabled(
+        self, executor_deny_deps
+    ) -> None:
+        """deps.list() works even when runtime deps disabled.
+
+        Contract: Reading deps should always work, only add/sync is blocked
+        Breaks when: Entire deps namespace is disabled.
+        """
+        result = await executor_deny_deps.run("deps.list()")
+
+        assert result.error is None
+        assert result.value in ([], "[]")
+
+    @pytest.mark.asyncio
+    async def test_deps_sync_raises_when_runtime_deps_disabled(self, executor_deny_deps) -> None:
+        """deps.sync() raises error when allow_runtime_deps=False.
+
+        Contract: Sync should be blocked like add
+        Breaks when: sync() bypasses the runtime deps check.
+        """
+        result = await executor_deny_deps.run("deps.sync()")
+
+        # Should fail with RuntimeError about runtime deps being disabled
+        assert result.error is not None
+        assert "disabled" in result.error
