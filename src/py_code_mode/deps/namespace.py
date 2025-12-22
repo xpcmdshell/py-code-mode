@@ -101,9 +101,9 @@ class DepsNamespace:
 class ControlledDepsNamespace:
     """Wrapper that controls runtime dependency operations.
 
-    When allow_runtime=False, blocks add(), remove(), and sync() but allows list().
+    When allow_runtime=False, blocks add() and remove() but allows list() and sync().
     This makes the dependency configuration immutable at runtime - agents cannot
-    add new deps or remove pre-configured ones.
+    add new deps or remove pre-configured ones, but can sync pre-configured deps.
 
     Security: Access to internal attributes (_wrapped, _allow_runtime) is blocked
     via __getattribute__ to prevent bypass attacks like deps._wrapped.add().
@@ -131,7 +131,8 @@ class ControlledDepsNamespace:
 
         Args:
             wrapped: The underlying DepsNamespace to wrap.
-            allow_runtime: If False, add() and sync() raise RuntimeDepsDisabledError.
+            allow_runtime: If False, add() and remove() raise RuntimeDepsDisabledError.
+                          sync() is always allowed since it only installs pre-configured deps.
         """
         # Use object.__setattr__ to bypass our potential future __setattr__
         object.__setattr__(self, "_wrapped", wrapped)
@@ -204,15 +205,13 @@ class ControlledDepsNamespace:
     def sync(self) -> SyncResult:
         """Ensure all configured packages are installed.
 
-        Raises:
-            RuntimeDepsDisabledError: If runtime deps are disabled.
+        This is always allowed, even when allow_runtime=False, because sync()
+        only installs packages that are already configured in the deps store.
+        It does not add new dependencies.
+
+        Returns:
+            SyncResult with installation outcomes.
         """
-        allow_runtime = object.__getattribute__(self, "_allow_runtime")
-        if not allow_runtime:
-            raise RuntimeDepsDisabledError(
-                "Runtime dependency installation is disabled. "
-                "Dependencies must be pre-configured before session start."
-            )
         wrapped = object.__getattribute__(self, "_wrapped")
         return wrapped.sync()
 

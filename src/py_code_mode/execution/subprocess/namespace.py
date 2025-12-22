@@ -244,10 +244,11 @@ class _RuntimeDepsDisabledError(RuntimeError):
 
 
 class _ControlledDepsNamespace:
-    """Wrapper that optionally blocks add(), remove(), and sync() calls.
+    """Wrapper that optionally blocks add() and remove() calls.
 
-    When allow_runtime_deps=False, add(), remove(), and sync() raise error
-    to prevent runtime package modification. list() always works.
+    When allow_runtime_deps=False, add() and remove() raise error
+    to prevent runtime package modification. list() and sync() always work.
+    sync() is allowed because it only installs pre-configured packages.
 
     Security: Access to internal attributes is blocked via __getattribute__
     to prevent bypass attacks like deps._namespace.add().
@@ -285,13 +286,7 @@ class _ControlledDepsNamespace:
         return namespace.add(package)
 
     def sync(self):
-        """Sync packages (blocked if runtime deps disabled)."""
-        allow_runtime = object.__getattribute__(self, "_allow_runtime")
-        if not allow_runtime:
-            raise _RuntimeDepsDisabledError(
-                "RuntimeDepsDisabledError: Runtime dependency installation is disabled. "
-                "Dependencies must be pre-configured before session start."
-            )
+        """Sync packages (always allowed - only installs pre-configured deps)."""
         namespace = object.__getattribute__(self, "_namespace")
         return namespace.sync()
 
@@ -545,10 +540,11 @@ class _RuntimeDepsDisabledError(RuntimeError):
 
 
 class _ControlledDepsNamespace:
-    """Wrapper that optionally blocks add(), remove(), and sync() calls.
+    """Wrapper that optionally blocks add() and remove() calls.
 
-    When allow_runtime_deps=False, add(), remove(), and sync() raise error
-    to prevent runtime package modification. list() always works.
+    When allow_runtime_deps=False, add() and remove() raise error
+    to prevent runtime package modification. list() and sync() always work.
+    sync() is allowed because it only installs pre-configured packages.
 
     Security: Access to internal attributes is blocked via __getattribute__
     to prevent bypass attacks like deps._namespace.add().
@@ -586,13 +582,7 @@ class _ControlledDepsNamespace:
         return namespace.add(package)
 
     def sync(self):
-        """Sync packages (blocked if runtime deps disabled)."""
-        allow_runtime = object.__getattribute__(self, "_allow_runtime")
-        if not allow_runtime:
-            raise _RuntimeDepsDisabledError(
-                "RuntimeDepsDisabledError: Runtime dependency installation is disabled. "
-                "Dependencies must be pre-configured before session start."
-            )
+        """Sync packages (always allowed - only installs pre-configured deps)."""
         namespace = object.__getattribute__(self, "_namespace")
         return namespace.sync()
 

@@ -420,12 +420,17 @@ class TestInProcessExecutorConfig:
             assert "runtime" in result.error.lower() or "disabled" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_deps_sync_blocked_when_disabled(self, tmp_path: Path) -> None:
-        """deps.sync() raises error when allow_runtime_deps=False.
+    async def test_deps_sync_allowed_when_disabled(self, tmp_path: Path) -> None:
+        """deps.sync() works when allow_runtime_deps=False.
 
-        User action: Try to sync deps at runtime when disabled.
-        Verification: Error raised.
-        Breaks when: deps.sync() succeeds despite being disabled.
+        User action: Try to sync deps at runtime when add/remove disabled.
+        Verification: Sync succeeds (only installs pre-configured deps).
+        Breaks when: deps.sync() incorrectly blocked by disabled flag.
+
+        Note: sync() only installs packages already in the deps store.
+        It does NOT add new dependencies, so it should always be allowed.
+        This is consistent with sync_deps_on_start=True working with
+        allow_runtime_deps=False.
         """
         from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
         from py_code_mode.session import Session
@@ -438,9 +443,8 @@ class TestInProcessExecutorConfig:
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("deps.sync()")
 
-            # Should fail with error
-            assert not result.is_ok
-            assert "runtime" in result.error.lower() or "disabled" in result.error.lower()
+            # Should succeed - sync only installs pre-configured deps
+            assert result.is_ok, f"deps.sync() should work: {result.error}"
 
     @pytest.mark.asyncio
     async def test_deps_list_allowed_when_disabled(self, tmp_path: Path) -> None:
@@ -896,9 +900,10 @@ class TestControlledDepsNamespaceBypassPrevention:
         with pytest.raises(RuntimeDepsDisabledError):
             controlled.remove("nonexistent")
 
-        # sync() should raise RuntimeDepsDisabledError (not AttributeError)
-        with pytest.raises(RuntimeDepsDisabledError):
-            controlled.sync()
+        # sync() should work - it only installs pre-configured deps, not new ones
+        sync_result = controlled.sync()
+        # SyncResult returned (no error)
+        assert hasattr(sync_result, "installed")
 
     def test_repr_still_works(self, tmp_path: Path) -> None:
         """__repr__ remains accessible for debugging.
@@ -1104,12 +1109,17 @@ class TestSubprocessExecutorDepsConfigGaps:
             assert "RuntimeDepsDisabledError" in result.error or "disabled" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_deps_sync_blocked_when_disabled_subprocess(self, tmp_path: Path) -> None:
-        """deps.sync() raises error in subprocess when allow_runtime_deps=False.
+    async def test_deps_sync_allowed_when_disabled_subprocess(self, tmp_path: Path) -> None:
+        """deps.sync() works in subprocess when allow_runtime_deps=False.
 
-        User action: Try to sync deps at runtime when disabled.
-        Verification: Error raised.
-        Breaks when: deps.sync() succeeds despite being disabled.
+        User action: Try to sync deps at runtime when add/remove disabled.
+        Verification: Sync succeeds (only installs pre-configured deps).
+        Breaks when: deps.sync() incorrectly blocked by disabled flag.
+
+        Note: sync() only installs packages already in the deps store.
+        It does NOT add new dependencies, so it should always be allowed.
+        This is consistent with sync_deps_on_start=True working with
+        allow_runtime_deps=False.
         """
         from py_code_mode.execution.subprocess import SubprocessConfig, SubprocessExecutor
         from py_code_mode.session import Session
@@ -1127,9 +1137,8 @@ class TestSubprocessExecutorDepsConfigGaps:
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("deps.sync()")
 
-            # Should fail with error
-            assert not result.is_ok
-            assert "runtime" in result.error.lower() or "disabled" in result.error.lower()
+            # Should succeed - sync only installs pre-configured deps
+            assert result.is_ok, f"deps.sync() should work: {result.error}"
 
     # -------------------------------------------------------------------------
     # Read-only Operation Tests
