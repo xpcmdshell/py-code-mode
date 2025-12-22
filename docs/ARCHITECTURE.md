@@ -488,11 +488,100 @@ Choose executor:
     |
     +-- Same-process execution?     -> InProcessExecutor() (default)
     +-- Process isolation needed?   -> ContainerExecutor(config=ContainerConfig(...))
-    +-- Jupyter kernel?             -> SubprocessExecutor(config=SubprocessConfig(...))
+    +-- Lightweight isolation?      -> SubprocessExecutor(config=SubprocessConfig(...))
 
 Combine:
     Session(storage=storage, executor=executor)  # or omit executor for default
 ```
+
+---
+
+## Scenario 5: Subprocess Executor (Jupyter Kernel)
+
+**Best for:** Process isolation without Docker overhead, development environments.
+
+SubprocessExecutor runs code in an IPython/Jupyter kernel within a subprocess. It provides process isolation lighter than Docker but stronger than in-process execution.
+
+**Capabilities:**
+- TIMEOUT: Yes (via message wait timeout)
+- PROCESS_ISOLATION: Yes (code runs in subprocess)
+- RESET: Yes (kernel restart)
+- NETWORK_ISOLATION: No
+- FILESYSTEM_ISOLATION: No
+
+```
++------------------------------------------------------------------+
+|                        Host Machine                              |
+|                                                                  |
+|   +----------------------------------------------------------+   |
+|   |                     Your Agent                           |   |
+|   |                                                          |   |
+|   |   from py_code_mode.execution import (                   |   |
+|   |       SubprocessExecutor, SubprocessConfig               |   |
+|   |   )                                                      |   |
+|   |                                                          |   |
+|   |   storage = FileStorage(base_path=Path("./storage"))     |   |
+|   |   executor = SubprocessExecutor(config=SubprocessConfig( |   |
+|   |       python_version="3.11",                             |   |
+|   |       default_timeout=120.0,                             |   |
+|   |   ))                                                     |   |
+|   |                                                          |   |
+|   |   async with Session(storage=storage,                    |   |
+|   |                      executor=executor) as session:      |   |
+|   |       result = await session.run('tools.curl(...)')      |   |
+|   +-------------------------+--------------------------------+   |
+|                             | Jupyter client protocol            |
+|                             v                                    |
+|   +=========================================================+   |
+|   ||           Subprocess (IPython Kernel)                 ||   |
+|   ||                                                       ||   |
+|   ||   +-----------------------------------------------+   ||   |
+|   ||   |   tools.* skills.* artifacts.* namespaces     |   ||   |
+|   ||   |   (injected from storage at kernel start)     |   ||   |
+|   ||   +-----------------------------------------------+   ||   |
+|   ||                                                       ||   |
+|   ||   Virtual environment created with:                   ||   |
+|   ||   - ipykernel                                         ||   |
+|   ||   - py-code-mode (for namespace construction)         ||   |
+|   ||                                                       ||   |
+|   +=========================================================+   |
+|                                                                  |
++------------------------------------------------------------------+
+```
+
+**Code:**
+```python
+from pathlib import Path
+from py_code_mode import Session, FileStorage
+from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
+
+storage = FileStorage(base_path=Path("./storage"))
+
+# Configure subprocess executor
+config = SubprocessConfig(
+    python_version="3.11",      # Python version for venv
+    default_timeout=120.0,      # Execution timeout
+    startup_timeout=30.0,       # Kernel ready timeout
+    cleanup_venv_on_close=True, # Delete temp venv on close
+)
+executor = SubprocessExecutor(config=config)
+
+async with Session(storage=storage, executor=executor) as session:
+    result = await session.run('tools.curl.get(url="https://api.example.com")')
+    print(result.value)
+```
+
+**When to use SubprocessExecutor:**
+- Need process isolation but Docker is unavailable or too heavy
+- Development/testing where fast iteration matters
+- CI environments without Docker access
+- When you need kernel restart capability (reset state)
+
+**When to use ContainerExecutor instead:**
+- Need filesystem isolation
+- Need network isolation
+- Running untrusted code in production
+- Reproducible environments across machines
 
 ---
 

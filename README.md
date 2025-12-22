@@ -261,6 +261,31 @@ artifacts.list()
 artifacts.delete("research_results")
 ```
 
+## Executors
+
+Three execution backends available:
+
+- **InProcessExecutor** (default) - Same process, fastest, no isolation
+- **SubprocessExecutor** - Jupyter kernel in subprocess, process isolation without Docker
+- **ContainerExecutor** - Docker container, full isolation for untrusted code
+
+```python
+from pathlib import Path
+from py_code_mode import Session, FileStorage
+from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
+
+storage = FileStorage(base_path=Path("./data"))
+
+# Subprocess: process isolation without Docker overhead
+executor = SubprocessExecutor(SubprocessConfig(
+    python_version="3.11",
+    default_timeout=120.0,
+))
+
+async with Session(storage=storage, executor=executor) as session:
+    result = await session.run(agent_code)
+```
+
 ## Production
 
 - **Redis storage** - One agent learns, all agents benefit
@@ -280,6 +305,7 @@ async with Session(storage=storage, executor=executor) as session:
 ## Examples
 
 - **minimal/** - Simple agent in ~100 lines
+- **subprocess/** - SubprocessExecutor usage
 - **autogen-direct/** - AutoGen integration
 - **azure-container-apps/** - Production deployment
 
