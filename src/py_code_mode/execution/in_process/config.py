@@ -11,9 +11,10 @@ class InProcessConfig:
 
     Attributes:
         default_timeout: Default timeout for code execution in seconds.
-        allow_runtime_deps: If True, deps.add() and deps.sync() are allowed.
-                           If False, only deps.list() and deps.remove() work.
-                           Default: True (backward compatible).
+        allow_runtime_deps: If True, all deps methods are allowed.
+                           If False, deps.add() and deps.remove() are blocked.
+                           deps.list() and deps.sync() always work.
+                           Default: True.
     """
 
     default_timeout: float = 30.0
