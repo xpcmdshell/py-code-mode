@@ -23,7 +23,7 @@ from py_code_mode.types import ExecutionResult
 
 if TYPE_CHECKING:
     from py_code_mode.artifacts import ArtifactStoreProtocol
-    from py_code_mode.storage.backends import ArtifactStoreWrapperProtocol, StorageBackend
+    from py_code_mode.storage.backends import StorageBackend
 
 # Use builtins to avoid security hook false positive on Python's code execution
 _run_code = getattr(builtins, "exec")
@@ -57,14 +57,12 @@ class InProcessExecutor:
         self,
         registry: ToolRegistry | None = None,
         skill_library: SkillLibrary | None = None,
-        artifact_store: ArtifactStoreProtocol | ArtifactStoreWrapperProtocol | None = None,
+        artifact_store: ArtifactStoreProtocol | None = None,
         default_timeout: float = 30.0,
     ) -> None:
         self._registry = registry
         self._skill_library = skill_library
-        self._artifact_store: ArtifactStoreProtocol | ArtifactStoreWrapperProtocol | None = (
-            artifact_store
-        )
+        self._artifact_store: ArtifactStoreProtocol | None = artifact_store
         self._default_timeout = default_timeout
         self._namespace: dict[str, Any] = {"__builtins__": builtins}
         self._closed = False

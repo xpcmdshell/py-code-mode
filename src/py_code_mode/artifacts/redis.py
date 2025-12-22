@@ -50,7 +50,7 @@ class RedisArtifactStore:
         self,
         name: str,
         data: str | bytes | dict | list,
-        description: str,
+        description: str = "",
         metadata: dict[str, Any] | None = None,
     ) -> Artifact:
         """Save data as an artifact.
@@ -58,7 +58,7 @@ class RedisArtifactStore:
         Args:
             name: Artifact name (can include path separators like 'scans/nmap.json').
             data: Content to save. Dicts/lists are JSON serialized.
-            description: Human-readable description for discovery.
+            description: Human-readable description for discovery (optional).
             metadata: Optional additional metadata.
 
         Returns:

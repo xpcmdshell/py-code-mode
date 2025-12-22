@@ -120,8 +120,8 @@ class TestInProcessExecutorAcceptsStorageBackend:
         )
 
     @pytest.mark.asyncio
-    async def test_uses_storage_tools_directly(self, tmp_path: Path) -> None:
-        """InProcessExecutor uses storage.tools directly (not get_serializable_access)."""
+    async def test_uses_storage_tools_via_get_tool_registry(self, tmp_path: Path) -> None:
+        """InProcessExecutor uses storage.get_tool_registry() for tools."""
         from py_code_mode.execution.in_process import InProcessExecutor
         from py_code_mode.storage.backends import FileStorage
 
@@ -158,8 +158,8 @@ recipes:
         await executor.close()
 
     @pytest.mark.asyncio
-    async def test_uses_storage_skills_directly(self, tmp_path: Path) -> None:
-        """InProcessExecutor uses storage.skills directly."""
+    async def test_uses_storage_skills_via_get_skill_library(self, tmp_path: Path) -> None:
+        """InProcessExecutor uses storage.get_skill_library() for skills."""
         from py_code_mode.execution.in_process import InProcessExecutor
         from py_code_mode.storage.backends import FileStorage
 
@@ -175,8 +175,8 @@ recipes:
         await executor.close()
 
     @pytest.mark.asyncio
-    async def test_uses_storage_artifacts_directly(self, tmp_path: Path) -> None:
-        """InProcessExecutor uses storage.artifacts directly."""
+    async def test_uses_storage_artifacts_via_get_artifact_store(self, tmp_path: Path) -> None:
+        """InProcessExecutor uses storage.get_artifact_store() for artifacts."""
         from py_code_mode.execution.in_process import InProcessExecutor
         from py_code_mode.storage.backends import FileStorage
 
