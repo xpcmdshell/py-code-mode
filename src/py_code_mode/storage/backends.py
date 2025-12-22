@@ -175,6 +175,19 @@ class FileStorage:
         skills_path = self._get_skills_path()
         return FileSkillStore(skills_path)
 
+    def get_deps_store(self) -> FileDepsStore:
+        """Return FileDepsStore for pre-configuring dependencies.
+
+        This allows adding dependencies before session start:
+            storage.get_deps_store().add("pandas")
+            storage.get_deps_store().add("numpy")
+            Session(storage=storage, sync_deps_on_start=True)
+
+        Returns:
+            FileDepsStore instance backed by this storage's base path.
+        """
+        return FileDepsStore(self._base_path)
+
     def get_deps_namespace(self) -> DepsNamespace:
         """Return DepsNamespace for in-process execution."""
         if self._deps_namespace is None:
@@ -311,6 +324,19 @@ class RedisStorage:
     def get_skill_store(self) -> SkillStore:
         """Return the underlying SkillStore for direct access."""
         return RedisSkillStore(self._redis, prefix=f"{self._prefix}:skills")
+
+    def get_deps_store(self) -> RedisDepsStore:
+        """Return RedisDepsStore for pre-configuring dependencies.
+
+        This allows adding dependencies before session start:
+            storage.get_deps_store().add("pandas")
+            storage.get_deps_store().add("numpy")
+            Session(storage=storage, sync_deps_on_start=True)
+
+        Returns:
+            RedisDepsStore instance for this storage.
+        """
+        return RedisDepsStore(self._redis, prefix=f"{self._prefix}:deps")
 
     def get_deps_namespace(self) -> DepsNamespace:
         """Return DepsNamespace for in-process execution."""

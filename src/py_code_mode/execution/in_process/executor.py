@@ -14,7 +14,8 @@ import traceback
 from contextlib import redirect_stdout
 from typing import TYPE_CHECKING, Any
 
-from py_code_mode.deps import DepsNamespace
+from py_code_mode.deps import ControlledDepsNamespace, DepsNamespace
+from py_code_mode.execution.in_process.config import InProcessConfig
 from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
 from py_code_mode.execution.protocol import Capability, validate_storage_not_access
 from py_code_mode.execution.registry import register_backend
@@ -61,12 +62,14 @@ class InProcessExecutor:
         artifact_store: ArtifactStoreProtocol | None = None,
         deps_namespace: DepsNamespace | None = None,
         default_timeout: float = 30.0,
+        config: InProcessConfig | None = None,
     ) -> None:
         self._registry = registry
         self._skill_library = skill_library
         self._artifact_store: ArtifactStoreProtocol | None = artifact_store
         self._deps_namespace: DepsNamespace | None = deps_namespace
-        self._default_timeout = default_timeout
+        self._config = config or InProcessConfig()
+        self._default_timeout = self._config.default_timeout if config else default_timeout
         self._namespace: dict[str, Any] = {"__builtins__": builtins}
         self._closed = False
 
@@ -82,9 +85,14 @@ class InProcessExecutor:
         if artifact_store is not None:
             self._namespace["artifacts"] = artifact_store
 
-        # Inject deps namespace if provided
+        # Inject deps namespace if provided (wrap if runtime deps disabled)
         if deps_namespace is not None:
-            self._namespace["deps"] = deps_namespace
+            if not self._config.allow_runtime_deps:
+                self._namespace["deps"] = ControlledDepsNamespace(
+                    deps_namespace, allow_runtime=False
+                )
+            else:
+                self._namespace["deps"] = deps_namespace
 
     def supports(self, capability: str) -> bool:
         """Check if this backend supports a capability."""
@@ -238,7 +246,13 @@ class InProcessExecutor:
         self._namespace["artifacts"] = self._artifact_store
 
         self._deps_namespace = storage.get_deps_namespace()
-        self._namespace["deps"] = self._deps_namespace
+        # Wrap deps namespace if runtime deps disabled
+        if not self._config.allow_runtime_deps:
+            self._namespace["deps"] = ControlledDepsNamespace(
+                self._deps_namespace, allow_runtime=False
+            )
+        else:
+            self._namespace["deps"] = self._deps_namespace
 
     async def __aenter__(self) -> InProcessExecutor:
         return self

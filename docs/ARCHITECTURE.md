@@ -228,7 +228,7 @@ class DepsStore(Protocol):
         """Remove a dependency from configuration."""
         ...
 
-    def list_all(self) -> list[str]:
+    def list(self) -> list[str]:
         """List all configured dependencies."""
         ...
 

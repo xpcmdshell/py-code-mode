@@ -284,18 +284,64 @@ Dependencies are persisted alongside your tools, skills, and artifacts:
 - **FileStorage**: Stored in `requirements.txt` in the storage directory
 - **RedisStorage**: Maintained in Redis keys with your configured prefix
 
-### MCP Deps Tools
+### Pre-configuring Dependencies
 
-When using the MCP server integration, agents also get access to deps management tools:
+Configure dependencies via storage before creating a session:
 
 ```python
-# Run via Claude Code MCP
-tools.list_deps()              # List all configured dependencies
-tools.add_dep("package")       # Add and install a dependency
-tools.remove_dep("package")    # Remove a dependency
+from pathlib import Path
+from py_code_mode import Session, FileStorage
+
+storage = FileStorage(base_path=Path("./data"))
+
+# Pre-configure deps before creating session
+deps_store = storage.get_deps_store()
+deps_store.add("pandas>=2.0")
+
+# Sync on session start
+async with Session(storage=storage, sync_deps_on_start=True) as session:
+    # pandas is now installed and available
+    result = await session.run("import pandas")
 ```
 
-These tools are automatically available through the MCP server, complementing the `deps` namespace.
+### Disabling Runtime Deps
+
+For security-sensitive environments, disable runtime dependency installation:
+
+```python
+from py_code_mode import Session, FileStorage
+from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
+
+storage = FileStorage(base_path=Path("./data"))
+
+# Lock down deps - no runtime installation allowed
+config = InProcessConfig(allow_runtime_deps=False)
+executor = InProcessExecutor(config=config)
+
+async with Session(storage=storage, executor=executor) as session:
+    # deps.add() and deps.remove() will raise RuntimeDepsDisabledError
+    # deps.list() still works (read-only)
+    result = await session.run("deps.list()")
+```
+
+### MCP Deps Tools
+
+When using the MCP server, these tools are available to Claude:
+
+- `list_deps` - List all configured dependencies
+- `add_dep(package)` - Add and install a dependency
+- `remove_dep(package)` - Remove a dependency from configuration
+
+These are MCP tools invoked directly by Claude, not Python code in `run_code`.
+
+Use the `--no-runtime-deps` flag to disable runtime dependency installation:
+
+```bash
+# Start MCP server with deps locked down
+py-code-mode-mcp --storage ~/.code-mode --no-runtime-deps
+```
+
+When `--no-runtime-deps` is set, `add_dep` and `remove_dep` tools are not registered, and agents can only list existing dependencies.
 
 ## Executors
 

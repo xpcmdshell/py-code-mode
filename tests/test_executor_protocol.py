@@ -426,7 +426,7 @@ class TestSubprocessExecutorAcceptsStorageBackend:
         storage.get_serializable_access = MagicMock(return_value=original_method())
 
         config = SubprocessConfig(
-            python_version="3.11",
+            python_version="3.12",
             venv_path=tmp_path / "venv",
         )
         executor = SubprocessExecutor(config=config)
@@ -460,7 +460,7 @@ class TestSubprocessExecutorRejectsOldTypes:
         )
 
         config = SubprocessConfig(
-            python_version="3.11",
+            python_version="3.12",
             venv_path=tmp_path / "venv",
         )
         executor = SubprocessExecutor(config=config)

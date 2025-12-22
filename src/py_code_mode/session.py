@@ -34,6 +34,7 @@ class Session:
         self,
         storage: StorageBackend | None = None,
         executor: Executor | None = None,
+        sync_deps_on_start: bool = False,
     ) -> None:
         """Initialize session.
 
@@ -42,6 +43,8 @@ class Session:
                     Required (cannot be None).
             executor: Executor instance (InProcessExecutor, ContainerExecutor).
                      Default: InProcessExecutor()
+            sync_deps_on_start: If True, install all configured dependencies
+                               when session starts. Default: False.
 
         Raises:
             TypeError: If executor is a string (unsupported).
@@ -72,11 +75,27 @@ class Session:
         self._executor: Executor | None = None
         self._started = False
         self._closed = False
+        self._sync_deps_on_start = sync_deps_on_start
 
     @property
     def storage(self) -> StorageBackend:
         """Access the storage backend."""
         return self._storage
+
+    async def _sync_deps(self) -> None:
+        """Sync configured dependencies by running deps.sync() via executor.
+
+        This method syncs pre-configured dependencies even when runtime deps are
+        disabled. It accesses the underlying DepsNamespace directly, bypassing
+        any ControlledDepsNamespace wrapper.
+        """
+        if self._executor is None:
+            return
+
+        # Get the underlying deps namespace, bypassing any wrapper
+        deps_ns = getattr(self._executor, "_deps_namespace", None)
+        if deps_ns is not None:
+            deps_ns.sync()
 
     async def start(self) -> None:
         """Initialize the executor and inject namespaces.
@@ -101,6 +120,10 @@ class Session:
         # - SubprocessExecutor: calls storage.get_serializable_access() internally
         await self._executor.start(storage=self._storage)
         self._started = True
+
+        # Sync dependencies if requested
+        if self._sync_deps_on_start:
+            await self._sync_deps()
 
     async def run(self, code: str, timeout: float | None = None) -> ExecutionResult:
         """Run Python code and return result.

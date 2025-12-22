@@ -4,7 +4,11 @@ Provides storage, installation, and namespace for Python package dependencies.
 """
 
 from py_code_mode.deps.installer import PackageInstaller, SyncResult
-from py_code_mode.deps.namespace import DepsNamespace
+from py_code_mode.deps.namespace import (
+    ControlledDepsNamespace,
+    DepsNamespace,
+    RuntimeDepsDisabledError,
+)
 from py_code_mode.deps.store import DepsStore, FileDepsStore, RedisDepsStore
 
 __all__ = [
@@ -14,4 +18,6 @@ __all__ = [
     "PackageInstaller",
     "SyncResult",
     "DepsNamespace",
+    "ControlledDepsNamespace",
+    "RuntimeDepsDisabledError",
 ]
