@@ -261,6 +261,26 @@ artifacts.list()
 artifacts.delete("research_results")
 ```
 
+## Dependency Management
+
+Manage execution environment dependencies on demand:
+
+```python
+# Add a package and install immediately
+deps.add("pandas")
+
+# List configured dependencies
+deps.list()
+
+# Remove a dependency from configuration
+deps.remove("pandas")
+
+# Ensure all configured dependencies are installed
+deps.sync()
+```
+
+Dependencies are persisted alongside your tools, skills, and artifacts. With `FileStorage`, they're stored in `requirements.txt`. With `RedisStorage`, they're maintained in Redis keys.
+
 ## Executors
 
 Three execution backends available:

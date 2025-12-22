@@ -14,6 +14,7 @@ import traceback
 from contextlib import redirect_stdout
 from typing import TYPE_CHECKING, Any
 
+from py_code_mode.deps import DepsNamespace
 from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
 from py_code_mode.execution.protocol import Capability, validate_storage_not_access
 from py_code_mode.execution.registry import register_backend
@@ -58,11 +59,13 @@ class InProcessExecutor:
         registry: ToolRegistry | None = None,
         skill_library: SkillLibrary | None = None,
         artifact_store: ArtifactStoreProtocol | None = None,
+        deps_namespace: DepsNamespace | None = None,
         default_timeout: float = 30.0,
     ) -> None:
         self._registry = registry
         self._skill_library = skill_library
         self._artifact_store: ArtifactStoreProtocol | None = artifact_store
+        self._deps_namespace: DepsNamespace | None = deps_namespace
         self._default_timeout = default_timeout
         self._namespace: dict[str, Any] = {"__builtins__": builtins}
         self._closed = False
@@ -78,6 +81,10 @@ class InProcessExecutor:
         # Inject artifacts namespace if artifact_store provided
         if artifact_store is not None:
             self._namespace["artifacts"] = artifact_store
+
+        # Inject deps namespace if provided
+        if deps_namespace is not None:
+            self._namespace["deps"] = deps_namespace
 
     def supports(self, capability: str) -> bool:
         """Check if this backend supports a capability."""
@@ -181,7 +188,7 @@ class InProcessExecutor:
     async def reset(self) -> None:
         """Reset session state.
 
-        Clears all user-defined variables but preserves tools, skills, artifacts namespaces.
+        Clears all user-defined variables but preserves tools, skills, artifacts, deps namespaces.
         """
         # Store namespace items we want to preserve
         preserved = {
@@ -189,6 +196,7 @@ class InProcessExecutor:
             "tools": self._namespace.get("tools"),
             "skills": self._namespace.get("skills"),
             "artifacts": self._namespace.get("artifacts"),
+            "deps": self._namespace.get("deps"),
         }
 
         # Clear everything
@@ -228,6 +236,9 @@ class InProcessExecutor:
 
         self._artifact_store = storage.get_artifact_store()
         self._namespace["artifacts"] = self._artifact_store
+
+        self._deps_namespace = storage.get_deps_namespace()
+        self._namespace["deps"] = self._deps_namespace
 
     async def __aenter__(self) -> InProcessExecutor:
         return self

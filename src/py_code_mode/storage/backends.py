@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from urllib.parse import quote
 
 from py_code_mode.artifacts import ArtifactStoreProtocol, FileArtifactStore, RedisArtifactStore
+from py_code_mode.deps import DepsNamespace, FileDepsStore, PackageInstaller, RedisDepsStore
 from py_code_mode.execution.protocol import FileStorageAccess, RedisStorageAccess
 from py_code_mode.skills import (
     FileSkillStore,
@@ -67,6 +68,13 @@ class StorageBackend(Protocol):
         """
         ...
 
+    def get_deps_namespace(self) -> DepsNamespace:
+        """Return DepsNamespace for in-process execution.
+
+        This method provides access to the deps namespace for executors.
+        """
+        ...
+
 
 class FileStorage:
     """File-based storage using directories for tools, skills, and artifacts."""
@@ -84,6 +92,7 @@ class FileStorage:
         self._cli_adapter: ToolAdapter | None = None
         self._skill_library: SkillLibrary | None = None
         self._artifact_store: FileArtifactStore | None = None
+        self._deps_namespace: DepsNamespace | None = None
 
     @property
     def root(self) -> Path:
@@ -166,6 +175,14 @@ class FileStorage:
         skills_path = self._get_skills_path()
         return FileSkillStore(skills_path)
 
+    def get_deps_namespace(self) -> DepsNamespace:
+        """Return DepsNamespace for in-process execution."""
+        if self._deps_namespace is None:
+            deps_store = FileDepsStore(self._base_path)
+            installer = PackageInstaller()
+            self._deps_namespace = DepsNamespace(store=deps_store, installer=installer)
+        return self._deps_namespace
+
     def to_bootstrap_config(self) -> dict[str, str]:
         """Serialize storage configuration for subprocess bootstrap.
 
@@ -198,6 +215,7 @@ class RedisStorage:
         self._cli_adapter: ToolAdapter | None = None
         self._skill_library: SkillLibrary | None = None
         self._artifact_store: RedisArtifactStore | None = None
+        self._deps_namespace: DepsNamespace | None = None
 
     @property
     def prefix(self) -> str:
@@ -293,6 +311,14 @@ class RedisStorage:
     def get_skill_store(self) -> SkillStore:
         """Return the underlying SkillStore for direct access."""
         return RedisSkillStore(self._redis, prefix=f"{self._prefix}:skills")
+
+    def get_deps_namespace(self) -> DepsNamespace:
+        """Return DepsNamespace for in-process execution."""
+        if self._deps_namespace is None:
+            deps_store = RedisDepsStore(self._redis, prefix=f"{self._prefix}:deps")
+            installer = PackageInstaller()
+            self._deps_namespace = DepsNamespace(store=deps_store, installer=installer)
+        return self._deps_namespace
 
     def to_bootstrap_config(self) -> dict[str, str]:
         """Serialize storage configuration for subprocess bootstrap.
