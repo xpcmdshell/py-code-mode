@@ -71,7 +71,6 @@ def empty_storage(tmp_path: Path) -> FileStorage:
 async def executor_with_storage(tmp_path: Path, storage_with_echo_tool: FileStorage):
     """Provide a started SubprocessExecutor with storage access."""
     config = SubprocessConfig(
-        python_version="3.12",
         venv_path=tmp_path / "venv",
         # Include py-code-mode as a base dep for full namespace functionality
         base_deps=("ipykernel", "py-code-mode"),
@@ -86,7 +85,6 @@ async def executor_with_storage(tmp_path: Path, storage_with_echo_tool: FileStor
 async def executor_empty_storage(tmp_path: Path, empty_storage: FileStorage):
     """Provide a started SubprocessExecutor with empty storage."""
     config = SubprocessConfig(
-        python_version="3.12",
         venv_path=tmp_path / "venv",
         base_deps=("ipykernel", "py-code-mode"),
     )
@@ -469,7 +467,6 @@ class TestStorageAccessIntegration:
         storage = FileStorage(base_path=base_path)
 
         config = SubprocessConfig(
-            python_version="3.12",
             venv_path=tmp_path / "venv",
             base_deps=("ipykernel", "py-code-mode"),
         )
@@ -524,7 +521,6 @@ skills.create(
         storage = FileStorage(base_path=base_path)
 
         config = SubprocessConfig(
-            python_version="3.12",
             venv_path=tmp_path / "venv",
             base_deps=("ipykernel", "py-code-mode"),
         )
@@ -575,7 +571,6 @@ class TestNamespaceInvariants:
         Breaks when: start() doesn't inject namespaces, lazy initialization fails.
         """
         config = SubprocessConfig(
-            python_version="3.12",
             venv_path=tmp_path / "venv",
             base_deps=("ipykernel", "py-code-mode"),
         )

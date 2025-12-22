@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
-import sys
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -23,9 +23,28 @@ from py_code_mode.execution.subprocess.venv import KernelVenv, VenvManager
 from py_code_mode.types import ExecutionResult
 
 
-def _get_current_python_version() -> str:
-    """Get current Python version in major.minor format."""
-    return f"{sys.version_info.major}.{sys.version_info.minor}"
+def _deserialize_value(text_repr: str | None) -> Any:
+    """Deserialize IPython text/plain representation to Python value.
+
+    IPython returns repr() of results as text/plain. This safely evaluates
+    Python literals (numbers, strings, bools, None, containers) using
+    ast.literal_eval. For complex objects that can't be literal-evaluated,
+    returns the string representation as-is.
+
+    Args:
+        text_repr: The text/plain representation from IPython.
+
+    Returns:
+        The Python value if it can be safely parsed, otherwise the string.
+    """
+    if text_repr is None:
+        return None
+
+    try:
+        return ast.literal_eval(text_repr)
+    except (ValueError, SyntaxError):
+        # Complex objects (custom classes, etc.) - return as string
+        return text_repr
 
 
 class SubprocessExecutor:
@@ -58,7 +77,7 @@ class SubprocessExecutor:
         Args:
             config: Configuration for venv and kernel. Uses defaults if None.
         """
-        self._config = config or SubprocessConfig(python_version=_get_current_python_version())
+        self._config = config or SubprocessConfig()
         self._venv_manager: VenvManager | None = None
         self._venv: KernelVenv | None = None
         self._km: AsyncKernelManager | None = None
@@ -178,7 +197,8 @@ class SubprocessExecutor:
                 elif stream_name == "stderr":
                     stderr_parts.append(content["text"])
             elif msg_type == "execute_result":
-                value = content["data"].get("text/plain")
+                text_repr = content["data"].get("text/plain")
+                value = _deserialize_value(text_repr)
             elif msg_type == "error":
                 error = "\n".join(content["traceback"])
             elif msg_type == "status" and content.get("execution_state") == "idle":

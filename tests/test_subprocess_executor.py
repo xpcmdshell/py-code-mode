@@ -18,15 +18,21 @@ class TestSubprocessConfig:
     # Default Values
     # =========================================================================
 
+    def test_default_python_version_auto_detects(self) -> None:
+        """Default python_version auto-detects current Python version."""
+        config = SubprocessConfig()
+        expected = f"{sys.version_info.major}.{sys.version_info.minor}"
+        assert config.python_version == expected
+
     def test_default_venv_path_is_none(self) -> None:
         """Default venv_path is None (auto-create in temp)."""
         config = SubprocessConfig(python_version="3.11")
         assert config.venv_path is None
 
     def test_default_base_deps(self) -> None:
-        """Default base_deps includes ipykernel."""
+        """Default base_deps includes ipykernel and py-code-mode."""
         config = SubprocessConfig(python_version="3.11")
-        assert config.base_deps == ("ipykernel",)
+        assert config.base_deps == ("ipykernel", "py-code-mode")
 
     def test_default_startup_timeout(self) -> None:
         """Default startup_timeout is 30.0 seconds."""
@@ -305,6 +311,8 @@ class TestVenvManagerCreate:
 
     These tests actually run uv to create venvs. They are slow (~5-10s each)
     and should not run in parallel to avoid resource contention.
+
+    Uses minimal base_deps (ipykernel only) to avoid slow py-code-mode install.
     """
 
     # =========================================================================
@@ -315,7 +323,11 @@ class TestVenvManagerCreate:
     async def test_creates_venv_at_specified_path(self, tmp_path: Path) -> None:
         """Creates venv directory at config.venv_path when specified."""
         venv_path = tmp_path / "my-venv"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
 
         result = await manager.create()
@@ -327,7 +339,11 @@ class TestVenvManagerCreate:
     @pytest.mark.asyncio
     async def test_creates_temp_venv_when_path_is_none(self) -> None:
         """Creates venv in temp directory when venv_path is None."""
-        config = SubprocessConfig(python_version="3.11", venv_path=None)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=None,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
 
         result = await manager.create()
@@ -349,7 +365,11 @@ class TestVenvManagerCreate:
     async def test_venv_contains_python_executable(self, tmp_path: Path) -> None:
         """Created venv contains a working Python executable."""
         venv_path = tmp_path / "venv-with-python"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
 
         result = await manager.create()
@@ -366,7 +386,11 @@ class TestVenvManagerCreate:
     async def test_uses_python_version_from_config(self, tmp_path: Path) -> None:
         """Venv uses the Python version specified in config."""
         venv_path = tmp_path / "venv-version-test"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
 
         result = await manager.create()
@@ -390,7 +414,11 @@ class TestVenvManagerCreate:
     async def test_installs_ipykernel_in_venv(self, tmp_path: Path) -> None:
         """ipykernel is installed in the created venv."""
         venv_path = tmp_path / "venv-ipykernel"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
 
         result = await manager.create()
@@ -435,7 +463,11 @@ class TestVenvManagerCreate:
     async def test_installs_extra_deps_when_provided(self, tmp_path: Path) -> None:
         """Installs extra_deps when provided to create()."""
         venv_path = tmp_path / "venv-extra-deps"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
 
         result = await manager.create(extra_deps=["requests"])
@@ -459,7 +491,11 @@ class TestVenvManagerCreate:
     async def test_returns_kernel_spec_name(self, tmp_path: Path) -> None:
         """Returns KernelVenv with kernel_spec_name populated."""
         venv_path = tmp_path / "venv-kernel-spec"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
 
         result = await manager.create()
@@ -472,8 +508,16 @@ class TestVenvManagerCreate:
         """Each created venv gets a unique kernel_spec_name."""
         venv_path_1 = tmp_path / "venv-1"
         venv_path_2 = tmp_path / "venv-2"
-        config_1 = SubprocessConfig(python_version="3.11", venv_path=venv_path_1)
-        config_2 = SubprocessConfig(python_version="3.11", venv_path=venv_path_2)
+        config_1 = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path_1,
+            base_deps=("ipykernel",),
+        )
+        config_2 = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path_2,
+            base_deps=("ipykernel",),
+        )
         manager_1 = VenvManager(config_1)
         manager_2 = VenvManager(config_2)
 
@@ -486,7 +530,11 @@ class TestVenvManagerCreate:
     async def test_installs_kernel_spec(self, tmp_path: Path) -> None:
         """Kernel spec is installed and discoverable by jupyter."""
         venv_path = tmp_path / "venv-kernel-install"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
 
         result = await manager.create()
@@ -514,13 +562,19 @@ class TestVenvManagerAddPackage:
 
     These tests actually run uv to install packages. They are slow and
     should not run in parallel.
+
+    Uses minimal base_deps (ipykernel only) to avoid slow py-code-mode install.
     """
 
     @pytest.mark.asyncio
     async def test_installs_package_to_venv(self, tmp_path: Path) -> None:
         """add_package() installs package to the venv."""
         venv_path = tmp_path / "venv-add-pkg"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
         venv = await manager.create()
 
@@ -549,7 +603,11 @@ class TestVenvManagerAddPackage:
     async def test_package_available_immediately(self, tmp_path: Path) -> None:
         """Package is importable immediately after add_package() returns."""
         venv_path = tmp_path / "venv-immediate"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
         venv = await manager.create()
 
@@ -571,7 +629,11 @@ class TestVenvManagerAddPackage:
     async def test_add_package_with_version_spec(self, tmp_path: Path) -> None:
         """add_package() accepts version specifiers."""
         venv_path = tmp_path / "venv-version-spec"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
         venv = await manager.create()
 
@@ -599,13 +661,20 @@ class TestVenvManagerAddPackage:
 @pytest.mark.slow
 @pytest.mark.xdist_group("venv")
 class TestVenvManagerCleanup:
-    """Tests for VenvManager.cleanup() - venv removal."""
+    """Tests for VenvManager.cleanup() - venv removal.
+
+    Uses minimal base_deps (ipykernel only) to avoid slow py-code-mode install.
+    """
 
     @pytest.mark.asyncio
     async def test_removes_venv_directory(self, tmp_path: Path) -> None:
         """cleanup() removes the venv directory."""
         venv_path = tmp_path / "venv-to-cleanup"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
         venv = await manager.create()
 
@@ -619,7 +688,11 @@ class TestVenvManagerCleanup:
     async def test_cleanup_safe_if_venv_does_not_exist(self, tmp_path: Path) -> None:
         """cleanup() does not raise if venv already deleted."""
         venv_path = tmp_path / "venv-already-gone"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
         venv = await manager.create()
 
@@ -634,7 +707,11 @@ class TestVenvManagerCleanup:
     async def test_cleanup_removes_all_venv_contents(self, tmp_path: Path) -> None:
         """cleanup() removes venv including all installed packages."""
         venv_path = tmp_path / "venv-full-cleanup"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
         venv = await manager.create()
 
@@ -661,6 +738,8 @@ class TestVenvManagerErrors:
 
     These tests verify that VenvManager fails loudly with clear error messages
     rather than silently falling back or guessing.
+
+    Uses minimal base_deps (ipykernel only) to avoid slow py-code-mode install.
     """
 
     @pytest.mark.asyncio
@@ -671,7 +750,11 @@ class TestVenvManagerErrors:
         # Remove uv from PATH by setting empty PATH
         monkeypatch.setenv("PATH", "")
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
 
         with pytest.raises(RuntimeError, match="uv is required but not found"):
@@ -684,6 +767,7 @@ class TestVenvManagerErrors:
         config = SubprocessConfig(
             python_version="99.99",  # Impossible version
             venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
         )
         manager = VenvManager(config)
 
@@ -700,7 +784,11 @@ class TestVenvManagerErrors:
     async def test_package_install_failure_propagates_with_context(self, tmp_path: Path) -> None:
         """Package install failure propagates with context about what failed."""
         venv_path = tmp_path / "venv-bad-pkg"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
         venv = await manager.create()
 
@@ -717,7 +805,11 @@ class TestVenvManagerErrors:
     async def test_invalid_extra_deps_propagates_error(self, tmp_path: Path) -> None:
         """Invalid extra_deps in create() propagates error with context."""
         venv_path = tmp_path / "venv-bad-extra"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
 
         # Try to create with a non-existent extra dep
@@ -740,13 +832,19 @@ class TestVenvManagerPackageValidation:
 
     These tests ensure that malicious package specifiers cannot be used
     to inject arbitrary arguments into pip/uv commands.
+
+    Uses minimal base_deps (ipykernel only) to avoid slow py-code-mode install.
     """
 
     @pytest.mark.asyncio
     async def test_add_package_rejects_dash_prefix(self, tmp_path: Path) -> None:
         """add_package() rejects package names starting with dash (argument injection)."""
         venv_path = tmp_path / "venv-dash"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
         venv = await manager.create()
 
@@ -757,7 +855,11 @@ class TestVenvManagerPackageValidation:
     async def test_add_package_rejects_double_dash_prefix(self, tmp_path: Path) -> None:
         """add_package() rejects package names starting with double dash."""
         venv_path = tmp_path / "venv-double-dash"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
         venv = await manager.create()
 
@@ -768,7 +870,11 @@ class TestVenvManagerPackageValidation:
     async def test_add_package_rejects_shell_metacharacters(self, tmp_path: Path) -> None:
         """add_package() rejects package names with shell metacharacters."""
         venv_path = tmp_path / "venv-shell"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
         venv = await manager.create()
 
@@ -779,7 +885,11 @@ class TestVenvManagerPackageValidation:
     async def test_extra_deps_rejects_dash_prefix(self, tmp_path: Path) -> None:
         """create() extra_deps rejects package names starting with dash."""
         venv_path = tmp_path / "venv-extra-dash"
-        config = SubprocessConfig(python_version="3.11", venv_path=venv_path)
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
         manager = VenvManager(config)
 
         with pytest.raises(ValueError, match="starts with -"):
@@ -930,14 +1040,22 @@ class TestSubprocessExecutorCapabilities:
 @pytest.mark.slow
 @pytest.mark.xdist_group("subprocess")
 class TestSubprocessExecutorLifecycle:
-    """Tests for SubprocessExecutor lifecycle (start/close/context manager)."""
+    """Tests for SubprocessExecutor lifecycle (start/close/context manager).
+
+    Most tests use minimal base_deps (ipykernel only) to avoid slow py-code-mode install.
+    Tests that verify namespace injection explicitly include py-code-mode.
+    """
 
     @pytest.mark.asyncio
     async def test_start_creates_kernel_that_can_execute(self, tmp_path: Path) -> None:
         """start() creates a kernel that can execute code."""
         from py_code_mode.execution.subprocess import SubprocessExecutor
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
+        )
         executor = SubprocessExecutor(config=config)
 
         try:
@@ -984,7 +1102,11 @@ class TestSubprocessExecutorLifecycle:
         """close() shuts down the kernel."""
         from py_code_mode.execution.subprocess import SubprocessExecutor
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
+        )
         executor = SubprocessExecutor(config=config)
 
         await executor.start()
@@ -1003,6 +1125,7 @@ class TestSubprocessExecutorLifecycle:
         config = SubprocessConfig(
             python_version="3.11",
             venv_path=venv_path,
+            base_deps=("ipykernel",),
             cleanup_venv_on_close=True,
         )
         executor = SubprocessExecutor(config=config)
@@ -1022,6 +1145,7 @@ class TestSubprocessExecutorLifecycle:
         config = SubprocessConfig(
             python_version="3.11",
             venv_path=venv_path,
+            base_deps=("ipykernel",),
             cleanup_venv_on_close=False,
         )
         executor = SubprocessExecutor(config=config)
@@ -1041,6 +1165,7 @@ class TestSubprocessExecutorLifecycle:
         config = SubprocessConfig(
             python_version="3.11",
             venv_path=venv_path,
+            base_deps=("ipykernel",),
             cleanup_venv_on_close=True,
         )
 
@@ -1060,14 +1185,21 @@ class TestSubprocessExecutorLifecycle:
 @pytest.mark.slow
 @pytest.mark.xdist_group("subprocess")
 class TestSubprocessExecutorRun:
-    """Tests for SubprocessExecutor.run() - basic code execution."""
+    """Tests for SubprocessExecutor.run() - basic code execution.
+
+    Uses minimal base_deps (ipykernel only) to avoid slow py-code-mode install.
+    """
 
     @pytest.fixture
     async def executor(self, tmp_path: Path):
         """Provide a started SubprocessExecutor for tests."""
         from py_code_mode.execution.subprocess import SubprocessExecutor
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
+        )
         exec = SubprocessExecutor(config=config)
         await exec.start()
         yield exec
@@ -1151,6 +1283,8 @@ class TestSubprocessExecutorAsync:
     """Tests for SubprocessExecutor top-level await support.
 
     This is a KEY DIFFERENTIATOR from InProcessExecutor.
+
+    Uses minimal base_deps (ipykernel only) to avoid slow py-code-mode install.
     """
 
     @pytest.fixture
@@ -1158,7 +1292,11 @@ class TestSubprocessExecutorAsync:
         """Provide a started SubprocessExecutor for tests."""
         from py_code_mode.execution.subprocess import SubprocessExecutor
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
+        )
         exec = SubprocessExecutor(config=config)
         await exec.start()
         yield exec
@@ -1239,14 +1377,21 @@ result
 @pytest.mark.slow
 @pytest.mark.xdist_group("subprocess")
 class TestSubprocessExecutorState:
-    """Tests for SubprocessExecutor state persistence between runs."""
+    """Tests for SubprocessExecutor state persistence between runs.
+
+    Uses minimal base_deps (ipykernel only) to avoid slow py-code-mode install.
+    """
 
     @pytest.fixture
     async def executor(self, tmp_path: Path):
         """Provide a started SubprocessExecutor for tests."""
         from py_code_mode.execution.subprocess import SubprocessExecutor
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
+        )
         exec = SubprocessExecutor(config=config)
         await exec.start()
         yield exec
@@ -1298,7 +1443,10 @@ class TestSubprocessExecutorState:
 @pytest.mark.slow
 @pytest.mark.xdist_group("subprocess")
 class TestSubprocessExecutorTimeout:
-    """Tests for SubprocessExecutor timeout behavior."""
+    """Tests for SubprocessExecutor timeout behavior.
+
+    Uses minimal base_deps (ipykernel only) to avoid slow py-code-mode install.
+    """
 
     @pytest.fixture
     async def executor(self, tmp_path: Path):
@@ -1308,6 +1456,7 @@ class TestSubprocessExecutorTimeout:
         config = SubprocessConfig(
             python_version="3.11",
             venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
             default_timeout=2.0,  # Short timeout for tests
         )
         exec = SubprocessExecutor(config=config)
@@ -1345,6 +1494,7 @@ time.sleep(10)  # Sleep longer than timeout
         config = SubprocessConfig(
             python_version="3.11",
             venv_path=tmp_path / "venv-timeout",
+            base_deps=("ipykernel",),
             default_timeout=1.0,  # Very short
         )
         async with SubprocessExecutor(config=config) as executor:
@@ -1434,6 +1584,8 @@ class TestSubprocessExecutorErrors:
     """Tests for SubprocessExecutor error handling.
 
     NO silent fallbacks - errors should propagate with clear messages.
+
+    Uses minimal base_deps (ipykernel only) to avoid slow py-code-mode install.
     """
 
     @pytest.mark.asyncio
@@ -1441,7 +1593,11 @@ class TestSubprocessExecutorErrors:
         """run() on closed executor returns error in result."""
         from py_code_mode.execution.subprocess import SubprocessExecutor
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
+        )
         executor = SubprocessExecutor(config=config)
 
         await executor.start()
@@ -1455,7 +1611,11 @@ class TestSubprocessExecutorErrors:
         """start() called twice either raises or is idempotent."""
         from py_code_mode.execution.subprocess import SubprocessExecutor
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
+        )
         executor = SubprocessExecutor(config=config)
 
         try:
@@ -1480,7 +1640,11 @@ class TestSubprocessExecutorErrors:
         """Syntax errors are captured in ExecutionResult.error."""
         from py_code_mode.execution.subprocess import SubprocessExecutor
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
+        )
         async with SubprocessExecutor(config=config) as executor:
             result = await executor.run("def broken(")
 
@@ -1492,7 +1656,11 @@ class TestSubprocessExecutorErrors:
         """Import errors are captured in ExecutionResult.error."""
         from py_code_mode.execution.subprocess import SubprocessExecutor
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
+        )
         async with SubprocessExecutor(config=config) as executor:
             result = await executor.run("import this_module_does_not_exist_xyz")
 
@@ -1504,7 +1672,11 @@ class TestSubprocessExecutorErrors:
         """Attribute errors are captured in ExecutionResult.error."""
         from py_code_mode.execution.subprocess import SubprocessExecutor
 
-        config = SubprocessConfig(python_version="3.11", venv_path=tmp_path / "venv")
+        config = SubprocessConfig(
+            python_version="3.11",
+            venv_path=tmp_path / "venv",
+            base_deps=("ipykernel",),
+        )
         async with SubprocessExecutor(config=config) as executor:
             result = await executor.run("'hello'.nonexistent_method()")
 
