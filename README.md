@@ -5,103 +5,23 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **Note:** This project is new and under active development. Expect breaking changes.
+Give your AI agents code execution with persistent skills and tool integration.
 
-Make your agents' tool orchestration more robust over time.
+## The Core Idea
 
-## The Problem
+Multi-step agent workflows are fragile. Each step requires a new LLM call that can hallucinate, pick the wrong tool, or lose context.
 
-Complex workflows with LLMs are fragile. Each step is an LLM call that can hallucinate, pick the wrong tool, or lose context. A 5-tool workflow = 5 chances to fail.
-
-## The Solution
-
-Agents write Python code strings. You execute them with `tools`, `skills`, and `artifacts` available:
-
-```python
-await session.run(agent_code)  # agent_code is a string the LLM generated
-```
-
-When a workflow succeeds, the agent saves it as a skill. Next time, it calls the skill directly - no multi-step reasoning required.
-
-Here's what the agent's code looks like:
-
-```python
-# First time: agent needs to scrape Hacker News
-results = skills.search("scrape hacker news")
-# returns: []  (no matching skills yet)
-
-# Agent iterates to figure out the structure
-content = tools.fetch(url="https://news.ycombinator.com")
-
-import re
-# Attempt 1: try to find links
-matches = re.findall(r'<a href="([^"]+)"', content)  # too many results, includes nav links
-
-# Attempt 2: look for title pattern
-matches = re.findall(r'class="title".*?href="([^"]+)"', content)  # wrong class name
-
-# Attempt 3: inspect more carefully, find the right selector
-matches = re.findall(r'class="titleline"><a href="([^"]+)".*?>([^<]+)</a>', content)  # works!
-
-# Now save the working solution
-skills.create(
-    name="scrape_hn_stories",
-    source='''
-def run(num_stories: int = 30) -> list:
-    import re
-    content = tools.fetch(url="https://news.ycombinator.com")
-    matches = re.findall(r'class="titleline"><a href="([^"]+)".*?>([^<]+)</a>', content)
-    return [{"url": url, "title": title} for url, title in matches[:num_stories]]
-''',
-    description="Extract top stories from Hacker News"
-)
+**py-code-mode takes a different approach:** Agents write Python code. When a workflow succeeds, they save it as a **skill**. Next time they need that capability, they invoke the skill directly—no re-planning required.
 
 ```
-
-Next time the agent needs this:
-
-```python
-# Agent searches for a relevant skill
-results = skills.search("scrape hacker news")
-# returns: [{"name": "scrape_hn_stories", "description": "Extract top stories from Hacker News", "params": {"num_stories": "int"}}]
-
-# Found one - just call it, no iteration needed
-stories = skills.scrape_hn_stories(num_stories=10)
+First time:  Problem → Iterate → Success → Save as Skill
+Next time:   Search Skills → Found! → Invoke (no iteration needed)
+Later:       Skill A + Skill B → Compose into Skill C
 ```
 
-Skills accumulate. Your agents get more reliable over time.
-
-## Installation
-
-```bash
-uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.4.0
-```
+Over time, agents build a library of reliable capabilities. Simple skills become building blocks for complex workflows.
 
 ## Quick Start
-
-### Claude Code (MCP)
-
-**Global installation** (recommended - available in all directories):
-
-```bash
-claude mcp add -s user py-code-mode \
-  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.4.0 \
-  py-code-mode-mcp --storage ~/.code-mode
-```
-
-**Project-scoped installation** (only available in the current project):
-
-```bash
-claude mcp add -s project py-code-mode \
-  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.4.0 \
-  py-code-mode-mcp --storage ./.code-mode
-```
-
-> **Note:** Without `-s user` or `-s project`, `claude mcp add` defaults to project scope based on your current directory. If you install from `~` without a scope flag, the server only works in that directory.
-
-Verify your installation with `claude mcp list`. The storage directory will contain `tools/`, `skills/`, and `artifacts/` subdirectories.
-
-### Python
 
 ```python
 from pathlib import Path
@@ -110,286 +30,87 @@ from py_code_mode import Session, FileStorage
 storage = FileStorage(base_path=Path("./data"))
 
 async with Session(storage=storage) as session:
-    # Agent code runs with tools, skills, artifacts available
-    result = await session.run('skills.search("research")')
+    # Agent writes code with tools, skills, and artifacts available
+    result = await session.run('''
+# Search for existing skills
+results = skills.search("github analysis")
+
+# Or create a new workflow
+import json
+repo_data = tools.curl.get(url="https://api.github.com/repos/anthropics/anthropic-sdk-python")
+parsed = json.loads(repo_data)
+
+# Save successful workflows as skills
+skills.create(
+    name="fetch_repo_stars",
+    source="""def run(owner: str, repo: str) -> int:
+    import json
+    data = tools.curl.get(url=f"https://api.github.com/repos/{owner}/{repo}")
+    return json.loads(data)["stargazers_count"]
+    """,
+    description="Get GitHub repository star count"
+)
+''')
 ```
 
-## What Agents Get
-
-Three namespaces injected into their execution environment:
-
-- **tools** - Your CLI commands, MCP servers, and APIs wrapped as functions
-- **skills** - Reusable workflows (agent-created or human-authored)
-- **artifacts** - Persistent storage across sessions
-
-## Defining Tools
-
-Wrap external capabilities as YAML. Three types supported:
-
-**CLI tools** - wrap command-line programs with schema + recipes:
-
-```yaml
-# tools/curl.yaml
-name: curl
-description: Make HTTP requests
-command: curl
-timeout: 60
-
-schema:
-  options:
-    silent:
-      type: boolean
-      short: s
-      description: Silent mode
-    location:
-      type: boolean
-      short: L
-      description: Follow redirects
-    header:
-      type: array
-      short: H
-      description: HTTP headers
-    data:
-      type: string
-      short: d
-      description: POST data
-  positional:
-    - name: url
-      type: string
-      required: true
-
-recipes:
-  get:
-    description: Simple GET request
-    preset:
-      silent: true
-      location: true
-    params:
-      url: {}
-
-  post:
-    description: POST request with data
-    preset:
-      silent: true
-      location: true
-    params:
-      url: {}
-      data: {}
-```
-
-Agent invocation:
-
-```python
-# Recipe invocation (recommended)
-tools.curl.get(url="https://example.com")
-tools.curl.post(url="https://api.example.com/data", data='{"key": "value"}')
-
-# Escape hatch - raw tool invocation (all options available)
-tools.curl(url="https://example.com", silent=True, location=True, header=["Accept: application/json"])
-
-# Discovery
-tools.list()                    # Returns list[Tool] with .name, .description, .callables
-tools.search("http")            # Search tools by name/description
-tools.curl.list()               # List recipes for a tool
-```
-
-**MCP tools** - connect to MCP servers:
-
-```yaml
-# tools/fetch.yaml
-name: fetch
-type: mcp
-transport: stdio
-command: uvx
-args: ["mcp-server-fetch"]
-description: Fetch web pages with full content extraction
-```
-
-**HTTP tools** - wrap REST APIs (defined in Python):
-
-```python
-from py_code_mode.tools.adapters import HTTPAdapter, Endpoint
-
-adapter = HTTPAdapter(base_url="https://api.example.com")
-adapter.add_endpoint(Endpoint(
-    name="get_user",
-    method="GET",
-    path="/users/{user_id}",
-    description="Get user by ID"
-))
-```
-
-## Seeding Skills
-
-Pre-author skills for agents to find:
-
-```python
-# skills/fetch_and_summarize.py
-"""Fetch a URL and extract key information."""
-
-def run(url: str) -> dict:
-    content = tools.fetch(url=url)
-    # Extract first paragraph as summary
-    paragraphs = [p for p in content.split("\n\n") if p.strip()]
-    return {"url": url, "summary": paragraphs[0] if paragraphs else "", "word_count": len(content.split())}
-```
-
-Or let agents create them at runtime via `skills.create()`.
-
-**Managing skills:**
-
-```python
-# Delete a skill
-skills.delete("scrape_hn_stories")
-```
-
-## Artifacts
-
-Store and retrieve data across sessions:
-
-```python
-# Save data
-artifacts.save("research_results", {"findings": [...], "sources": [...]})
-
-# Load data
-data = artifacts.load("research_results")
-
-# List all artifacts
-artifacts.list()
-
-# Delete an artifact
-artifacts.delete("research_results")
-```
-
-## Dependency Management
-
-Manage execution environment dependencies on demand:
-
-```python
-# Add a package and install immediately
-deps.add("pandas>=2.0")
-
-# List configured dependencies
-deps.list()
-
-# Remove a dependency from configuration
-deps.remove("pandas")
-
-# Ensure all configured dependencies are installed
-deps.sync()
-```
-
-Dependencies are persisted alongside your tools, skills, and artifacts:
-
-- **FileStorage**: Stored in `requirements.txt` in the storage directory
-- **RedisStorage**: Maintained in Redis keys with your configured prefix
-
-### Pre-configuring Dependencies
-
-Configure dependencies via storage before creating a session:
-
-```python
-from pathlib import Path
-from py_code_mode import Session, FileStorage
-
-storage = FileStorage(base_path=Path("./data"))
-
-# Pre-configure deps before creating session
-deps_store = storage.get_deps_store()
-deps_store.add("pandas>=2.0")
-
-# Sync on session start
-async with Session(storage=storage, sync_deps_on_start=True) as session:
-    # pandas is now installed and available
-    result = await session.run("import pandas")
-```
-
-### Disabling Runtime Deps
-
-For security-sensitive environments, disable runtime dependency installation:
-
-```python
-from py_code_mode import Session, FileStorage
-from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
-
-storage = FileStorage(base_path=Path("./data"))
-
-# Lock down deps - no runtime installation allowed
-config = InProcessConfig(allow_runtime_deps=False)
-executor = InProcessExecutor(config=config)
-
-async with Session(storage=storage, executor=executor) as session:
-    # deps.add() and deps.remove() will raise RuntimeDepsDisabledError
-    # deps.list() still works (read-only)
-    result = await session.run("deps.list()")
-```
-
-### MCP Deps Tools
-
-When using the MCP server, these tools are available to Claude:
-
-- `list_deps` - List all configured dependencies
-- `add_dep(package)` - Add and install a dependency
-- `remove_dep(package)` - Remove a dependency from configuration
-
-These are MCP tools invoked directly by Claude, not Python code in `run_code`.
-
-Use the `--no-runtime-deps` flag to disable runtime dependency installation:
+**Also ships as an MCP server for Claude Code:**
 
 ```bash
-# Start MCP server with deps locked down
-py-code-mode-mcp --storage ~/.code-mode --no-runtime-deps
+claude mcp add py-code-mode -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.4.0 py-code-mode-mcp
 ```
 
-When `--no-runtime-deps` is set, `add_dep` and `remove_dep` tools are not registered, and agents can only list existing dependencies.
+## Three Namespaces
 
-## Executors
+When agents write code, three namespaces are available:
 
-Three execution backends available:
-
-- **InProcessExecutor** (default) - Same process, fastest, no isolation
-- **SubprocessExecutor** - Jupyter kernel in subprocess, process isolation without Docker
-- **ContainerExecutor** - Docker container, full isolation for untrusted code
+**tools**: CLI commands, MCP servers, and REST APIs wrapped as callable functions
+**skills**: Reusable Python workflows with semantic search
+**artifacts**: Persistent data storage across sessions
 
 ```python
-from pathlib import Path
-from py_code_mode import Session, FileStorage
-from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
+# Tools: external capabilities
+tools.curl.get(url="https://api.example.com/data")
+tools.jq.query(filter=".key", input=json_data)
 
-storage = FileStorage(base_path=Path("./data"))
+# Skills: reusable workflows
+analysis = skills.invoke("analyze_repo", owner="anthropics", repo="anthropic-sdk-python")
 
-# Subprocess: process isolation without Docker overhead
-executor = SubprocessExecutor(SubprocessConfig(
-    python_version="3.11",
-    default_timeout=120.0,
-))
+# Skills can build on other skills
+def run(repos: list) -> dict:
+    summaries = [skills.invoke("analyze_repo", **parse_repo(r)) for r in repos]
+    return {"total": len(summaries), "results": summaries}
 
-async with Session(storage=storage, executor=executor) as session:
-    result = await session.run(agent_code)
+# Artifacts: persistent storage
+artifacts.save("results", data)
+cached = artifacts.load("results")
 ```
 
-## Production
+## Installation
 
-- **Redis storage** - One agent learns, all agents benefit
-- **Container isolation** - Execute untrusted agent code safely
-
-```python
-from py_code_mode import Session, RedisStorage
-from py_code_mode.execution import ContainerExecutor, ContainerConfig
-
-storage = RedisStorage(redis=client, prefix="my-agents")
-executor = ContainerExecutor(ContainerConfig(timeout=60.0))
-
-async with Session(storage=storage, executor=executor) as session:
-    result = await session.run(agent_code)
+```bash
+uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.4.0
 ```
+
+For MCP server installation, see [Getting Started](./docs/getting-started.md).
+
+## Documentation
+
+- **[Getting Started](./docs/getting-started.md)** - Installation, first session, basic usage
+- **[Tools](./docs/tools.md)** - CLI, MCP, and REST API adapters
+- **[Skills](./docs/skills.md)** - Creating, composing, and managing workflows
+- **[Artifacts](./docs/artifacts.md)** - Persistent data storage patterns
+- **[Dependencies](./docs/dependencies.md)** - Managing Python packages
+- **[Executors](./docs/executors.md)** - InProcess, Subprocess, Container execution
+- **[Storage](./docs/storage.md)** - File vs Redis storage backends
+- **[Production](./docs/production.md)** - Deployment and scaling patterns
+- **[Architecture](./docs/ARCHITECTURE.md)** - System design and separation of concerns
 
 ## Examples
 
-- **minimal/** - Simple agent in ~100 lines
-- **subprocess/** - SubprocessExecutor usage
-- **autogen-direct/** - AutoGen integration
-- **azure-container-apps/** - Production deployment
+- **[minimal/](./examples/minimal/)** - Simple agent implementation (~100 lines)
+- **[subprocess/](./examples/subprocess/)** - Process isolation without Docker
+- **[autogen-direct/](./examples/autogen-direct/)** - AutoGen framework integration
+- **[azure-container-apps/](./examples/azure-container-apps/)** - Production deployment
 
 ## License
 
