@@ -385,7 +385,7 @@ def run(name: str) -> str:
 ''')
 
             # Step 1: Get tool registry
-            tool_registry = storage.get_tool_registry()
+            tool_registry = await storage.get_tool_registry()
             assert isinstance(tool_registry, ToolRegistry)
 
             # Step 2: Get skill library
@@ -432,7 +432,7 @@ def run(name: str) -> str:
             skill_store.save(test_skill)
 
             # Step 1: Get tool registry
-            tool_registry = storage.get_tool_registry()
+            tool_registry = await storage.get_tool_registry()
             assert isinstance(tool_registry, ToolRegistry)
 
             # Step 2: Get skill library
@@ -465,7 +465,7 @@ def run(name: str) -> str:
 
             storage = FileStorage(tmp_path)
 
-            result = storage.get_tool_registry()
+            result = await storage.get_tool_registry()
 
             assert isinstance(result, ToolRegistry)
 
@@ -520,7 +520,7 @@ recipes:
       arg: {}
 """)
 
-            registry = storage.get_tool_registry()
+            registry = await storage.get_tool_registry()
 
             tools = registry.list_tools()
             tool_names = [t.name for t in tools]
@@ -568,7 +568,7 @@ def run() -> str:
             storage = FileStorage(tmp_path)
             # Don't create tools/ directory
 
-            registry = storage.get_tool_registry()
+            registry = await storage.get_tool_registry()
 
             tools = registry.list_tools()
             assert len(tools) == 0
@@ -613,7 +613,7 @@ def run() -> str:
 
             storage = RedisStorage(mock_redis, prefix="test")
 
-            result = storage.get_tool_registry()
+            result = await storage.get_tool_registry()
 
             assert isinstance(result, ToolRegistry)
 
@@ -663,7 +663,7 @@ def run() -> str:
             hash_key = "test:tools:__tools__"
             mock_redis._data[hash_key] = {"test_tool": json.dumps(tool_config)}
 
-            registry = storage.get_tool_registry()
+            registry = await storage.get_tool_registry()
 
             tools = registry.list_tools()
             tool_names = [t.name for t in tools]
@@ -711,7 +711,7 @@ def run() -> str:
             storage = RedisStorage(mock_redis, prefix="test")
             # Don't store any tools
 
-            registry = storage.get_tool_registry()
+            registry = await storage.get_tool_registry()
 
             tools = registry.list_tools()
             assert len(tools) == 0
@@ -780,7 +780,7 @@ def run() -> str:
     return "test"
 ''')
 
-            registry = storage.get_tool_registry()
+            registry = await storage.get_tool_registry()
             library = storage.get_skill_library()
 
             # Both should see the content
@@ -844,7 +844,7 @@ def run() -> str:
             (tools_dir / "broken.yaml").write_text("{ invalid yaml content ]")
 
             # Should not raise
-            registry = storage.get_tool_registry()
+            registry = await storage.get_tool_registry()
             assert isinstance(registry, ToolRegistry)
 
         @pytest.mark.asyncio
@@ -887,7 +887,7 @@ def run() -> str:
             (tools_dir / "notes.md").write_text("# Notes")
 
             # Should not raise
-            registry = storage.get_tool_registry()
+            registry = await storage.get_tool_registry()
             tools = registry.list_tools()
             assert len(tools) == 0
 
@@ -930,7 +930,7 @@ def run() -> str:
             mock_redis._data["test:tools:broken"] = "{ invalid json ]"
 
             # Should not raise
-            registry = storage.get_tool_registry()
+            registry = await storage.get_tool_registry()
             assert isinstance(registry, ToolRegistry)
 
         @pytest.mark.asyncio

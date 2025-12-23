@@ -122,7 +122,8 @@ class TestBootstrapNamespaces:
     # File Storage Bootstrapping
     # =========================================================================
 
-    def test_bootstrap_file_storage_returns_bundle(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_file_storage_returns_bundle(self, tmp_path: Path) -> None:
         """bootstrap_namespaces() with file config returns NamespaceBundle.
 
         Setup: Config dict with type="file" and base_path
@@ -141,11 +142,12 @@ class TestBootstrapNamespaces:
             "base_path": str(tmp_path),
         }
 
-        result = bootstrap_namespaces(config)
+        result = await bootstrap_namespaces(config)
 
         assert isinstance(result, NamespaceBundle)
 
-    def test_bootstrap_file_storage_bundle_has_tools_namespace(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_file_storage_bundle_has_tools_namespace(self, tmp_path: Path) -> None:
         """File bootstrap returns bundle with ToolsNamespace for tools.
 
         Contract: Bundle.tools is ToolsNamespace instance
@@ -163,11 +165,12 @@ class TestBootstrapNamespaces:
             "base_path": str(tmp_path),
         }
 
-        result = bootstrap_namespaces(config)
+        result = await bootstrap_namespaces(config)
 
         assert isinstance(result.tools, ToolsNamespace)
 
-    def test_bootstrap_file_storage_bundle_has_skills_namespace(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_file_storage_bundle_has_skills_namespace(self, tmp_path: Path) -> None:
         """File bootstrap returns bundle with SkillsNamespace for skills.
 
         Contract: Bundle.skills is SkillsNamespace instance
@@ -185,11 +188,12 @@ class TestBootstrapNamespaces:
             "base_path": str(tmp_path),
         }
 
-        result = bootstrap_namespaces(config)
+        result = await bootstrap_namespaces(config)
 
         assert isinstance(result.skills, SkillsNamespace)
 
-    def test_bootstrap_file_storage_bundle_has_artifact_store(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_file_storage_bundle_has_artifact_store(self, tmp_path: Path) -> None:
         """File bootstrap returns bundle with ArtifactStore for artifacts.
 
         Contract: Bundle.artifacts implements ArtifactStoreProtocol
@@ -207,11 +211,12 @@ class TestBootstrapNamespaces:
             "base_path": str(tmp_path),
         }
 
-        result = bootstrap_namespaces(config)
+        result = await bootstrap_namespaces(config)
 
         assert isinstance(result.artifacts, ArtifactStoreProtocol)
 
-    def test_bootstrap_file_storage_bundle_has_deps_namespace(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_file_storage_bundle_has_deps_namespace(self, tmp_path: Path) -> None:
         """File bootstrap returns bundle with DepsNamespace for deps.
 
         Contract: Bundle.deps is DepsNamespace instance
@@ -229,11 +234,14 @@ class TestBootstrapNamespaces:
             "base_path": str(tmp_path),
         }
 
-        result = bootstrap_namespaces(config)
+        result = await bootstrap_namespaces(config)
 
         assert isinstance(result.deps, DepsNamespace)
 
-    def test_bootstrap_file_storage_deps_namespace_is_functional(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_file_storage_deps_namespace_is_functional(
+        self, tmp_path: Path
+    ) -> None:
         """File bootstrap deps namespace can list/add/remove packages.
 
         Contract: deps.list(), deps.add(), deps.remove() work correctly
@@ -246,7 +254,7 @@ class TestBootstrapNamespaces:
             "base_path": str(tmp_path),
         }
 
-        result = bootstrap_namespaces(config)
+        result = await bootstrap_namespaces(config)
 
         # Initial state - no packages
         assert result.deps.list() == []
@@ -261,7 +269,10 @@ class TestBootstrapNamespaces:
         result.deps._store.remove("requests>=2.0")
         assert result.deps.list() == []
 
-    def test_bootstrap_file_storage_creates_directories_if_missing(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_file_storage_creates_directories_if_missing(
+        self, tmp_path: Path
+    ) -> None:
         """File bootstrap creates subdirectories if they don't exist.
 
         Contract: Bootstrap should create tools/, skills/, artifacts/ directories
@@ -276,7 +287,7 @@ class TestBootstrapNamespaces:
         }
 
         # Should not raise
-        result = bootstrap_namespaces(config)
+        result = await bootstrap_namespaces(config)
 
         # Directories should be created
         assert (tmp_path / "artifacts").exists()
@@ -286,7 +297,10 @@ class TestBootstrapNamespaces:
     # Redis Storage Bootstrapping
     # =========================================================================
 
-    def test_bootstrap_redis_storage_returns_bundle(self, mock_redis: MockRedisClient) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_redis_storage_returns_bundle(
+        self, mock_redis: MockRedisClient
+    ) -> None:
         """bootstrap_namespaces() with redis config returns NamespaceBundle.
 
         Setup: Config dict with type="redis", url, and prefix
@@ -303,11 +317,12 @@ class TestBootstrapNamespaces:
 
         # Mock Redis.from_url to avoid actual connection
         with patch("redis.from_url", return_value=mock_redis):
-            result = bootstrap_namespaces(config)
+            result = await bootstrap_namespaces(config)
 
         assert isinstance(result, NamespaceBundle)
 
-    def test_bootstrap_redis_storage_bundle_has_tools_namespace(
+    @pytest.mark.asyncio
+    async def test_bootstrap_redis_storage_bundle_has_tools_namespace(
         self, mock_redis: MockRedisClient
     ) -> None:
         """Redis bootstrap returns bundle with ToolsNamespace for tools.
@@ -325,11 +340,12 @@ class TestBootstrapNamespaces:
         }
 
         with patch("redis.from_url", return_value=mock_redis):
-            result = bootstrap_namespaces(config)
+            result = await bootstrap_namespaces(config)
 
         assert isinstance(result.tools, ToolsNamespace)
 
-    def test_bootstrap_redis_storage_bundle_has_skills_namespace(
+    @pytest.mark.asyncio
+    async def test_bootstrap_redis_storage_bundle_has_skills_namespace(
         self, mock_redis: MockRedisClient
     ) -> None:
         """Redis bootstrap returns bundle with SkillsNamespace for skills.
@@ -347,11 +363,12 @@ class TestBootstrapNamespaces:
         }
 
         with patch("redis.from_url", return_value=mock_redis):
-            result = bootstrap_namespaces(config)
+            result = await bootstrap_namespaces(config)
 
         assert isinstance(result.skills, SkillsNamespace)
 
-    def test_bootstrap_redis_storage_bundle_has_artifact_store(
+    @pytest.mark.asyncio
+    async def test_bootstrap_redis_storage_bundle_has_artifact_store(
         self, mock_redis: MockRedisClient
     ) -> None:
         """Redis bootstrap returns bundle with ArtifactStore for artifacts.
@@ -369,11 +386,12 @@ class TestBootstrapNamespaces:
         }
 
         with patch("redis.from_url", return_value=mock_redis):
-            result = bootstrap_namespaces(config)
+            result = await bootstrap_namespaces(config)
 
         assert isinstance(result.artifacts, ArtifactStoreProtocol)
 
-    def test_bootstrap_redis_storage_bundle_has_deps_namespace(
+    @pytest.mark.asyncio
+    async def test_bootstrap_redis_storage_bundle_has_deps_namespace(
         self, mock_redis: MockRedisClient
     ) -> None:
         """Redis bootstrap returns bundle with DepsNamespace for deps.
@@ -391,11 +409,12 @@ class TestBootstrapNamespaces:
         }
 
         with patch("redis.from_url", return_value=mock_redis):
-            result = bootstrap_namespaces(config)
+            result = await bootstrap_namespaces(config)
 
         assert isinstance(result.deps, DepsNamespace)
 
-    def test_bootstrap_redis_storage_deps_namespace_is_functional(
+    @pytest.mark.asyncio
+    async def test_bootstrap_redis_storage_deps_namespace_is_functional(
         self, mock_redis: MockRedisClient
     ) -> None:
         """Redis bootstrap deps namespace can list/add/remove packages.
@@ -412,7 +431,7 @@ class TestBootstrapNamespaces:
         }
 
         with patch("redis.from_url", return_value=mock_redis):
-            result = bootstrap_namespaces(config)
+            result = await bootstrap_namespaces(config)
 
         # Initial state - no packages
         assert result.deps.list() == []
@@ -426,7 +445,8 @@ class TestBootstrapNamespaces:
         result.deps._store.remove("pandas>=2.0")
         assert result.deps.list() == []
 
-    def test_bootstrap_redis_storage_uses_url_from_config(
+    @pytest.mark.asyncio
+    async def test_bootstrap_redis_storage_uses_url_from_config(
         self, mock_redis: MockRedisClient
     ) -> None:
         """Redis bootstrap connects using URL from config.
@@ -443,11 +463,12 @@ class TestBootstrapNamespaces:
         }
 
         with patch("redis.from_url", return_value=mock_redis) as mock_from_url:
-            bootstrap_namespaces(config)
+            await bootstrap_namespaces(config)
 
         mock_from_url.assert_called_once_with("redis://custom-host:16379/5")
 
-    def test_bootstrap_redis_storage_uses_prefix_from_config(
+    @pytest.mark.asyncio
+    async def test_bootstrap_redis_storage_uses_prefix_from_config(
         self, mock_redis: MockRedisClient
     ) -> None:
         """Redis bootstrap uses prefix from config for all stores.
@@ -464,7 +485,7 @@ class TestBootstrapNamespaces:
         }
 
         with patch("redis.from_url", return_value=mock_redis):
-            result = bootstrap_namespaces(config)
+            result = await bootstrap_namespaces(config)
 
         # The artifacts store should use the prefix
         # This is a structural check - specific prefix usage depends on implementation
@@ -474,7 +495,8 @@ class TestBootstrapNamespaces:
     # Error Handling
     # =========================================================================
 
-    def test_bootstrap_unknown_type_raises_value_error(self) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_unknown_type_raises_value_error(self) -> None:
         """bootstrap_namespaces() with unknown type raises ValueError.
 
         Contract: Unknown storage types must fail loudly with clear message
@@ -488,9 +510,10 @@ class TestBootstrapNamespaces:
         }
 
         with pytest.raises(ValueError, match="Unknown storage type"):
-            bootstrap_namespaces(config)
+            await bootstrap_namespaces(config)
 
-    def test_bootstrap_unknown_type_error_includes_type_name(self) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_unknown_type_error_includes_type_name(self) -> None:
         """ValueError for unknown type includes the type name in message.
 
         Contract: Error message must help debugging by including the bad type
@@ -503,9 +526,10 @@ class TestBootstrapNamespaces:
         }
 
         with pytest.raises(ValueError, match="mongodb"):
-            bootstrap_namespaces(config)
+            await bootstrap_namespaces(config)
 
-    def test_bootstrap_missing_type_raises(self) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_missing_type_raises(self) -> None:
         """bootstrap_namespaces() without 'type' key raises KeyError or ValueError.
 
         Contract: Config must include 'type' key
@@ -518,9 +542,10 @@ class TestBootstrapNamespaces:
         }
 
         with pytest.raises((KeyError, ValueError)):
-            bootstrap_namespaces(config)
+            await bootstrap_namespaces(config)
 
-    def test_bootstrap_file_missing_base_path_raises(self) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_file_missing_base_path_raises(self) -> None:
         """File bootstrap without base_path raises KeyError.
 
         Contract: File storage config must include base_path
@@ -534,9 +559,10 @@ class TestBootstrapNamespaces:
         }
 
         with pytest.raises(KeyError):
-            bootstrap_namespaces(config)
+            await bootstrap_namespaces(config)
 
-    def test_bootstrap_redis_missing_url_raises(self) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_redis_missing_url_raises(self) -> None:
         """Redis bootstrap without url raises KeyError.
 
         Contract: Redis storage config must include url
@@ -551,9 +577,10 @@ class TestBootstrapNamespaces:
         }
 
         with pytest.raises(KeyError):
-            bootstrap_namespaces(config)
+            await bootstrap_namespaces(config)
 
-    def test_bootstrap_redis_missing_prefix_raises(self) -> None:
+    @pytest.mark.asyncio
+    async def test_bootstrap_redis_missing_prefix_raises(self) -> None:
         """Redis bootstrap without prefix raises KeyError.
 
         Contract: Redis storage config must include prefix
@@ -568,7 +595,7 @@ class TestBootstrapNamespaces:
         }
 
         with pytest.raises(KeyError):
-            bootstrap_namespaces(config)
+            await bootstrap_namespaces(config)
 
 
 # =============================================================================
@@ -653,7 +680,8 @@ class TestFileStorageBootstrapConfig:
 
         assert result["base_path"] == str(tmp_path)
 
-    def test_config_roundtrip(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_config_roundtrip(self, tmp_path: Path) -> None:
         """Config can be used to reconstruct equivalent storage.
 
         User action: Serialize storage, pass to subprocess, reconstruct
@@ -673,8 +701,8 @@ class TestFileStorageBootstrapConfig:
         # Serialize
         config = storage.to_bootstrap_config()
 
-        # Reconstruct
-        bundle = bootstrap_namespaces(config)
+        # Reconstruct (async because get_tool_registry() is async for MCP support)
+        bundle = await bootstrap_namespaces(config)
 
         # Verify skills are accessible
         skill = bundle.skills.library.get("greet")
@@ -807,7 +835,8 @@ class TestRedisStorageBootstrapConfig:
 
         assert result["prefix"] == "myapp"
 
-    def test_config_roundtrip(self, mock_redis: MockRedisClient) -> None:
+    @pytest.mark.asyncio
+    async def test_config_roundtrip(self, mock_redis: MockRedisClient) -> None:
         """Config can be used to reconstruct equivalent storage.
 
         User action: Serialize storage, pass to subprocess, reconstruct
@@ -831,9 +860,9 @@ class TestRedisStorageBootstrapConfig:
         # Serialize
         config = storage.to_bootstrap_config()
 
-        # Reconstruct (with same mock redis)
+        # Reconstruct (with same mock redis, async for MCP support)
         with patch("redis.from_url", return_value=mock_redis):
-            bundle = bootstrap_namespaces(config)
+            bundle = await bootstrap_namespaces(config)
 
         # Verify skills are accessible
         skill = bundle.skills.library.get("greet")
@@ -937,7 +966,8 @@ class TestRedisStorageLazyConnection:
         # Library should be usable
         assert library is not None
 
-    def test_get_tool_registry_triggers_connection(self, mock_redis: MockRedisClient) -> None:
+    @pytest.mark.asyncio
+    async def test_get_tool_registry_triggers_connection(self, mock_redis: MockRedisClient) -> None:
         """get_tool_registry() triggers Redis connection/usage.
 
         Contract: Lazy connection should happen on first actual use
@@ -948,7 +978,7 @@ class TestRedisStorageLazyConnection:
         storage = RedisStorage(mock_redis, prefix="test")
 
         # This should create the registry (lazy initialization)
-        registry = storage.get_tool_registry()
+        registry = await storage.get_tool_registry()
 
         # Registry should be usable
         assert registry is not None
@@ -1117,8 +1147,8 @@ class TestBootstrapUserJourney:
         json_config = json.dumps(config)
         restored_config = json.loads(json_config)
 
-        # Step 3: Reconstruct
-        bundle = bootstrap_namespaces(restored_config)
+        # Step 3: Reconstruct (async for MCP tool support)
+        bundle = await bootstrap_namespaces(restored_config)
 
         # Step 4: Verify namespaces work
         # Check skills
@@ -1167,9 +1197,9 @@ class TestBootstrapUserJourney:
         json_config = json.dumps(config)
         restored_config = json.loads(json_config)
 
-        # Step 3: Reconstruct (using same mock redis)
+        # Step 3: Reconstruct (using same mock redis, async for MCP tool support)
         with patch("redis.from_url", return_value=mock_redis):
-            bundle = bootstrap_namespaces(restored_config)
+            bundle = await bootstrap_namespaces(restored_config)
 
         # Step 4: Verify namespaces work
         loaded_skill = bundle.skills.library.get("triple")

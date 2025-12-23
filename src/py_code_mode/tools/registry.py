@@ -13,6 +13,60 @@ from py_code_mode.tools.types import Tool
 
 logger = logging.getLogger(__name__)
 
+# Type alias for MCP adapter to avoid import at module level
+MCPAdapterType = "MCPAdapter"
+
+
+async def _load_mcp_adapter(
+    mcp_config: dict,
+    log: logging.Logger,
+) -> MCPAdapterType | None:
+    """Load an MCP adapter from config.
+
+    Args:
+        mcp_config: MCP tool configuration dict with transport, command/url, etc.
+        log: Logger instance for status and error messages.
+
+    Returns:
+        The MCPAdapter on success, None on failure (error is logged).
+    """
+    from py_code_mode.tools.adapters.mcp import MCPAdapter
+
+    transport = mcp_config.get("transport", "stdio")
+    tool_name = mcp_config.get("name", "unknown")
+
+    try:
+        if transport == "stdio":
+            adapter = await MCPAdapter.connect_stdio(
+                command=mcp_config["command"],
+                args=mcp_config.get("args", []),
+                env=mcp_config.get("env", {}),
+            )
+        elif transport == "sse":
+            adapter = await MCPAdapter.connect_sse(
+                url=mcp_config["url"],
+                headers=mcp_config.get("headers"),
+            )
+        else:
+            raise ValueError(f"Unknown MCP transport: {transport}")
+
+        await adapter._refresh_tools()
+        log.info("MCP tool loaded: %s", tool_name)
+        return adapter
+
+    except ImportError:
+        log.warning(
+            "MCP tool skipped: %s (mcp package not installed, install with: pip install mcp)",
+            tool_name,
+        )
+    except KeyError as e:
+        log.warning("MCP tool failed: %s - missing required key: %s", tool_name, e)
+    except (OSError, ValueError, TimeoutError, ConnectionError) as e:
+        log.warning("MCP tool failed: %s - %s: %s", tool_name, type(e).__name__, e)
+
+    return None
+
+
 # Substring search scoring constants
 EXACT_NAME_MATCH_SCORE = 100
 PARTIAL_NAME_MATCH_SCORE = 50
@@ -136,7 +190,7 @@ class ToolRegistry:
 
         import yaml
 
-        from py_code_mode.tools.adapters.mcp import MCPAdapter
+        from py_code_mode.tools.adapters import CLIAdapter
 
         registry = cls(embedder=embedder)
         tools_path = PathLib(path)
@@ -145,8 +199,9 @@ class ToolRegistry:
             logger.warning("Tools path does not exist: %s", tools_path)
             return registry
 
-        # Load MCP tool configs (CLI tools loaded via CLIAdapter separately)
-        mcp_configs = []
+        # Separate CLI and MCP tool configs
+        cli_configs: list[dict] = []
+        mcp_configs: list[dict] = []
 
         for tool_file in sorted(tools_path.glob("*.yaml")):
             try:
@@ -163,34 +218,20 @@ class ToolRegistry:
 
             if tool_type == "mcp":
                 mcp_configs.append(tool)
-            # CLI tools are loaded via CLIAdapter, not here
+            else:
+                cli_configs.append(tool)
 
-        # Load MCP tools
+        # Load CLI tools first
+        if cli_configs:
+            cli_adapter = CLIAdapter.from_configs(cli_configs)
+            if cli_adapter.list_tools():
+                registry.register_adapter(cli_adapter)
+
+        # Load MCP tools using shared helper
         for mcp_config in mcp_configs:
-            transport = mcp_config.get("transport", "stdio")
-            try:
-                if transport == "stdio":
-                    adapter = await MCPAdapter.connect_stdio(
-                        command=mcp_config["command"],
-                        args=mcp_config.get("args", []),
-                        env=mcp_config.get("env", {}),
-                    )
-                elif transport == "sse":
-                    adapter = await MCPAdapter.connect_sse(
-                        url=mcp_config["url"],
-                        headers=mcp_config.get("headers"),
-                    )
-                else:
-                    raise ValueError(f"Unknown MCP transport: {transport}")
-
-                await registry.register_adapter(adapter)
-            except ImportError:
-                # MCP package not installed, skip this tool
-                logger.warning(
-                    "MCP tool configured but mcp package not installed. "
-                    "Install with: pip install mcp"
-                )
-                pass
+            adapter = await _load_mcp_adapter(mcp_config, logger)
+            if adapter is not None:
+                registry.register_adapter(adapter)
 
         return registry
 

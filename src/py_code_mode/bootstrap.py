@@ -41,8 +41,11 @@ class NamespaceBundle:
     deps: DepsNamespace
 
 
-def bootstrap_namespaces(config: dict[str, Any]) -> NamespaceBundle:
+async def bootstrap_namespaces(config: dict[str, Any]) -> NamespaceBundle:
     """Reconstruct storage and namespaces from serialized config.
+
+    This function is async because get_tool_registry() requires async
+    initialization for MCP tools.
 
     Args:
         config: Dict with "type" key ("file" or "redis") and type-specific fields.
@@ -59,14 +62,14 @@ def bootstrap_namespaces(config: dict[str, Any]) -> NamespaceBundle:
     storage_type = config.get("type")
 
     if storage_type == "file":
-        return _bootstrap_file_storage(config)
+        return await _bootstrap_file_storage(config)
     elif storage_type == "redis":
-        return _bootstrap_redis_storage(config)
+        return await _bootstrap_redis_storage(config)
     else:
         raise ValueError(f"Unknown storage type: {storage_type!r}. Expected 'file' or 'redis'.")
 
 
-def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
+async def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
     """Bootstrap namespaces from FileStorage config.
 
     Args:
@@ -87,8 +90,8 @@ def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
     base_path = Path(config["base_path"])
     storage = FileStorage(base_path)
 
-    # Create namespaces
-    tools_ns = ToolsNamespace(storage.get_tool_registry())
+    # Create namespaces - get_tool_registry() is async for MCP tool initialization
+    tools_ns = ToolsNamespace(await storage.get_tool_registry())
     artifact_store = storage.get_artifact_store()
 
     # Create deps namespace
@@ -115,7 +118,7 @@ def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
     )
 
 
-def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
+async def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
     """Bootstrap namespaces from RedisStorage config.
 
     Args:
@@ -142,8 +145,8 @@ def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
     redis_client = redis.from_url(url)
     storage = RedisStorage(redis_client, prefix=prefix)
 
-    # Create namespaces
-    tools_ns = ToolsNamespace(storage.get_tool_registry())
+    # Create namespaces - get_tool_registry() is async for MCP tool initialization
+    tools_ns = ToolsNamespace(await storage.get_tool_registry())
     artifact_store = storage.get_artifact_store()
 
     # Create deps namespace
