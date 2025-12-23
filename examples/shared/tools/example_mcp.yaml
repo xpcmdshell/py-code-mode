@@ -1,0 +1,46 @@
+# Example MCP Tool Configuration
+#
+# MCP (Model Context Protocol) tools connect to external servers that expose
+# tools dynamically. Unlike CLI tools which define schema/recipes in YAML,
+# MCP tools discover their capabilities at runtime from the server.
+#
+# Two transports are supported:
+#   - stdio: Server runs as subprocess, communicates via stdin/stdout
+#   - sse: Server runs remotely, communicates via Server-Sent Events
+#
+# Usage in agent code:
+#   tools.list()                    # Discover available tools
+#   tools.search("my-mcp")          # Find tools by name/description
+#   tools.my_tool(arg="value")      # Call a tool exposed by the server
+
+# --- STDIO Transport (most common) ---
+# Server runs as a child process. Command + args launch the server.
+
+name: my-mcp-server
+description: Example MCP server via stdio transport
+type: mcp
+transport: stdio
+command: uvx
+args:
+  - my-mcp-server
+  - --transport
+  - stdio
+env:
+  MY_API_KEY: "${MY_API_KEY}"  # Optional: pass environment variables
+tags:
+  - example
+
+# --- SSE Transport (alternative) ---
+# Uncomment below to use SSE instead of stdio.
+# Server must already be running at the specified URL.
+#
+# name: my-remote-mcp
+# description: Example MCP server via SSE transport
+# type: mcp
+# transport: sse
+# url: http://localhost:8080/mcp
+# headers:
+#   Authorization: "Bearer ${MCP_TOKEN}"
+# tags:
+#   - example
+#   - remote
