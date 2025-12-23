@@ -1930,14 +1930,14 @@ class TestSubprocessExecutorDepsRuntimeInstall:
         assert result.value in ([], "[]")
 
     @pytest.mark.asyncio
-    async def test_deps_sync_raises_when_runtime_deps_disabled(self, executor_deny_deps) -> None:
-        """deps.sync() raises error when allow_runtime_deps=False.
+    async def test_deps_sync_allowed_when_runtime_deps_disabled(self, executor_deny_deps) -> None:
+        """deps.sync() succeeds when allow_runtime_deps=False.
 
-        Contract: Sync should be blocked like add
-        Breaks when: sync() bypasses the runtime deps check.
+        Contract: sync() only installs pre-configured deps, not runtime-added ones.
+        It should be allowed even when allow_runtime_deps=False.
+        Breaks when: sync() incorrectly raises error.
         """
         result = await executor_deny_deps.run("deps.sync()")
 
-        # Should fail with RuntimeError about runtime deps being disabled
-        assert result.error is not None
-        assert "disabled" in result.error
+        # Should succeed - sync() installs pre-configured deps only
+        assert result.error is None

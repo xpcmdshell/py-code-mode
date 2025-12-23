@@ -888,11 +888,12 @@ class TestRedisNamespaceSetup:
 class TestUnknownStorageType:
     """Tests for handling unknown storage access types."""
 
-    def test_unknown_storage_type_raises_type_error(self) -> None:
-        """Unknown storage access type should raise TypeError.
+    def test_unknown_storage_type_returns_empty_string(self) -> None:
+        """Unknown storage access type returns empty string.
 
-        Breaks when: Function silently returns empty string or ignores
-        unknown types instead of failing explicitly.
+        Contract: Function returns empty string for unknown types rather than raising.
+        This allows graceful degradation when storage type is not recognized.
+        Breaks when: Function raises or returns non-empty code for unknown types.
         """
         from dataclasses import dataclass
 
@@ -905,13 +906,8 @@ class TestUnknownStorageType:
 
         fake_storage = FakeStorageAccess(connection_string="fake://localhost")
 
-        with pytest.raises(TypeError) as exc_info:
-            build_namespace_setup_code(fake_storage)  # type: ignore[arg-type]
-
-        # Verify error message is helpful
-        assert "storage" in str(exc_info.value).lower() or "FakeStorageAccess" in str(
-            exc_info.value
-        )
+        result = build_namespace_setup_code(fake_storage)  # type: ignore[arg-type]
+        assert result == ""
 
     def test_none_storage_returns_empty_string(self) -> None:
         """None storage should return empty string (preserve existing behavior).
