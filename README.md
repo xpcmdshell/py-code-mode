@@ -74,7 +74,7 @@ Skills accumulate. Your agents get more reliable over time.
 ## Installation
 
 ```bash
-uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.3.1
+uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.4.0
 ```
 
 ## Quick Start
@@ -85,7 +85,7 @@ uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.3.1
 
 ```bash
 claude mcp add -s user py-code-mode \
-  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.3.1 \
+  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.4.0 \
   py-code-mode-mcp --storage ~/.code-mode
 ```
 
@@ -93,7 +93,7 @@ claude mcp add -s user py-code-mode \
 
 ```bash
 claude mcp add -s project py-code-mode \
-  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.3.1 \
+  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.4.0 \
   py-code-mode-mcp --storage ./.code-mode
 ```
 
