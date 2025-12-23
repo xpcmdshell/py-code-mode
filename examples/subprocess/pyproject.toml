@@ -1,0 +1,15 @@
+[project]
+name = "py-code-mode-subprocess-example"
+version = "0.1.0"
+description = "SubprocessExecutor example using Jupyter kernel-based isolation"
+requires-python = ">=3.11"
+dependencies = [
+    "py-code-mode",
+    "ipykernel",
+]
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.uv.sources]
+py-code-mode = { path = "../..", editable = true }

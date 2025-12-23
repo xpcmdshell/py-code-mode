@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from py_code_mode.types import ExecutionResult
 
 if TYPE_CHECKING:
-    from py_code_mode.storage import StorageBackend
+    from py_code_mode.storage.backends import StorageBackend
 
 # =============================================================================
 # Storage Access Descriptors
@@ -32,6 +32,7 @@ class FileStorageAccess:
     tools_path: Path | None
     skills_path: Path | None
     artifacts_path: Path
+    deps_path: Path | None
 
 
 @dataclass(frozen=True)
@@ -46,24 +47,27 @@ class RedisStorageAccess:
     tools_prefix: str
     skills_prefix: str
     artifacts_prefix: str
+    deps_prefix: str
 
 
-@dataclass(frozen=True)
-class StorageBackendAccess:
-    """Direct access to a StorageBackend instance.
+StorageAccess = FileStorageAccess | RedisStorageAccess
 
-    Used by InProcessExecutor to directly use the storage's internal
-    adapters and stores, avoiding the need to recreate connections.
-    This is important for Redis with mock clients in tests.
 
-    ContainerExecutor cannot use this since it needs to pass connection
-    info to another process - use FileStorageAccess or RedisStorageAccess.
+def validate_storage_not_access(storage: Any, executor_name: str) -> None:
+    """Reject old StorageAccess types passed to executor.start().
+
+    Args:
+        storage: Value passed to executor.start()
+        executor_name: Name of the executor for error message
+
+    Raises:
+        TypeError: If storage is a StorageAccess type (old API)
     """
-
-    storage: StorageBackend
-
-
-StorageAccess = FileStorageAccess | RedisStorageAccess | StorageBackendAccess
+    if isinstance(storage, (FileStorageAccess, RedisStorageAccess)):
+        raise TypeError(
+            f"{executor_name}.start() accepts StorageBackend, not {type(storage).__name__}. "
+            "Pass the storage backend directly."
+        )
 
 
 class Capability:
@@ -161,5 +165,16 @@ class Executor(Protocol):
 
         Raises:
             NotImplementedError: If backend doesn't support reset
+        """
+        ...
+
+    async def start(self, storage: StorageBackend | None = None) -> None:
+        """Initialize executor with storage backend.
+
+        Args:
+            storage: StorageBackend instance. Executor decides how to use it:
+                    - InProcessExecutor: uses storage.tools/skills/artifacts directly
+                    - ContainerExecutor: calls storage.get_serializable_access()
+                    - SubprocessExecutor: calls storage.get_serializable_access()
         """
         ...

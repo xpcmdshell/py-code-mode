@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 import numpy as np
 
@@ -68,6 +71,13 @@ MODEL_ALIASES = {
     "granite": "ibm-granite/granite-embedding-small-english-r2",
 }
 
+# Known dimensions for common models (avoids loading model just to get dimension)
+MODEL_DIMENSIONS = {
+    "BAAI/bge-small-en-v1.5": 384,
+    "BAAI/bge-base-en-v1.5": 768,
+    "ibm-granite/granite-embedding-small-english-r2": 384,
+}
+
 
 def resolve_model_name(model: str) -> str:
     """Resolve alias or pass through full model name."""
@@ -86,6 +96,9 @@ class Embedder:
         - "granite": ibm-granite/granite-embedding-small-english-r2
 
     Or pass full HuggingFace model name directly.
+
+    The model is loaded lazily on first embed() or embed_query() call to avoid
+    30+ second initialization overhead when embeddings aren't actually used.
     """
 
     DEFAULT_MODEL = "bge-small"
@@ -96,20 +109,20 @@ class Embedder:
 
         Args:
             model_name: Model alias or full HuggingFace name. Default: bge-small.
+
+        Note: The model is not loaded until embed() or embed_query() is called.
         """
         # Suppress tokenizer parallelism warning when forking
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-
-        from sentence_transformers import SentenceTransformer
-
         os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
-        self.device = self._detect_device()
-
+        # Store model name for lazy loading
         model_name = model_name or self.DEFAULT_MODEL
-        resolved = resolve_model_name(model_name)
-        self._model = SentenceTransformer(resolved, device=self.device)
-        self._dimension = self._model.get_sentence_embedding_dimension()
+        self._resolved_model_name = resolve_model_name(model_name)
+
+        # Lazy-loaded attributes
+        self._model: SentenceTransformer | None = None
+        self._device: str | None = None
 
     def _detect_device(self) -> str:
         """Detect best available device."""
@@ -121,10 +134,40 @@ class Embedder:
             return "mps"
         return "cpu"
 
+    def _ensure_model_loaded(self) -> None:
+        """Load the SentenceTransformer model if not already loaded."""
+        if self._model is not None:
+            return
+
+        from sentence_transformers import SentenceTransformer
+
+        self._device = self._detect_device()
+        self._model = SentenceTransformer(self._resolved_model_name, device=self._device)
+
+    @property
+    def device(self) -> str:
+        """Device the model runs on (cuda, mps, or cpu)."""
+        self._ensure_model_loaded()
+        assert self._device is not None  # Guaranteed after _ensure_model_loaded
+        return self._device
+
     @property
     def dimension(self) -> int:
-        """Embedding vector dimension."""
-        return self._dimension  # type: ignore[return-value]
+        """Embedding vector dimension.
+
+        Uses known dimensions for common models to avoid loading the model.
+        Falls back to loading the model for unknown models.
+        """
+        # Return known dimension without loading model if possible
+        if self._resolved_model_name in MODEL_DIMENSIONS:
+            return MODEL_DIMENSIONS[self._resolved_model_name]
+
+        # Unknown model: must load to get dimension
+        self._ensure_model_loaded()
+        assert self._model is not None  # Guaranteed after _ensure_model_loaded
+        dim = self._model.get_sentence_embedding_dimension()
+        assert dim is not None
+        return dim
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Embed document texts into vectors (no prefix).
@@ -135,6 +178,8 @@ class Embedder:
         Returns:
             List of embedding vectors.
         """
+        self._ensure_model_loaded()
+        assert self._model is not None  # Guaranteed after _ensure_model_loaded
         embeddings = self._model.encode(texts, normalize_embeddings=True)
         return embeddings.tolist()  # type: ignore[return-value]
 
@@ -149,6 +194,8 @@ class Embedder:
         Returns:
             Embedding vector.
         """
+        self._ensure_model_loaded()
+        assert self._model is not None  # Guaranteed after _ensure_model_loaded
         text = self.QUERY_INSTRUCTION + query
         embedding = self._model.encode([text], normalize_embeddings=True)[0]
         return embedding.tolist()  # type: ignore[return-value]

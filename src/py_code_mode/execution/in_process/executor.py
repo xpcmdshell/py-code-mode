@@ -12,30 +12,20 @@ import builtins
 import io
 import traceback
 from contextlib import redirect_stdout
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from py_code_mode.artifacts import ArtifactStoreProtocol, FileArtifactStore, RedisArtifactStore
+from py_code_mode.deps import ControlledDepsNamespace, DepsNamespace
+from py_code_mode.execution.in_process.config import InProcessConfig
 from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
-from py_code_mode.execution.protocol import (
-    Capability,
-    FileStorageAccess,
-    RedisStorageAccess,
-    StorageAccess,
-    StorageBackendAccess,
-)
+from py_code_mode.execution.protocol import Capability, validate_storage_not_access
 from py_code_mode.execution.registry import register_backend
-from py_code_mode.skills import (
-    FileSkillStore,
-    MemorySkillStore,
-    MockEmbedder,
-    RedisSkillStore,
-    SkillLibrary,
-    create_skill_library,
-)
-from py_code_mode.storage import RedisToolStore, registry_from_redis
+from py_code_mode.skills import SkillLibrary
 from py_code_mode.tools import ToolRegistry, ToolsNamespace
-from py_code_mode.tools.adapters import CLIAdapter
 from py_code_mode.types import ExecutionResult
+
+if TYPE_CHECKING:
+    from py_code_mode.artifacts import ArtifactStoreProtocol
+    from py_code_mode.storage.backends import StorageBackend
 
 # Use builtins to avoid security hook false positive on Python's code execution
 _run_code = getattr(builtins, "exec")
@@ -70,12 +60,16 @@ class InProcessExecutor:
         registry: ToolRegistry | None = None,
         skill_library: SkillLibrary | None = None,
         artifact_store: ArtifactStoreProtocol | None = None,
+        deps_namespace: DepsNamespace | None = None,
         default_timeout: float = 30.0,
+        config: InProcessConfig | None = None,
     ) -> None:
         self._registry = registry
         self._skill_library = skill_library
-        self._artifact_store = artifact_store
-        self._default_timeout = default_timeout
+        self._artifact_store: ArtifactStoreProtocol | None = artifact_store
+        self._deps_namespace: DepsNamespace | None = deps_namespace
+        self._config = config or InProcessConfig()
+        self._default_timeout = self._config.default_timeout if config else default_timeout
         self._namespace: dict[str, Any] = {"__builtins__": builtins}
         self._closed = False
 
@@ -85,11 +79,20 @@ class InProcessExecutor:
 
         # Inject skills namespace if skill_library provided
         if skill_library is not None:
-            self._namespace["skills"] = SkillsNamespace(skill_library, self)
+            self._namespace["skills"] = SkillsNamespace(skill_library, self._namespace)
 
         # Inject artifacts namespace if artifact_store provided
         if artifact_store is not None:
             self._namespace["artifacts"] = artifact_store
+
+        # Inject deps namespace if provided (wrap if runtime deps disabled)
+        if deps_namespace is not None:
+            if not self._config.allow_runtime_deps:
+                self._namespace["deps"] = ControlledDepsNamespace(
+                    deps_namespace, allow_runtime=False
+                )
+            else:
+                self._namespace["deps"] = deps_namespace
 
     def supports(self, capability: str) -> bool:
         """Check if this backend supports a capability."""
@@ -193,7 +196,7 @@ class InProcessExecutor:
     async def reset(self) -> None:
         """Reset session state.
 
-        Clears all user-defined variables but preserves tools, skills, artifacts namespaces.
+        Clears all user-defined variables but preserves tools, skills, artifacts, deps namespaces.
         """
         # Store namespace items we want to preserve
         preserved = {
@@ -201,6 +204,7 @@ class InProcessExecutor:
             "tools": self._namespace.get("tools"),
             "skills": self._namespace.get("skills"),
             "artifacts": self._namespace.get("artifacts"),
+            "deps": self._namespace.get("deps"),
         }
 
         # Clear everything
@@ -213,136 +217,52 @@ class InProcessExecutor:
 
     async def start(
         self,
-        storage_access: StorageAccess | None = None,
+        storage: StorageBackend | None = None,
     ) -> None:
-        """Start executor and configure from storage access.
+        """Start executor and configure from storage backend.
 
         Args:
-            storage_access: Optional storage access descriptor.
-                           If provided, loads tools/skills/artifacts from paths.
-                           If None, uses whatever was passed to __init__.
+            storage: Optional StorageBackend instance.
+                    If provided, uses storage protocol methods to build namespaces.
+                    If None, uses whatever was passed to __init__.
+
+        Raises:
+            TypeError: If passed old StorageAccess types instead of StorageBackend.
         """
-        if storage_access is None:
+        if storage is None:
             return  # Use __init__ configuration
 
-        if isinstance(storage_access, FileStorageAccess):
-            # Load from file paths
-            # Always inject tools namespace (empty if no path/directory)
-            if storage_access.tools_path and storage_access.tools_path.exists():
-                adapter = CLIAdapter(tools_path=storage_access.tools_path)
-                self._registry = ToolRegistry()
-                self._registry.add_adapter(adapter)
-            else:
-                self._registry = ToolRegistry()
-            self._namespace["tools"] = ToolsNamespace(self._registry)
+        # Reject old StorageAccess types - no backward compatibility
+        validate_storage_not_access(storage, "InProcessExecutor")
 
-            # Always inject skills namespace
-            if storage_access.skills_path:
-                # Create directory if it doesn't exist (same as artifacts behavior)
-                storage_access.skills_path.mkdir(parents=True, exist_ok=True)
-                store = FileSkillStore(storage_access.skills_path)
-                self._skill_library = create_skill_library(store=store)
-            else:
-                # Only use memory store if NO path configured (explicit choice)
-                self._skill_library = SkillLibrary(
-                    embedder=MockEmbedder(), store=MemorySkillStore()
-                )
-            self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
+        # Use public protocol methods to build namespaces
+        self._registry = storage.get_tool_registry()
+        self._namespace["tools"] = ToolsNamespace(self._registry)
 
-            # Always inject artifacts namespace
-            if storage_access.artifacts_path:
-                storage_access.artifacts_path.mkdir(parents=True, exist_ok=True)
-                self._artifact_store = FileArtifactStore(storage_access.artifacts_path)
-                self._namespace["artifacts"] = self._artifact_store
+        self._skill_library = storage.get_skill_library()
+        self._namespace["skills"] = SkillsNamespace(self._skill_library, self._namespace)
 
-        elif isinstance(storage_access, RedisStorageAccess):
-            # Load from Redis
-            try:
-                import redis
-            except ImportError as e:
-                raise ImportError(
-                    "redis required for RedisStorageAccess. Install with: pip install redis"
-                ) from e
+        self._artifact_store = storage.get_artifact_store()
+        self._namespace["artifacts"] = self._artifact_store
 
-            client = redis.from_url(storage_access.redis_url)
-
-            # Tools from Redis
-            tool_store = RedisToolStore(client, prefix=storage_access.tools_prefix)
-            self._registry = await registry_from_redis(tool_store)
-            self._namespace["tools"] = ToolsNamespace(self._registry)
-
-            # Skills from Redis with semantic search
-            skill_store = RedisSkillStore(client, prefix=storage_access.skills_prefix)
-            self._skill_library = create_skill_library(store=skill_store)
-            self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
-
-            # Artifacts from Redis
-            self._artifact_store = RedisArtifactStore(
-                client, prefix=storage_access.artifacts_prefix
+        self._deps_namespace = storage.get_deps_namespace()
+        # Wrap deps namespace if runtime deps disabled
+        if not self._config.allow_runtime_deps:
+            self._namespace["deps"] = ControlledDepsNamespace(
+                self._deps_namespace, allow_runtime=False
             )
-            self._namespace["artifacts"] = self._artifact_store
-
-        elif isinstance(storage_access, StorageBackendAccess):
-            # Direct storage backend access - use its internal adapters/stores
-            # This is preferred for InProcessExecutor since we're in the same process
-            # and can share the storage's resources directly.
-            storage = storage_access.storage
-
-            # Build registry from storage's tool adapters
-            self._registry = await self._build_registry_from_storage(storage)
-            self._namespace["tools"] = ToolsNamespace(self._registry)
-
-            # Build skill library from storage's skill wrapper
-            self._skill_library = self._build_skill_library_from_storage(storage)
-            self._namespace["skills"] = SkillsNamespace(self._skill_library, self)
-
-            # Get artifact store from storage
-            self._artifact_store = self._get_artifact_store_from_storage(storage)
-            if self._artifact_store is not None:
-                self._namespace["artifacts"] = self._artifact_store
-
-    async def _build_registry_from_storage(self, storage: Any) -> ToolRegistry:
-        """Build a ToolRegistry from a storage backend's internal components."""
-        from py_code_mode.storage.backends import FileToolStore, RedisToolStoreWrapper
-
-        registry = ToolRegistry()
-
-        # Use protocol - storage.tools exists per StorageBackend protocol
-        tool_store = storage.tools
-        if isinstance(tool_store, (FileToolStore, RedisToolStoreWrapper)):
-            adapter = tool_store._get_adapter()
-            if adapter is not None:
-                registry.add_adapter(adapter)
-
-        return registry
-
-    def _build_skill_library_from_storage(self, storage: Any) -> SkillLibrary:
-        """Build a SkillLibrary from a storage backend's skill wrapper."""
-        from py_code_mode.storage.backends import SkillStoreWrapper
-
-        # Use protocol - storage.skills exists per StorageBackend protocol
-        skills_wrapper = storage.skills
-        if isinstance(skills_wrapper, SkillStoreWrapper):
-            return skills_wrapper._get_library()
-
-        # Fallback: return an empty skill library
-        return SkillLibrary(embedder=MockEmbedder(), store=MemorySkillStore())
-
-    def _get_artifact_store_from_storage(self, storage: Any) -> ArtifactStoreProtocol | None:
-        """Get artifact store from a storage backend."""
-        from py_code_mode.storage.backends import ArtifactStoreWrapper
-
-        # Use protocol - storage.artifacts exists per StorageBackend protocol
-        artifacts_wrapper = storage.artifacts
-        if isinstance(artifacts_wrapper, ArtifactStoreWrapper):
-            return artifacts_wrapper
-
-        return None
+        else:
+            self._namespace["deps"] = self._deps_namespace
 
     async def __aenter__(self) -> InProcessExecutor:
         return self
 
-    async def __aexit__(self, *args: Any) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
         await self.close()
 
 

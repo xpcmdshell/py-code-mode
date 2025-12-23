@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from py_code_mode.execution import Executor, StorageAccess, StorageBackendAccess
+from py_code_mode.execution import Executor
 from py_code_mode.types import ExecutionResult
 
 if TYPE_CHECKING:
@@ -34,6 +34,7 @@ class Session:
         self,
         storage: StorageBackend | None = None,
         executor: Executor | None = None,
+        sync_deps_on_start: bool = False,
     ) -> None:
         """Initialize session.
 
@@ -42,6 +43,8 @@ class Session:
                     Required (cannot be None).
             executor: Executor instance (InProcessExecutor, ContainerExecutor).
                      Default: InProcessExecutor()
+            sync_deps_on_start: If True, install all configured dependencies
+                               when session starts. Default: False.
 
         Raises:
             TypeError: If executor is a string (unsupported).
@@ -72,80 +75,27 @@ class Session:
         self._executor: Executor | None = None
         self._started = False
         self._closed = False
-
-    def _derive_storage_access(self, for_container: bool = False) -> StorageAccess:
-        """Derive StorageAccess descriptor from storage backend.
-
-        For in-process executors, returns StorageBackendAccess to directly
-        share the storage's internal resources (avoids issues with mock Redis).
-
-        For container executors, returns FileStorageAccess or RedisStorageAccess
-        with connection info that can be passed to another process.
-
-        Args:
-            for_container: If True, returns serializable access descriptors.
-                          If False, returns StorageBackendAccess for direct access.
-
-        Returns:
-            StorageAccess descriptor appropriate for the executor type.
-
-        Raises:
-            ValueError: If storage type is unsupported.
-        """
-        from py_code_mode.execution import (
-            FileStorageAccess,
-            RedisStorageAccess,
-        )
-        from py_code_mode.storage import FileStorage, RedisStorage
-
-        # For in-process execution, use direct storage access
-        # This shares the storage's internal adapters/stores rather than
-        # creating new connections (important for mock Redis in tests)
-        if not for_container:
-            return StorageBackendAccess(storage=self._storage)
-
-        # For container execution, need serializable connection info
-        if isinstance(self._storage, FileStorage):
-            base_path = self._storage.root
-            return FileStorageAccess(
-                # Tools are read-only, only provide path if directory exists
-                tools_path=base_path / "tools" if (base_path / "tools").exists() else None,
-                # Skills path always provided - executor creates if needed
-                skills_path=base_path / "skills",
-                # Artifacts path always provided - executor creates if needed
-                artifacts_path=base_path / "artifacts",
-            )
-        elif isinstance(self._storage, RedisStorage):
-            # Reconstruct Redis URL from client connection parameters
-            pool = self._storage._redis.connection_pool
-            kwargs = pool.connection_kwargs
-
-            # Build URL from connection kwargs
-            host = kwargs.get("host", "localhost")
-            port = kwargs.get("port", 6379)
-            db = kwargs.get("db", 0)
-            password = kwargs.get("password")
-
-            if password:
-                redis_url = f"redis://:{password}@{host}:{port}/{db}"
-            else:
-                redis_url = f"redis://{host}:{port}/{db}"
-
-            # Build prefixes from base prefix
-            prefix = self._storage._prefix
-            return RedisStorageAccess(
-                redis_url=redis_url,
-                tools_prefix=f"{prefix}:tools",
-                skills_prefix=f"{prefix}:skills",
-                artifacts_prefix=f"{prefix}:artifacts",
-            )
-        else:
-            raise ValueError(f"Unsupported storage type: {type(self._storage).__name__}")
+        self._sync_deps_on_start = sync_deps_on_start
 
     @property
     def storage(self) -> StorageBackend:
         """Access the storage backend."""
         return self._storage
+
+    async def _sync_deps(self) -> None:
+        """Sync configured dependencies by running deps.sync() via executor.
+
+        This method syncs pre-configured dependencies even when runtime deps are
+        disabled. It accesses the underlying DepsNamespace directly, bypassing
+        any ControlledDepsNamespace wrapper.
+        """
+        if self._executor is None:
+            return
+
+        # Get the underlying deps namespace, bypassing any wrapper
+        deps_ns = getattr(self._executor, "_deps_namespace", None)
+        if deps_ns is not None:
+            deps_ns.sync()
 
     async def start(self) -> None:
         """Initialize the executor and inject namespaces.
@@ -163,23 +113,17 @@ class Session:
         else:
             self._executor = self._executor_spec
 
-        # Determine if executor needs serializable access (container execution)
-        # ContainerExecutor runs code in a separate process and needs
-        # connection info rather than direct object references
-        for_container = self._is_container_executor(self._executor)
-
-        # Derive storage access descriptor
-        storage_access = self._derive_storage_access(for_container=for_container)
-
-        # Start executor with storage access
-        # Executor.start() handles namespace injection based on storage_access
-        await self._executor.start(storage_access=storage_access)
+        # Start executor with storage backend directly
+        # Each executor handles storage access appropriately:
+        # - InProcessExecutor: uses storage.tools/skills/artifacts directly
+        # - ContainerExecutor: calls storage.get_serializable_access() internally
+        # - SubprocessExecutor: calls storage.get_serializable_access() internally
+        await self._executor.start(storage=self._storage)
         self._started = True
 
-    def _is_container_executor(self, executor: Executor) -> bool:
-        """Check if executor is a ContainerExecutor (needs serializable access)."""
-        # Check by class name to avoid import
-        return type(executor).__name__ == "ContainerExecutor"
+        # Sync dependencies if requested
+        if self._sync_deps_on_start:
+            await self._sync_deps()
 
     async def run(self, code: str, timeout: float | None = None) -> ExecutionResult:
         """Run Python code and return result.

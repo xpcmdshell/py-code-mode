@@ -188,7 +188,7 @@ tools.curl.post(url="https://api.example.com/data", data='{"key": "value"}')
 tools.curl(url="https://example.com", silent=True, location=True, header=["Accept: application/json"])
 
 # Discovery
-tools.list()                    # List all tools
+tools.list()                    # Returns list[Tool] with .name, .description, .callables
 tools.search("http")            # Search tools by name/description
 tools.curl.list()               # List recipes for a tool
 ```
@@ -261,6 +261,113 @@ artifacts.list()
 artifacts.delete("research_results")
 ```
 
+## Dependency Management
+
+Manage execution environment dependencies on demand:
+
+```python
+# Add a package and install immediately
+deps.add("pandas>=2.0")
+
+# List configured dependencies
+deps.list()
+
+# Remove a dependency from configuration
+deps.remove("pandas")
+
+# Ensure all configured dependencies are installed
+deps.sync()
+```
+
+Dependencies are persisted alongside your tools, skills, and artifacts:
+
+- **FileStorage**: Stored in `requirements.txt` in the storage directory
+- **RedisStorage**: Maintained in Redis keys with your configured prefix
+
+### Pre-configuring Dependencies
+
+Configure dependencies via storage before creating a session:
+
+```python
+from pathlib import Path
+from py_code_mode import Session, FileStorage
+
+storage = FileStorage(base_path=Path("./data"))
+
+# Pre-configure deps before creating session
+deps_store = storage.get_deps_store()
+deps_store.add("pandas>=2.0")
+
+# Sync on session start
+async with Session(storage=storage, sync_deps_on_start=True) as session:
+    # pandas is now installed and available
+    result = await session.run("import pandas")
+```
+
+### Disabling Runtime Deps
+
+For security-sensitive environments, disable runtime dependency installation:
+
+```python
+from py_code_mode import Session, FileStorage
+from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
+
+storage = FileStorage(base_path=Path("./data"))
+
+# Lock down deps - no runtime installation allowed
+config = InProcessConfig(allow_runtime_deps=False)
+executor = InProcessExecutor(config=config)
+
+async with Session(storage=storage, executor=executor) as session:
+    # deps.add() and deps.remove() will raise RuntimeDepsDisabledError
+    # deps.list() still works (read-only)
+    result = await session.run("deps.list()")
+```
+
+### MCP Deps Tools
+
+When using the MCP server, these tools are available to Claude:
+
+- `list_deps` - List all configured dependencies
+- `add_dep(package)` - Add and install a dependency
+- `remove_dep(package)` - Remove a dependency from configuration
+
+These are MCP tools invoked directly by Claude, not Python code in `run_code`.
+
+Use the `--no-runtime-deps` flag to disable runtime dependency installation:
+
+```bash
+# Start MCP server with deps locked down
+py-code-mode-mcp --storage ~/.code-mode --no-runtime-deps
+```
+
+When `--no-runtime-deps` is set, `add_dep` and `remove_dep` tools are not registered, and agents can only list existing dependencies.
+
+## Executors
+
+Three execution backends available:
+
+- **InProcessExecutor** (default) - Same process, fastest, no isolation
+- **SubprocessExecutor** - Jupyter kernel in subprocess, process isolation without Docker
+- **ContainerExecutor** - Docker container, full isolation for untrusted code
+
+```python
+from pathlib import Path
+from py_code_mode import Session, FileStorage
+from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
+
+storage = FileStorage(base_path=Path("./data"))
+
+# Subprocess: process isolation without Docker overhead
+executor = SubprocessExecutor(SubprocessConfig(
+    python_version="3.11",
+    default_timeout=120.0,
+))
+
+async with Session(storage=storage, executor=executor) as session:
+    result = await session.run(agent_code)
+```
+
 ## Production
 
 - **Redis storage** - One agent learns, all agents benefit
@@ -280,6 +387,7 @@ async with Session(storage=storage, executor=executor) as session:
 ## Examples
 
 - **minimal/** - Simple agent in ~100 lines
+- **subprocess/** - SubprocessExecutor usage
 - **autogen-direct/** - AutoGen integration
 - **azure-container-apps/** - Production deployment
 

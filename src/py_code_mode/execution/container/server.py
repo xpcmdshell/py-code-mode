@@ -44,6 +44,14 @@ from py_code_mode.artifacts import (  # noqa: E402
     ArtifactStoreProtocol,
     FileArtifactStore,
 )
+from py_code_mode.deps import (  # noqa: E402
+    ControlledDepsNamespace,
+    DepsNamespace,
+    DepsStore,
+    FileDepsStore,
+    PackageInstaller,
+    RedisDepsStore,
+)
 from py_code_mode.execution.container.config import SessionConfig  # noqa: E402
 from py_code_mode.execution.in_process import (  # noqa: E402
     InProcessExecutor as CodeExecutor,
@@ -144,6 +152,8 @@ class ServerState:
     registry: ToolRegistry | None = None
     skill_library: SkillLibrary | None = None
     artifact_store: ArtifactStoreProtocol | None = None  # Shared store for Redis mode
+    deps_store: DepsStore | None = None
+    deps_installer: PackageInstaller | None = None
     sessions: dict[str, Session] = field(default_factory=dict)
     start_time: float = 0.0
     redis_mode: bool = False
@@ -179,11 +189,22 @@ def create_session(session_id: str) -> Session:
         raise RuntimeError("Artifact store not initialized")
     artifact_store = _state.artifact_store
 
+    # Create deps namespace if deps_store is available
+    deps_namespace = None
+    if _state.deps_store is not None and _state.deps_installer is not None:
+        base_deps = DepsNamespace(_state.deps_store, _state.deps_installer)
+        # Wrap if runtime deps disabled
+        if not _state.config.allow_runtime_deps:
+            deps_namespace = ControlledDepsNamespace(base_deps, allow_runtime=False)
+        else:
+            deps_namespace = base_deps
+
     # Create executor with shared registries but isolated namespace/artifacts
     executor = CodeExecutor(
         registry=_state.registry,
         skill_library=_state.skill_library,
         artifact_store=artifact_store,
+        deps_namespace=deps_namespace,
         default_timeout=_state.config.default_timeout,
     )
 
@@ -290,11 +311,21 @@ async def initialize_server(config: SessionConfig) -> None:
         # Artifacts in Redis (shared across sessions)
         artifact_store = RedisArtifactStore(r, prefix=artifacts_prefix)
 
+        # Deps from Redis
+        # Derive deps prefix from tools prefix namespace (e.g., "myapp:tools" -> "myapp:deps")
+        # If tools_prefix has no namespace separator, uses tools_prefix directly as base
+        deps_prefix = os.environ.get("REDIS_DEPS_PREFIX", f"{tools_prefix.rsplit(':', 1)[0]}:deps")
+        deps_store = RedisDepsStore(r, prefix=deps_prefix)
+        deps_installer = PackageInstaller()
+        logger.info("  Deps in Redis (%s): initialized", deps_prefix)
+
         _state = ServerState(
             config=config,
             registry=registry,
             skill_library=skill_library,
             artifact_store=artifact_store,
+            deps_store=deps_store,
+            deps_installer=deps_installer,
             sessions={},
             start_time=time.time(),
             redis_mode=True,
@@ -332,11 +363,32 @@ async def initialize_server(config: SessionConfig) -> None:
         config.artifacts_path.mkdir(parents=True, exist_ok=True)
         artifact_store = FileArtifactStore(config.artifacts_path)
 
+        # Create deps store - use DEPS_PATH if mounted, otherwise derive from artifacts parent
+        deps_path_env = os.environ.get("DEPS_PATH")
+        if deps_path_env:
+            # Deps directory is mounted directly at DEPS_PATH
+            # FileDepsStore expects base_path where it creates deps/ subdirectory,
+            # but if DEPS_PATH is set, the directory IS the deps directory
+            deps_path = Path(deps_path_env)
+            deps_path.mkdir(parents=True, exist_ok=True)
+            # Create a store that uses deps_path directly (it's already the deps dir)
+            # FileDepsStore expects {base_path}/deps, so we pass parent
+            deps_store = FileDepsStore(deps_path.parent)
+            logger.info("  Deps in file store (%s): initialized", deps_path)
+        else:
+            # No explicit DEPS_PATH, derive from artifacts parent
+            deps_base = config.artifacts_path.parent
+            deps_store = FileDepsStore(deps_base)
+            logger.info("  Deps in file store (derived): initialized")
+        deps_installer = PackageInstaller()
+
         _state = ServerState(
             config=config,
             registry=registry,
             skill_library=skill_library,
             artifact_store=artifact_store,
+            deps_store=deps_store,
+            deps_installer=deps_installer,
             sessions={},
             start_time=time.time(),
             redis_mode=False,

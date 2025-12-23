@@ -12,8 +12,6 @@ patterns where errors are swallowed without logging or proper error types.
 
 import json
 import logging
-import os
-import stat
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -423,103 +421,8 @@ class TestFileToolStoreErrorHandling:
         )
 
 
-class TestArtifactStoreWrapperErrorHandling:
-    """Tests for ArtifactStoreWrapper load/delete error handling.
-
-    Current behavior (HIGH #6-7): except Exception: return None/False
-    Fixed behavior: Propagate non-FileNotFound errors.
-    """
-
-    def test_load_returns_none_for_missing_artifact(self, tmp_path: Path):
-        """load() should return None when artifact doesn't exist."""
-        from py_code_mode.artifacts import FileArtifactStore
-        from py_code_mode.storage import ArtifactStoreWrapper
-
-        store = FileArtifactStore(tmp_path)
-        wrapper = ArtifactStoreWrapper(store)
-
-        result = wrapper.load("nonexistent")
-        assert result is None  # Expected behavior
-
-    def test_load_raises_for_permission_error(self, tmp_path: Path):
-        """load() should raise StorageReadError for permission errors."""
-        from py_code_mode.artifacts import FileArtifactStore
-        from py_code_mode.storage import ArtifactStoreWrapper
-
-        # Create an artifact
-        artifact_path = tmp_path / "secret"
-        artifact_path.write_text("secret data")
-
-        store = FileArtifactStore(tmp_path)
-        # Register the artifact
-        (tmp_path / ".artifacts.json").write_text(
-            json.dumps(
-                {
-                    "secret": {
-                        "description": "test",
-                        "created_at": "2024-01-01T00:00:00Z",
-                        "metadata": {"_data_type": "text"},
-                    }
-                }
-            )
-        )
-
-        # Make file unreadable (skip on Windows)
-        if os.name != "nt":
-            artifact_path.chmod(0o000)
-            try:
-                wrapper = ArtifactStoreWrapper(store)
-
-                from py_code_mode import errors
-
-                if not hasattr(errors, "StorageReadError"):
-                    pytest.skip("StorageReadError not yet implemented")
-
-                # After fix: should raise StorageReadError
-                with pytest.raises(errors.StorageReadError):
-                    wrapper.load("secret")
-            finally:
-                artifact_path.chmod(0o644)
-
-    def test_delete_returns_false_for_missing(self, tmp_path: Path):
-        """delete() should return False when artifact doesn't exist."""
-        from py_code_mode.artifacts import FileArtifactStore
-        from py_code_mode.storage import ArtifactStoreWrapper
-
-        store = FileArtifactStore(tmp_path)
-        wrapper = ArtifactStoreWrapper(store)
-
-        result = wrapper.delete("nonexistent")
-        assert result is False  # Expected behavior
-
-    def test_delete_raises_for_permission_error(self, tmp_path: Path):
-        """delete() should raise StorageWriteError for permission errors."""
-        from py_code_mode.artifacts import FileArtifactStore
-        from py_code_mode.storage import ArtifactStoreWrapper
-
-        # Create an artifact directory and file
-        artifact_path = tmp_path / "protected"
-        artifact_path.write_text("protected data")
-
-        store = FileArtifactStore(tmp_path)
-        store.save("protected", "data", "test artifact")
-
-        # Make parent directory read-only to prevent deletion (skip on Windows)
-        if os.name != "nt":
-            tmp_path.chmod(stat.S_IRUSR | stat.S_IXUSR)  # r-x only
-            try:
-                wrapper = ArtifactStoreWrapper(store)
-
-                from py_code_mode import errors
-
-                if not hasattr(errors, "StorageWriteError"):
-                    pytest.skip("StorageWriteError not yet implemented")
-
-                # After fix: should raise StorageWriteError
-                with pytest.raises(errors.StorageWriteError):
-                    wrapper.delete("protected")
-            finally:
-                tmp_path.chmod(stat.S_IRWXU)
+# TestArtifactStoreWrapperErrorHandling removed - ArtifactStoreWrapper was removed
+# in Track B: Wrapper Cleanup. Error handling tests for artifacts are in test_artifacts.py
 
 
 # =============================================================================
@@ -835,71 +738,11 @@ command: fake_mcp_server
             )
 
 
-class TestEmbedderFallbackLogging:
-    """Tests for embedder fallback logging.
+# TestEmbedderFallbackLogging removed - SkillStoreWrapper was removed
+# in Track B: Wrapper Cleanup. Test the fallback logging directly on FileStorage/RedisStorage.
 
-    Current behavior (MEDIUM #15-16): Silent fallback to MockEmbedder.
-    Fixed behavior: Log warning about missing dependencies and fallback.
-    """
-
-    def test_embedder_fallback_logs_warning(
-        self, tmp_path: Path, log_capture: pytest.LogCaptureFixture
-    ):
-        """Fallback to MockEmbedder should log warning."""
-        from py_code_mode.skills import FileSkillStore
-        from py_code_mode.storage import SkillStoreWrapper
-
-        # Create skills directory and wrapper which triggers lazy library creation
-        skills_path = tmp_path / "skills"
-        skills_path.mkdir(parents=True, exist_ok=True)
-        raw_store = FileSkillStore(skills_path)
-        wrapper = SkillStoreWrapper(raw_store)
-
-        # Mock the create_skill_library import to fail
-        with patch(
-            "py_code_mode.storage.backends.create_skill_library",
-            side_effect=ImportError("No module named 'sentence_transformers'"),
-        ):
-            _library = wrapper._get_library()
-
-        # Check for warning about fallback
-        log_messages = " ".join(r.message for r in log_capture.records)
-        if "mock" not in log_messages.lower() and "fallback" not in log_messages.lower():
-            pytest.fail(
-                "Fallback to MockEmbedder should log warning.\nFix: Add logging in storage.py"
-            )
-
-
-# =============================================================================
-# INTEGRATION: ERROR PROPAGATION ACROSS BOUNDARIES
-# =============================================================================
-
-
-class TestStorageWrapperErrorPropagation:
-    """Integration tests for error propagation through storage wrappers."""
-
-    @pytest.mark.asyncio
-    async def test_redis_artifact_store_wrapper_error_propagation(self):
-        """ArtifactStoreWrapper should propagate non-not-found errors."""
-        from py_code_mode import errors
-
-        if not hasattr(errors, "StorageReadError"):
-            pytest.skip("StorageReadError not yet implemented")
-
-        # Create mock Redis that raises on read
-        # Note: RedisArtifactStore.load() uses get(), not hget()
-        mock_redis = MagicMock()
-        mock_redis.get.side_effect = ConnectionError("Redis connection lost")
-
-        from py_code_mode.artifacts import RedisArtifactStore
-        from py_code_mode.storage import ArtifactStoreWrapper
-
-        store = RedisArtifactStore(mock_redis, prefix="test")
-        wrapper = ArtifactStoreWrapper(store)
-
-        # Connection errors should propagate, not return None
-        with pytest.raises((errors.StorageReadError, ConnectionError)):
-            wrapper.load("any_artifact")
+# TestStorageWrapperErrorPropagation removed - ArtifactStoreWrapper was removed
+# in Track B: Wrapper Cleanup. Error propagation tests should use the direct stores.
 
 
 # =============================================================================

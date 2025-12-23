@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +12,9 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from py_code_mode.errors import StorageReadError
 from py_code_mode.skills.skill import PythonSkill, SkillMetadata
+
+# Valid skill name pattern: Python identifier (letters, digits, underscores)
+_VALID_SKILL_NAME = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 if TYPE_CHECKING:
     from redis import Redis
@@ -86,13 +90,40 @@ class FileSkillStore:
         # Ensure directory exists
         self._directory.mkdir(parents=True, exist_ok=True)
 
+    def _validate_skill_name(self, name: str) -> None:
+        """Validate skill name is a valid Python identifier.
+
+        Args:
+            name: Skill name to validate.
+
+        Raises:
+            ValueError: If name is not a valid Python identifier.
+        """
+        if not _VALID_SKILL_NAME.match(name):
+            raise ValueError(
+                f"Invalid skill name: {name!r}. "
+                "Skill names must be valid Python identifiers "
+                "(letters, digits, underscores, cannot start with digit)."
+            )
+
     def save(self, skill: PythonSkill) -> None:
-        """Write skill source to .py file."""
+        """Write skill source to .py file.
+
+        Raises:
+            ValueError: If skill name is not a valid Python identifier.
+        """
+        self._validate_skill_name(skill.name)
         path = self._directory / f"{skill.name}.py"
         path.write_text(skill.source)
 
     def load(self, name: str) -> PythonSkill | None:
-        """Load skill from .py file."""
+        """Load skill from .py file.
+
+        Raises:
+            ValueError: If skill name is not a valid Python identifier.
+            StorageReadError: If skill file exists but cannot be parsed.
+        """
+        self._validate_skill_name(name)
         path = self._directory / f"{name}.py"
         if not path.exists():
             return None
@@ -105,7 +136,12 @@ class FileSkillStore:
             raise StorageReadError(f"Failed to load skill '{name}' from {path}: {e}") from e
 
     def delete(self, name: str) -> bool:
-        """Delete skill .py file."""
+        """Delete skill .py file.
+
+        Raises:
+            ValueError: If skill name is not a valid Python identifier.
+        """
+        self._validate_skill_name(name)
         path = self._directory / f"{name}.py"
         if path.exists():
             path.unlink()
@@ -128,7 +164,12 @@ class FileSkillStore:
         return skills
 
     def exists(self, name: str) -> bool:
-        """Check if skill .py file exists."""
+        """Check if skill .py file exists.
+
+        Raises:
+            ValueError: If skill name is not a valid Python identifier.
+        """
+        self._validate_skill_name(name)
         path = self._directory / f"{name}.py"
         return path.exists()
 

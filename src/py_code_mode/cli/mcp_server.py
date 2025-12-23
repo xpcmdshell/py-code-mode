@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -63,6 +64,11 @@ async def run_code(code: str) -> str:
     - artifacts.* - Persist data across sessions:
       - artifacts.save("filename", data) - Save data
       - artifacts.load("filename") - Load data
+
+    - deps.* - Manage Python dependencies:
+      - deps.add("package") - Install a package
+      - deps.list() - List configured dependencies
+      - deps.remove("package") - Remove a dependency
 
     The namespace persists across calls - variables survive between run_code invocations.
     """
@@ -187,9 +193,89 @@ async def delete_skill(name: str) -> bool:
     return _session._executor._namespace["skills"].delete(name)
 
 
+async def list_deps() -> list[str]:
+    """List all configured dependencies."""
+    if _session is None or _session._executor is None:
+        return []
+    return _session._executor._namespace["deps"].list()
+
+
+async def _list_deps_json() -> str:
+    """List all configured dependencies (JSON-serialized for MCP).
+
+    FastMCP doesn't create TextContent for empty lists, so we serialize
+    to JSON string to ensure consistent MCP response format.
+    """
+    return json.dumps(await list_deps())
+
+
+async def add_dep(package: str) -> dict:
+    """Add and install a dependency.
+
+    Args:
+        package: Package name with optional version specifier (e.g., "pandas>=2.0")
+
+    Returns:
+        Dict with installation result (installed, already_present, failed lists)
+    """
+    if _session is None or _session._executor is None:
+        return {"error": "Session not initialized"}
+    try:
+        result = _session._executor._namespace["deps"].add(package)
+        return {
+            "installed": list(result.installed),
+            "already_present": list(result.already_present),
+            "failed": list(result.failed),
+        }
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+async def remove_dep(package: str) -> bool:
+    """Remove a dependency from configuration.
+
+    Args:
+        package: Package name to remove
+
+    Returns:
+        True if removed, False if not found
+    """
+    if _session is None or _session._executor is None:
+        return False
+    return _session._executor._namespace["deps"].remove(package)
+
+
+# Register deps tools that are always available (list only)
+# Use _list_deps_json for MCP to ensure TextContent is always created (FastMCP
+# doesn't create TextContent for empty lists, which breaks MCP clients expecting
+# result.content[0].text)
+mcp.tool(_list_deps_json, name="list_deps", description="List all configured dependencies.")
+
+# Note: add_dep and remove_dep are conditionally registered in register_runtime_dep_tools()
+# based on --no-runtime-deps flag
+
+# Track if runtime dep tools are registered (for testing)
+_runtime_dep_tools_registered = False
+
+
+def register_runtime_dep_tools(allow_runtime_deps: bool) -> None:
+    """Register runtime dependency tools based on configuration.
+
+    Args:
+        allow_runtime_deps: If True, register add_dep and remove_dep tools.
+                           If False, only list_deps is available.
+    """
+    global _runtime_dep_tools_registered
+    if allow_runtime_deps and not _runtime_dep_tools_registered:
+        mcp.tool(add_dep)
+        mcp.tool(remove_dep)
+        _runtime_dep_tools_registered = True
+
+
 async def create_session(args: argparse.Namespace) -> Session:
     """Create session based on CLI args."""
     from py_code_mode import Session
+    from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
 
     if args.redis:
         from redis import Redis
@@ -205,7 +291,12 @@ async def create_session(args: argparse.Namespace) -> Session:
         storage_path.mkdir(parents=True, exist_ok=True)
         storage = FileStorage(base_path=storage_path)
 
-    session = Session(storage=storage)
+    # Configure executor with runtime deps setting
+    no_runtime_deps = getattr(args, "no_runtime_deps", False)
+    config = InProcessConfig(allow_runtime_deps=not no_runtime_deps)
+    executor = InProcessExecutor(config=config)
+
+    session = Session(storage=storage, executor=executor)
     await session.start()
     return session
 
@@ -237,11 +328,22 @@ Examples:
     parser.add_argument("--redis", help="Redis URL for storage")
     parser.add_argument("--prefix", help="Redis key prefix (default: py-code-mode)")
 
+    # Runtime deps control
+    parser.add_argument(
+        "--no-runtime-deps",
+        action="store_true",
+        help="Disable runtime dependency installation",
+    )
+
     args = parser.parse_args()
 
     # Validate: need either --storage or --redis
     if not args.storage and not args.redis:
         parser.error("Either --storage or --redis is required")
+
+    # Conditionally register add_dep tool based on --no-runtime-deps flag
+    no_runtime_deps = getattr(args, "no_runtime_deps", False)
+    register_runtime_dep_tools(allow_runtime_deps=not no_runtime_deps)
 
     # Initialize session
     global _session

@@ -1215,3 +1215,431 @@ class TestMCPServerNegative:
                     or "error" in text.lower()
                     or "not found" in text.lower()
                 )
+
+
+# =============================================================================
+# MCP Deps Tools Tests
+# =============================================================================
+
+
+class TestMCPServerDepsTools:
+    """Tests for MCP deps management tools (add_dep, list_deps, remove_dep).
+
+    These are thin wrappers around DepsNamespace methods. Core deps functionality
+    is tested in test_deps_namespace.py - these tests verify MCP wiring works.
+    """
+
+    # -------------------------------------------------------------------------
+    # Contract Tests - Tools Exist
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_deps_tools_registered(
+        self,
+        mcp_storage_dir: Path,
+    ) -> None:
+        """E2E: Deps tools are registered and available.
+
+        Contract: add_dep, list_deps, remove_dep are MCP tools.
+        Breaks when: Tools not registered with FastMCP.
+        """
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(mcp_storage_dir)],
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                tools = await session.list_tools()
+                tool_names = {t.name for t in tools.tools}
+
+                expected_deps_tools = {"add_dep", "list_deps", "remove_dep"}
+                assert expected_deps_tools <= tool_names, (
+                    f"Missing deps tools: {expected_deps_tools - tool_names}"
+                )
+
+    # -------------------------------------------------------------------------
+    # Contract Tests - Return Types
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_list_deps_returns_list(
+        self,
+        mcp_storage_dir: Path,
+    ) -> None:
+        """E2E: list_deps returns a JSON list.
+
+        Contract: list_deps() returns list[str].
+        Breaks when: Return type is wrong.
+        """
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(mcp_storage_dir)],
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                result = await session.call_tool("list_deps", {})
+                deps_data = json.loads(result.content[0].text)
+
+                assert isinstance(deps_data, list)
+
+    @pytest.mark.asyncio
+    async def test_remove_dep_returns_bool(
+        self,
+        mcp_storage_dir: Path,
+    ) -> None:
+        """E2E: remove_dep returns a boolean.
+
+        Contract: remove_dep() returns bool.
+        Breaks when: Return type is wrong.
+        """
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(mcp_storage_dir)],
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                # Try to remove non-existent package (should return False)
+                result = await session.call_tool("remove_dep", {"package": "nonexistent-pkg-xyz"})
+                result_data = json.loads(result.content[0].text)
+
+                assert isinstance(result_data, bool)
+                assert result_data is False
+
+    @pytest.mark.asyncio
+    async def test_add_dep_returns_dict(
+        self,
+        mcp_storage_dir: Path,
+    ) -> None:
+        """E2E: add_dep returns a dict with result info.
+
+        Contract: add_dep() returns dict with sync result info.
+        Breaks when: Return type is wrong or structure missing.
+        """
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(mcp_storage_dir)],
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                # Add a real package (will attempt pip install)
+                result = await session.call_tool("add_dep", {"package": "six"})
+                result_data = json.loads(result.content[0].text)
+
+                # Should be a dict with sync result info
+                assert isinstance(result_data, dict)
+                # Should have standard sync result fields
+                assert (
+                    "installed" in result_data
+                    or "already_present" in result_data
+                    or "failed" in result_data
+                )
+
+    # -------------------------------------------------------------------------
+    # User Journey Tests (E2E)
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_add_dep_makes_package_listable(
+        self,
+        mcp_storage_dir: Path,
+    ) -> None:
+        """E2E: After add_dep, package appears in list_deps.
+
+        Invariant: add_dep(X) -> X in list_deps()
+        Breaks when: add_dep doesn't update store.
+        """
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(mcp_storage_dir)],
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                # Add a package
+                await session.call_tool("add_dep", {"package": "six"})
+
+                # List deps
+                result = await session.call_tool("list_deps", {})
+                deps_data = json.loads(result.content[0].text)
+
+                # Package should be in the list
+                assert "six" in deps_data
+
+    @pytest.mark.asyncio
+    async def test_add_then_remove_dep_workflow(
+        self,
+        mcp_storage_dir: Path,
+    ) -> None:
+        """E2E: Complete add -> verify -> remove -> verify workflow.
+
+        User action: Agent adds, verifies, removes, verifies package is gone.
+        Breaks when: remove_dep doesn't update store.
+        """
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(mcp_storage_dir)],
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                # 1. Add a package
+                await session.call_tool("add_dep", {"package": "six"})
+
+                # 2. Verify it's in the list
+                list_result = await session.call_tool("list_deps", {})
+                deps_before = json.loads(list_result.content[0].text)
+                assert "six" in deps_before
+
+                # 3. Remove the package
+                remove_result = await session.call_tool("remove_dep", {"package": "six"})
+                removed = json.loads(remove_result.content[0].text)
+                assert removed is True
+
+                # 4. Verify it's gone
+                list_result2 = await session.call_tool("list_deps", {})
+                deps_after = json.loads(list_result2.content[0].text)
+                assert "six" not in deps_after
+
+    @pytest.mark.asyncio
+    async def test_add_dep_with_version_specifier(
+        self,
+        mcp_storage_dir: Path,
+    ) -> None:
+        """E2E: add_dep accepts version specifiers.
+
+        Breaks when: Version specifiers cause errors.
+        """
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(mcp_storage_dir)],
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                # Add package with version specifier
+                result = await session.call_tool("add_dep", {"package": "six>=1.0"})
+                result_data = json.loads(result.content[0].text)
+
+                # Should succeed (dict result, not error)
+                assert isinstance(result_data, dict)
+
+                # Verify it's in the list
+                list_result = await session.call_tool("list_deps", {})
+                deps_data = json.loads(list_result.content[0].text)
+                assert "six>=1.0" in deps_data
+
+    # -------------------------------------------------------------------------
+    # Invariant Tests
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_list_deps_empty_returns_empty_list(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """E2E: list_deps on fresh session returns empty list.
+
+        Invariant: Empty deps -> []
+        Breaks when: Returns None or throws.
+        """
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        # Create fresh storage with no deps
+        storage = tmp_path / "storage"
+        storage.mkdir()
+        (storage / "tools").mkdir()
+        (storage / "skills").mkdir()
+        (storage / "artifacts").mkdir()
+        (storage / "deps").mkdir()
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(storage)],
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                result = await session.call_tool("list_deps", {})
+                deps_data = json.loads(result.content[0].text)
+
+                assert deps_data == []
+
+    # -------------------------------------------------------------------------
+    # Negative Tests
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_remove_dep_nonexistent_returns_false(
+        self,
+        mcp_storage_dir: Path,
+    ) -> None:
+        """E2E: remove_dep returns False for non-existent package.
+
+        Breaks when: Returns True or throws.
+        """
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(mcp_storage_dir)],
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                result = await session.call_tool(
+                    "remove_dep", {"package": "nonexistent-package-xyz"}
+                )
+                removed = json.loads(result.content[0].text)
+
+                assert removed is False
+
+    @pytest.mark.asyncio
+    async def test_add_dep_empty_string_returns_error(
+        self,
+        mcp_storage_dir: Path,
+    ) -> None:
+        """E2E: add_dep('') returns error response.
+
+        Breaks when: Empty string is accepted or causes crash.
+        """
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(mcp_storage_dir)],
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                result = await session.call_tool("add_dep", {"package": ""})
+                text = result.content[0].text.lower()
+
+                # Should indicate an error
+                assert "error" in text or "invalid" in text or "empty" in text
+
+    @pytest.mark.asyncio
+    async def test_add_dep_with_shell_metacharacters_returns_error(
+        self,
+        mcp_storage_dir: Path,
+    ) -> None:
+        """E2E: add_dep rejects dangerous shell metacharacters.
+
+        Breaks when: Command injection is possible.
+        """
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(mcp_storage_dir)],
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                # Try command injection
+                result = await session.call_tool("add_dep", {"package": "pandas; rm -rf /"})
+                text = result.content[0].text.lower()
+
+                # Should indicate an error (invalid package name)
+                assert "error" in text or "invalid" in text
+
+
+class TestMCPServerDepsToolsSessionNotInitialized:
+    """Tests for deps tools behavior when session is not initialized.
+
+    These test the graceful degradation path (returning safe defaults).
+    We need to test this without going through the full stdio flow since
+    the session is always initialized in normal MCP usage.
+    """
+
+    @pytest.mark.asyncio
+    async def test_add_dep_without_session_returns_error(self) -> None:
+        """add_dep returns error dict when _session is None.
+
+        Breaks when: Tool crashes instead of returning error.
+        """
+        from py_code_mode.cli import mcp_server
+
+        # Store original session and set to None
+        original_session = mcp_server._session
+        mcp_server._session = None
+
+        try:
+            result = await mcp_server.add_dep("pandas")
+            assert isinstance(result, dict)
+            assert "error" in result
+        finally:
+            mcp_server._session = original_session
+
+    @pytest.mark.asyncio
+    async def test_list_deps_without_session_returns_empty(self) -> None:
+        """list_deps returns empty list when _session is None.
+
+        Breaks when: Tool crashes instead of returning empty list.
+        """
+        from py_code_mode.cli import mcp_server
+
+        original_session = mcp_server._session
+        mcp_server._session = None
+
+        try:
+            result = await mcp_server.list_deps()
+            assert result == []
+        finally:
+            mcp_server._session = original_session
+
+    @pytest.mark.asyncio
+    async def test_remove_dep_without_session_returns_false(self) -> None:
+        """remove_dep returns False when _session is None.
+
+        Breaks when: Tool crashes instead of returning False.
+        """
+        from py_code_mode.cli import mcp_server
+
+        original_session = mcp_server._session
+        mcp_server._session = None
+
+        try:
+            result = await mcp_server.remove_dep("pandas")
+            assert result is False
+        finally:
+            mcp_server._session = original_session

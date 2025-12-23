@@ -305,7 +305,8 @@ class TestFileStorageErrors:
         storage = FileStorage(nonexistent)
 
         # Should work (directory created on demand)
-        result = storage.tools.list()
+        registry = storage.get_tool_registry()
+        result = registry.list_tools()
         assert isinstance(result, list)
 
     def test_permission_error_handling(self) -> None:
@@ -324,7 +325,8 @@ class TestFileStorageErrors:
 
         # Should not crash - may skip bad file or return empty
         try:
-            result = storage.tools.list()
+            registry = storage.get_tool_registry()
+            result = registry.list_tools()
             assert isinstance(result, list)
         except Exception:
             pass  # Raising on corrupted files is acceptable
@@ -339,7 +341,8 @@ class TestFileStorageErrors:
 
         # Should not crash on list
         try:
-            result = storage.skills.list()
+            library = storage.get_skill_library()
+            result = library.list()
             assert isinstance(result, list)
         except Exception:
             pass  # Raising on corrupted files is acceptable
@@ -353,7 +356,8 @@ class TestRedisStorageErrors:
         storage = RedisStorage(mock_redis, prefix="test")
 
         # Mock client always works, so this tests basic functionality
-        result = storage.tools.list()
+        registry = storage.get_tool_registry()
+        result = registry.list_tools()
         assert isinstance(result, list)
 
     def test_deserialization_error_handling(self, mock_redis: MockRedisClient) -> None:
@@ -361,11 +365,12 @@ class TestRedisStorageErrors:
         storage = RedisStorage(mock_redis, prefix="test")
 
         # Manually inject corrupted data
-        mock_redis.hset("test:tools:__index__", "bad", b"not valid json {{{")
+        mock_redis.hset("test:tools:__tools__", "bad", b"not valid json {{{")
 
         # Should not crash - may skip or error gracefully
         try:
-            result = storage.tools.list()
+            registry = storage.get_tool_registry()
+            result = registry.list_tools()
             # May return empty or skip corrupted entries
             assert isinstance(result, list)
         except Exception:

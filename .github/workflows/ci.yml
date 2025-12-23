@@ -26,6 +26,13 @@ jobs:
           # NOTE: Don't prune Docker images - keeps base images cached for faster builds
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
-      - run: uv sync
+      - name: Cache HuggingFace models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: huggingface-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            huggingface-${{ runner.os }}-
+      - run: uv sync --all-extras
       # Skip container tests in CI for now (too slow - need Docker layer caching)
       - run: uv run pytest tests/ -v --ignore=tests/test_container.py -k "not Container"

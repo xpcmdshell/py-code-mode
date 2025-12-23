@@ -1,5 +1,8 @@
 """py-code-mode: Code mode for LLM agents."""
 
+# Bootstrap (for subprocess namespace reconstruction)
+from py_code_mode.bootstrap import NamespaceBundle, bootstrap_namespaces
+
 # Core entry point
 # All errors (foundational)
 from py_code_mode.errors import (
@@ -31,6 +34,9 @@ __version__ = "0.1.0"
 __all__ = [
     # Core
     "Session",
+    # Bootstrap
+    "bootstrap_namespaces",
+    "NamespaceBundle",
     # Types
     "ExecutionResult",
     "JsonSchema",

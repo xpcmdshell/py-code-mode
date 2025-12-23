@@ -8,7 +8,6 @@ from py_code_mode.execution.protocol import (
     FileStorageAccess,
     RedisStorageAccess,
     StorageAccess,
-    StorageBackendAccess,
 )
 from py_code_mode.execution.registry import (
     get_backend,
@@ -16,7 +15,7 @@ from py_code_mode.execution.registry import (
     register_backend,
 )
 
-# Container is optional
+# Container is optional (requires docker)
 try:
     from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 
@@ -26,13 +25,22 @@ except ImportError:
     ContainerConfig = None  # type: ignore
     ContainerExecutor = None  # type: ignore
 
+# Subprocess is optional (requires jupyter_client, ipykernel)
+try:
+    from py_code_mode.execution.subprocess import SubprocessConfig, SubprocessExecutor
+
+    SUBPROCESS_AVAILABLE = True
+except ImportError:
+    SUBPROCESS_AVAILABLE = False
+    SubprocessConfig = None  # type: ignore
+    SubprocessExecutor = None  # type: ignore
+
 __all__ = [
     "Capability",
     "Executor",
     "FileStorageAccess",
     "RedisStorageAccess",
     "StorageAccess",
-    "StorageBackendAccess",
     "get_backend",
     "list_backends",
     "register_backend",
@@ -40,4 +48,7 @@ __all__ = [
     "ContainerExecutor",
     "ContainerConfig",
     "CONTAINER_AVAILABLE",
+    "SubprocessExecutor",
+    "SubprocessConfig",
+    "SUBPROCESS_AVAILABLE",
 ]

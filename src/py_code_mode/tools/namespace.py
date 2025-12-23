@@ -90,40 +90,51 @@ class ToolProxy:
         self._loop = loop
         self._callables = {c.name: c for c in tool.callables}
 
-    def __call__(self, **kwargs: Any) -> Any:
-        """Escape hatch - invoke tool directly without recipe.
-
-        This delegates to the adapter's call_tool method, bypassing recipes.
-        """
+    async def _execute(self, **kwargs: Any) -> Any:
+        """Execute the tool asynchronously."""
         tool_name = self._tool.name
+        adapter = self._registry.find_adapter_for_tool(tool_name)
+        if adapter is None:
+            raise RuntimeError(f"No adapter found for tool: {tool_name}")
+        return await adapter.call_tool(tool_name, None, kwargs)
 
-        # Define the async execution logic
-        async def _execute() -> Any:
-            adapter = self._registry.find_adapter_for_tool(tool_name)
-            if adapter is None:
-                raise RuntimeError(f"No adapter found for tool: {tool_name}")
-            return await adapter.call_tool(tool_name, None, kwargs)
+    async def call_async(self, **kwargs: Any) -> Any:
+        """Execute tool asynchronously. Always returns awaitable.
 
-        # Check if we're in async context (has running loop)
-        try:
-            asyncio.get_running_loop()
-            # In async context - return coroutine for await
-            return _execute()
-        except RuntimeError:
-            # Not in async context - execute sync
-            pass
+        Use this when you want predictable async behavior regardless of context.
+        """
+        return await self._execute(**kwargs)
 
-        # Sync execution path
-        coro = _execute()
+    def call_sync(self, **kwargs: Any) -> Any:
+        """Execute tool synchronously. Always blocks and returns result.
 
-        # When called from a thread (via executor.run -> to_thread), use
-        # the stored loop with run_coroutine_threadsafe to schedule on main loop.
+        Use this when you want predictable sync behavior regardless of context.
+        """
+        coro = self._execute(**kwargs)
+
+        # When called from a thread with loop reference, use run_coroutine_threadsafe
         if self._loop is not None:
             future = asyncio.run_coroutine_threadsafe(coro, self._loop)
             return future.result()
 
         # Standalone sync usage - create new loop
         return asyncio.run(coro)
+
+    def __call__(self, **kwargs: Any) -> Any:
+        """Escape hatch - invoke tool directly without recipe.
+
+        This delegates to the adapter's call_tool method, bypassing recipes.
+        Returns coroutine in async context, executes sync otherwise.
+        """
+        # Check if we're in async context (has running loop)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop running - use sync path
+            return self.call_sync(**kwargs)
+        else:
+            # In async context - return coroutine for await
+            return self._execute(**kwargs)
 
     def __getattr__(self, callable_name: str) -> CallableProxy:
         """Get a callable proxy by name."""
@@ -156,42 +167,50 @@ class CallableProxy:
         self._callable = callable
         self._loop = loop
 
-    def __call__(self, **kwargs: Any) -> Any:
-        """Invoke the callable with the given arguments.
+    async def _execute(self, **kwargs: Any) -> Any:
+        """Execute the callable asynchronously."""
+        adapter = self._registry.find_adapter_for_tool(self._tool_name)
+        if adapter is None:
+            raise RuntimeError(f"No adapter found for tool: {self._tool_name}")
+        return await adapter.call_tool(self._tool_name, self._callable.name, kwargs)
 
-        Returns a coroutine if called from async context, executes sync otherwise.
-        This allows both `await tools.x.y()` and `tools.x.y()` to work.
+    async def call_async(self, **kwargs: Any) -> Any:
+        """Execute callable asynchronously. Always returns awaitable.
+
+        Use this when you want predictable async behavior regardless of context.
         """
-        tool_name = self._tool_name
-        callable_name = self._callable.name
+        return await self._execute(**kwargs)
 
-        # Define the async execution logic
-        async def _execute() -> Any:
-            adapter = self._registry.find_adapter_for_tool(tool_name)
-            if adapter is None:
-                raise RuntimeError(f"No adapter found for tool: {tool_name}")
-            return await adapter.call_tool(tool_name, callable_name, kwargs)
+    def call_sync(self, **kwargs: Any) -> Any:
+        """Execute callable synchronously. Always blocks and returns result.
 
-        # Check if we're in async context (has running loop)
-        try:
-            asyncio.get_running_loop()
-            # In async context - return coroutine for await
-            return _execute()
-        except RuntimeError:
-            # Not in async context - execute sync
-            pass
+        Use this when you want predictable sync behavior regardless of context.
+        """
+        coro = self._execute(**kwargs)
 
-        # Sync execution path
-        coro = _execute()
-
-        # When called from a thread (via executor.run -> to_thread), use
-        # the stored loop with run_coroutine_threadsafe to schedule on main loop.
+        # When called from a thread with loop reference, use run_coroutine_threadsafe
         if self._loop is not None:
             future = asyncio.run_coroutine_threadsafe(coro, self._loop)
             return future.result()
 
         # Standalone sync usage - create new loop
         return asyncio.run(coro)
+
+    def __call__(self, **kwargs: Any) -> Any:
+        """Invoke the callable with the given arguments.
+
+        Returns a coroutine if called from async context, executes sync otherwise.
+        This allows both `await tools.x.y()` and `tools.x.y()` to work.
+        """
+        # Check if we're in async context (has running loop)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop running - use sync path
+            return self.call_sync(**kwargs)
+        else:
+            # In async context - return coroutine for await
+            return self._execute(**kwargs)
 
     async def describe(self) -> dict[str, str]:
         """Get parameter descriptions for this callable."""

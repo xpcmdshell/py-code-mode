@@ -31,7 +31,7 @@ class ArtifactStoreProtocol(Protocol):
         self,
         name: str,
         data: str | bytes | dict | list,
-        description: str,
+        description: str = "",
         metadata: dict[str, Any] | None = None,
     ) -> Artifact:
         """Save data as an artifact."""

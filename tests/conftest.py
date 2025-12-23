@@ -1,5 +1,7 @@
 """Test fixtures for py-code-mode."""
 
+from __future__ import annotations
+
 import fnmatch
 import functools
 import os
@@ -557,6 +559,7 @@ class MockRedisClient:
     ) -> None:
         self._data: dict[str, dict[str, bytes]] = {}
         self._strings: dict[str, bytes] = {}
+        self._sets: dict[str, set[str]] = {}
         # Match real redis.Redis interface for session.py:_derive_storage_access()
         self.connection_pool = MockConnectionPool(host, port, db, password)
 
@@ -606,25 +609,70 @@ class MockRedisClient:
             if key in self._data:
                 del self._data[key]
                 count += 1
+            if key in self._sets:
+                del self._sets[key]
+                count += 1
         return count
 
     def exists(self, key: str) -> int:
-        if key in self._strings or key in self._data:
+        if key in self._strings or key in self._data or key in self._sets:
             return 1
         return 0
 
     def keys(self, pattern: str = "*") -> list[str]:
         """Simple pattern matching for keys."""
-        all_keys = list(self._strings.keys()) + list(self._data.keys())
+        all_keys = list(self._strings.keys()) + list(self._data.keys()) + list(self._sets.keys())
         if pattern == "*":
             return all_keys
         return [k for k in all_keys if fnmatch.fnmatch(k, pattern)]
+
+    # Set operations for RedisDepsStore
+    def sadd(self, key: str, *values: str) -> int:
+        """Add members to a set."""
+        if key not in self._sets:
+            self._sets[key] = set()
+        added = 0
+        for value in values:
+            if value not in self._sets[key]:
+                self._sets[key].add(value)
+                added += 1
+        return added
+
+    def srem(self, key: str, *values: str) -> int:
+        """Remove members from a set."""
+        if key not in self._sets:
+            return 0
+        removed = 0
+        for value in values:
+            if value in self._sets[key]:
+                self._sets[key].remove(value)
+                removed += 1
+        return removed
+
+    def smembers(self, key: str) -> set[str]:
+        """Get all members of a set."""
+        return self._sets.get(key, set()).copy()
 
 
 @pytest.fixture
 def mock_redis() -> MockRedisClient:
     """Create a mock Redis client for testing."""
     return MockRedisClient()
+
+
+@pytest.fixture(autouse=True)
+def clear_deps_install_cache() -> None:
+    """Clear the deps installer cache before each test.
+
+    Ensures test isolation for installer tests.
+    """
+    try:
+        from py_code_mode.deps.installer import clear_install_cache
+
+        clear_install_cache()
+    except ImportError:
+        # Module not yet implemented
+        pass
 
 
 @pytest.fixture
