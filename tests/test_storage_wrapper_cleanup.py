@@ -87,14 +87,17 @@ class TestWrapperPropertiesRemoved:
 class TestGetMethodsReturnDirectTypes:
     """Verify get_X() methods return direct types, not wrappers."""
 
-    def test_file_storage_get_tool_registry_returns_tool_registry(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_file_storage_get_tool_registry_returns_tool_registry(
+        self, tmp_path: Path
+    ) -> None:
         """get_tool_registry() returns ToolRegistry directly.
 
         Breaks when: Returns dict wrapper or wrong type.
         """
         storage = FileStorage(tmp_path)
 
-        result = storage.get_tool_registry()
+        result = await storage.get_tool_registry()
 
         assert isinstance(result, ToolRegistry)
 
@@ -124,7 +127,8 @@ class TestGetMethodsReturnDirectTypes:
         # Should NOT be ArtifactStoreWrapper - check type name
         assert type(result).__name__ != "ArtifactStoreWrapper"
 
-    def test_redis_storage_get_tool_registry_returns_tool_registry(
+    @pytest.mark.asyncio
+    async def test_redis_storage_get_tool_registry_returns_tool_registry(
         self, mock_redis: MockRedisClient
     ) -> None:
         """get_tool_registry() returns ToolRegistry directly.
@@ -133,7 +137,7 @@ class TestGetMethodsReturnDirectTypes:
         """
         storage = RedisStorage(mock_redis, prefix="test")
 
-        result = storage.get_tool_registry()
+        result = await storage.get_tool_registry()
 
         assert isinstance(result, ToolRegistry)
 

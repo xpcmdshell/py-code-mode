@@ -73,11 +73,15 @@ from py_code_mode.tools import ToolRegistry, ToolsNamespace
 from py_code_mode.tools.adapters import CLIAdapter
 
 _tools_path = Path({tools_path_str}) if {tools_path_str} else None
-_registry = ToolRegistry()
 
-if _tools_path is not None and _tools_path.exists():
-    _adapter = CLIAdapter(tools_path=_tools_path)
-    _registry.add_adapter(_adapter)
+# ToolRegistry.from_dir() is async because MCP tools require async initialization.
+# Since nest_asyncio is applied, asyncio.run() works in the Jupyter kernel context.
+async def _async_setup_tools():
+    if _tools_path is not None and _tools_path.exists():
+        return await ToolRegistry.from_dir(str(_tools_path))
+    return ToolRegistry()
+
+_registry = asyncio.run(_async_setup_tools())
 
 # Create the base namespace
 _base_tools = ToolsNamespace(_registry)
@@ -321,11 +325,7 @@ _skills_ns_dict["deps"] = deps
 # Cleanup temporary variables (keep wrapper classes for runtime use)
 # =============================================================================
 
-del _tools_path, _registry, _base_tools
-try:
-    del _adapter
-except NameError:
-    pass
+del _tools_path, _registry, _base_tools, _async_setup_tools
 del _skills_path, _store, _library, _skills_ns_dict
 del _artifacts_path, _base_artifacts
 del _base_path, _deps_store, _installer, _base_deps, _allow_runtime_deps
@@ -377,16 +377,17 @@ _redis_client = Redis.from_url({redis_url_str}, decode_responses=False)
 
 from py_code_mode.tools import ToolRegistry, ToolsNamespace
 from py_code_mode.tools.adapters import CLIAdapter
-from py_code_mode.storage.redis_tools import RedisToolStore
+from py_code_mode.storage.redis_tools import RedisToolStore, registry_from_redis
 
 _tools_prefix = {tools_prefix_str}
 _tool_store = RedisToolStore(_redis_client, prefix=_tools_prefix)
-_tool_configs = list(_tool_store.list().values())
-_registry = ToolRegistry()
 
-if _tool_configs:
-    _adapter = CLIAdapter.from_configs(_tool_configs)
-    _registry.add_adapter(_adapter)
+# registry_from_redis() is async because MCP tools require async initialization.
+# Since nest_asyncio is applied, asyncio.run() works in the Jupyter kernel context.
+async def _async_setup_tools():
+    return await registry_from_redis(_tool_store)
+
+_registry = asyncio.run(_async_setup_tools())
 
 # Create the base namespace
 _base_tools = ToolsNamespace(_registry)
@@ -617,15 +618,11 @@ _skills_ns_dict["deps"] = deps
 # Cleanup temporary variables (keep wrapper classes for runtime use)
 # =============================================================================
 
-del _tools_prefix, _tool_store, _tool_configs, _registry, _base_tools
-try:
-    del _adapter
-except NameError:
-    pass
+del _tools_prefix, _tool_store, _registry, _base_tools, _async_setup_tools
 del _skills_prefix, _store, _library, _skills_ns_dict
 del _artifacts_prefix, _base_artifacts
 del _deps_prefix, _deps_store, _installer, _base_deps, _allow_runtime_deps
-del ToolRegistry, ToolsNamespace, CLIAdapter, RedisToolStore
+del ToolRegistry, ToolsNamespace, CLIAdapter, RedisToolStore, registry_from_redis
 del RedisSkillStore, create_skill_library, SkillsNamespace
 del RedisArtifactStore
 del DepsNamespace, RedisDepsStore, PackageInstaller

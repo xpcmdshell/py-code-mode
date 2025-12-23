@@ -570,3 +570,135 @@ class TestContainerInvariants:
             result = await session.run("secret")
             assert not result.is_ok, "Variable leaked between sessions"
             assert "NameError" in str(result.error)
+
+
+# =============================================================================
+# FileStorage User Journey Tests
+# =============================================================================
+
+
+class TestFileStorageUserJourney:
+    """Test user journeys specific to FileStorage setup.
+
+    These tests simulate real developer workflows using FileStorage,
+    including loading tools from YAML configurations.
+    """
+
+    @pytest.mark.asyncio
+    async def test_mcp_tool_yaml_loads_through_session(self, tmp_path: Path) -> None:
+        """MCP tools defined in YAML are accessible through Session.
+
+        User story: Developer adds an MCP tool config to their tools directory.
+        When they start a Session, the MCP tools should be available.
+
+        This tests the full path: FileStorage -> Session -> ToolsNamespace
+
+        Regression test for: MCP tools not loading due to sync get_tool_registry()
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from py_code_mode.tools import Tool, ToolCallable
+
+        # Create tools directory with MCP config
+        tools_dir = tmp_path / "tools"
+        tools_dir.mkdir()
+
+        mcp_config = """name: test_mcp
+description: Test MCP tool
+type: mcp
+transport: stdio
+command: fake_mcp_server
+"""
+        (tools_dir / "test_mcp.yaml").write_text(mcp_config)
+
+        # Create mock MCP adapter that returns a tool
+        mock_adapter = MagicMock()
+        mock_callable = ToolCallable(
+            name="mcp_test_tool",
+            description="A test tool from MCP",
+            parameters=(),
+        )
+        mock_tool = Tool(
+            name="mcp_test_tool",
+            description="A test tool from MCP",
+            callables=(mock_callable,),
+        )
+        mock_adapter.list_tools.return_value = [mock_tool]
+        mock_adapter._refresh_tools = AsyncMock(return_value=[mock_tool])
+        mock_adapter.close = AsyncMock()
+
+        # Patch MCPAdapter.connect_stdio to return our mock
+        with patch(
+            "py_code_mode.tools.adapters.mcp.MCPAdapter.connect_stdio",
+            new_callable=AsyncMock,
+            return_value=mock_adapter,
+        ):
+            storage = FileStorage(base_path=tmp_path)
+
+            async with Session(storage=storage) as session:
+                # Verify MCP tool is accessible
+                result = await session.run("tools.list()")
+                assert result.is_ok, f"tools.list() failed: {result.error}"
+                tool_names = [t.name for t in result.value]
+
+                assert "mcp_test_tool" in tool_names, (
+                    f"MCP tool not found. Available tools: {tool_names}"
+                )
+
+    @pytest.mark.asyncio
+    async def test_cli_tools_load_when_mcp_fails(self, tmp_path: Path) -> None:
+        """CLI tools still load when MCP tool connection fails.
+
+        User story: Developer has both CLI and MCP tools configured.
+        If the MCP server is unavailable, CLI tools should still work.
+
+        Tests graceful degradation of MCP failures.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        # Create tools directory with both CLI and MCP configs
+        tools_dir = tmp_path / "tools"
+        tools_dir.mkdir()
+
+        # CLI tool config
+        cli_config = """name: test_cli
+description: Test CLI tool
+command: echo
+schema:
+  positional:
+    - name: message
+      type: string
+recipes:
+  say:
+    description: Echo a message
+    params:
+      message: {}
+"""
+        (tools_dir / "test_cli.yaml").write_text(cli_config)
+
+        # MCP tool config (will fail to connect)
+        mcp_config = """name: broken_mcp
+description: MCP tool that fails
+type: mcp
+transport: stdio
+command: nonexistent_mcp_server
+"""
+        (tools_dir / "broken_mcp.yaml").write_text(mcp_config)
+
+        # Patch MCPAdapter.connect_stdio to raise an error
+        with patch(
+            "py_code_mode.tools.adapters.mcp.MCPAdapter.connect_stdio",
+            new_callable=AsyncMock,
+            side_effect=OSError("Connection failed"),
+        ):
+            storage = FileStorage(base_path=tmp_path)
+
+            async with Session(storage=storage) as session:
+                # CLI tool should still be accessible despite MCP failure
+                result = await session.run("tools.list()")
+                assert result.is_ok, f"tools.list() failed: {result.error}"
+                tool_names = [t.name for t in result.value]
+
+                assert "test_cli" in tool_names, (
+                    f"CLI tool not found after MCP failure. Available: {tool_names}"
+                )

@@ -298,14 +298,15 @@ class TestArtifactsNamespaceErrors:
 class TestFileStorageErrors:
     """Tests for FileStorage error handling."""
 
-    def test_invalid_path_handling(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_invalid_path_handling(self, tmp_path: Path) -> None:
         """FileStorage handles invalid paths gracefully."""
         # Path that doesn't exist yet - should be created
         nonexistent = tmp_path / "does_not_exist"
         storage = FileStorage(nonexistent)
 
         # Should work (directory created on demand)
-        registry = storage.get_tool_registry()
+        registry = await storage.get_tool_registry()
         result = registry.list_tools()
         assert isinstance(result, list)
 
@@ -315,7 +316,8 @@ class TestFileStorageErrors:
         # Skip on systems where we can't easily test this
         pass
 
-    def test_corrupted_yaml_handling(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_corrupted_yaml_handling(self, tmp_path: Path) -> None:
         """FileStorage handles corrupted YAML files."""
         tools_dir = tmp_path / "tools"
         tools_dir.mkdir()
@@ -325,7 +327,7 @@ class TestFileStorageErrors:
 
         # Should not crash - may skip bad file or return empty
         try:
-            registry = storage.get_tool_registry()
+            registry = await storage.get_tool_registry()
             result = registry.list_tools()
             assert isinstance(result, list)
         except Exception:
@@ -351,16 +353,18 @@ class TestFileStorageErrors:
 class TestRedisStorageErrors:
     """Tests for RedisStorage error handling."""
 
-    def test_connection_error_handling(self, mock_redis: MockRedisClient) -> None:
+    @pytest.mark.asyncio
+    async def test_connection_error_handling(self, mock_redis: MockRedisClient) -> None:
         """RedisStorage handles connection errors."""
         storage = RedisStorage(mock_redis, prefix="test")
 
         # Mock client always works, so this tests basic functionality
-        registry = storage.get_tool_registry()
+        registry = await storage.get_tool_registry()
         result = registry.list_tools()
         assert isinstance(result, list)
 
-    def test_deserialization_error_handling(self, mock_redis: MockRedisClient) -> None:
+    @pytest.mark.asyncio
+    async def test_deserialization_error_handling(self, mock_redis: MockRedisClient) -> None:
         """RedisStorage handles corrupted data."""
         storage = RedisStorage(mock_redis, prefix="test")
 
@@ -369,7 +373,7 @@ class TestRedisStorageErrors:
 
         # Should not crash - may skip or error gracefully
         try:
-            registry = storage.get_tool_registry()
+            registry = await storage.get_tool_registry()
             result = registry.list_tools()
             # May return empty or skip corrupted entries
             assert isinstance(result, list)

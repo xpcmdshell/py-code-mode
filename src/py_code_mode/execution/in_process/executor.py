@@ -236,7 +236,8 @@ class InProcessExecutor:
         validate_storage_not_access(storage, "InProcessExecutor")
 
         # Use public protocol methods to build namespaces
-        self._registry = storage.get_tool_registry()
+        # get_tool_registry() is async because MCP tools require async initialization
+        self._registry = await storage.get_tool_registry()
         self._namespace["tools"] = ToolsNamespace(self._registry)
 
         self._skill_library = storage.get_skill_library()

@@ -22,7 +22,6 @@ from py_code_mode.skills import (
     create_skill_library,
 )
 from py_code_mode.storage.redis_tools import RedisToolStore
-from py_code_mode.tools.adapters.base import ToolAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +46,12 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def get_tool_registry(self) -> ToolRegistry:
+    async def get_tool_registry(self) -> ToolRegistry:
         """Return ToolRegistry for in-process execution.
+
+        This method is async because MCP tools require async initialization
+        (connecting to MCP servers). CLI tools are loaded synchronously within
+        the async method.
 
         This method provides a registry of tools loaded from storage for executors.
         """
@@ -89,7 +92,6 @@ class FileStorage:
         self._base_path.mkdir(parents=True, exist_ok=True)
 
         # Lazy-initialized stores
-        self._cli_adapter: ToolAdapter | None = None
         self._skill_library: SkillLibrary | None = None
         self._artifact_store: FileArtifactStore | None = None
         self._deps_namespace: DepsNamespace | None = None
@@ -115,17 +117,6 @@ class FileStorage:
         artifacts_path.mkdir(parents=True, exist_ok=True)
         return artifacts_path
 
-    def _get_cli_adapter(self) -> ToolAdapter | None:
-        """Lazy-load CLIAdapter from files."""
-        if self._cli_adapter is None:
-            tools_path = self._get_tools_path()
-            if tools_path.exists():
-                from py_code_mode.tools.adapters.cli import CLIAdapter
-
-                tools_path.mkdir(parents=True, exist_ok=True)
-                self._cli_adapter = CLIAdapter(tools_path=tools_path)
-        return self._cli_adapter
-
     def get_serializable_access(self) -> FileStorageAccess:
         """Return FileStorageAccess for cross-process communication."""
         base_path = self._base_path
@@ -141,15 +132,19 @@ class FileStorage:
             deps_path=deps_path,
         )
 
-    def get_tool_registry(self) -> ToolRegistry:
-        """Return ToolRegistry for in-process execution."""
+    async def get_tool_registry(self) -> ToolRegistry:
+        """Return ToolRegistry for in-process execution.
+
+        Uses ToolRegistry.from_dir() to load both CLI and MCP tools from
+        the tools directory. This is async because MCP tools require
+        async initialization.
+        """
         from py_code_mode.tools import ToolRegistry
 
-        registry = ToolRegistry()
-        adapter = self._get_cli_adapter()
-        if adapter is not None:
-            registry.register_adapter(adapter)
-        return registry
+        tools_path = self._get_tools_path()
+        if tools_path.exists():
+            return await ToolRegistry.from_dir(str(tools_path))
+        return ToolRegistry()
 
     def get_skill_library(self) -> SkillLibrary:
         """Return SkillLibrary for in-process execution."""
@@ -229,7 +224,6 @@ class RedisStorage:
 
         # Lazy-initialized stores
         self._tool_store: RedisToolStore | None = None
-        self._cli_adapter: ToolAdapter | None = None
         self._skill_library: SkillLibrary | None = None
         self._artifact_store: RedisArtifactStore | None = None
         self._deps_namespace: DepsNamespace | None = None
@@ -249,19 +243,6 @@ class RedisStorage:
         if self._tool_store is None:
             self._tool_store = RedisToolStore(self._redis, prefix=f"{self._prefix}:tools")
         return self._tool_store
-
-    def _get_cli_adapter(self) -> ToolAdapter | None:
-        """Lazy-load CLIAdapter from Redis configs."""
-        if self._cli_adapter is None:
-            from py_code_mode.tools.adapters.cli import CLIAdapter
-
-            tool_store = self._get_tool_store()
-            configs = list(tool_store.list().values())
-            if configs:
-                self._cli_adapter = CLIAdapter.from_configs(configs)
-            else:
-                self._cli_adapter = CLIAdapter()  # Empty adapter
-        return self._cli_adapter
 
     def get_serializable_access(self) -> RedisStorageAccess:
         """Return RedisStorageAccess for cross-process communication."""
@@ -292,15 +273,16 @@ class RedisStorage:
             deps_prefix=f"{prefix}:deps",
         )
 
-    def get_tool_registry(self) -> ToolRegistry:
-        """Return ToolRegistry for in-process execution."""
-        from py_code_mode.tools import ToolRegistry
+    async def get_tool_registry(self) -> ToolRegistry:
+        """Return ToolRegistry for in-process execution.
 
-        registry = ToolRegistry()
-        adapter = self._get_cli_adapter()
-        if adapter is not None:
-            registry.register_adapter(adapter)
-        return registry
+        Uses registry_from_redis() to load both CLI and MCP tools from
+        Redis. This is async because MCP tools require async initialization.
+        """
+        from py_code_mode.storage.redis_tools import registry_from_redis
+
+        tool_store = self._get_tool_store()
+        return await registry_from_redis(tool_store)
 
     def get_skill_library(self) -> SkillLibrary:
         """Return SkillLibrary for in-process execution."""
