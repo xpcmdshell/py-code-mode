@@ -1,6 +1,6 @@
 [project]
 name = "py-code-mode"
-version = "0.4.0"
+version = "0.4.1"
 description = "Code mode for LLM agents - tools as Python SDK bindings via Jupyter execution"
 readme = "README.md"
 requires-python = ">=3.12"
