@@ -38,7 +38,7 @@ class SubprocessConfig:
     python_version: str | None = None
     venv_path: Path | None = None
     base_deps: tuple[str, ...] = ("ipykernel", "py-code-mode")
-    startup_timeout: float = 30.0
+    startup_timeout: float = 60.0
     default_timeout: float = 60.0
     allow_runtime_deps: bool = True
     cleanup_venv_on_close: bool = True
