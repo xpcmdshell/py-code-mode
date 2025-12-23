@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 import numpy as np
 
@@ -118,7 +121,7 @@ class Embedder:
         self._resolved_model_name = resolve_model_name(model_name)
 
         # Lazy-loaded attributes
-        self._model: "SentenceTransformer | None" = None  # noqa: F821
+        self._model: SentenceTransformer | None = None
         self._device: str | None = None
 
     def _detect_device(self) -> str:
@@ -139,9 +142,7 @@ class Embedder:
         from sentence_transformers import SentenceTransformer
 
         self._device = self._detect_device()
-        self._model = SentenceTransformer(
-            self._resolved_model_name, device=self._device
-        )
+        self._model = SentenceTransformer(self._resolved_model_name, device=self._device)
 
     @property
     def device(self) -> str:
