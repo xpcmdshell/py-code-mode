@@ -10,15 +10,10 @@ Usage:
     # With Claude Code
     claude mcp add py-code-mode -- py-code-mode-mcp --storage ~/.code-mode
 
-Note on execution isolation:
-    Currently, code runs in-process (no isolation). Container-based execution
-    with Docker is supported by the library (ContainerExecutor), but automatic
-    Docker configuration for Claude Code MCP integration is not yet implemented.
-
-    For now, the MCP server uses InProcessExecutor which provides the simplest
-    "just works" experience - no Docker setup required, tools are CLI commands
-    on your system. Container isolation will be added when we solve the tool
-    discovery/management UX for containerized environments.
+Note on execution:
+    Code runs in an isolated subprocess with its own virtual environment and
+    IPython kernel (SubprocessExecutor). This provides process isolation while
+    still allowing access to CLI tools on your system.
 """
 
 from __future__ import annotations
@@ -275,7 +270,7 @@ def register_runtime_dep_tools(allow_runtime_deps: bool) -> None:
 async def create_session(args: argparse.Namespace) -> Session:
     """Create session based on CLI args."""
     from py_code_mode import Session
-    from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
+    from py_code_mode.execution.subprocess import SubprocessConfig, SubprocessExecutor
 
     if args.redis:
         from redis import Redis
@@ -291,10 +286,26 @@ async def create_session(args: argparse.Namespace) -> Session:
         storage_path.mkdir(parents=True, exist_ok=True)
         storage = FileStorage(base_path=storage_path)
 
-    # Configure executor with runtime deps setting
+    # Configure executor with runtime deps and timeout settings
     no_runtime_deps = getattr(args, "no_runtime_deps", False)
-    config = InProcessConfig(allow_runtime_deps=not no_runtime_deps)
-    executor = InProcessExecutor(config=config)
+    timeout = getattr(args, "timeout", None)
+
+    # Use persistent venv alongside storage for faster restarts
+    # For file storage: ./data/.venv/
+    # For redis: ~/.cache/py-code-mode/<prefix>/.venv/
+    if args.redis:
+        prefix = args.prefix or "py-code-mode"
+        venv_path = Path.home() / ".cache" / "py-code-mode" / prefix / ".venv"
+    else:
+        venv_path = storage_path / ".venv"
+
+    config = SubprocessConfig(
+        allow_runtime_deps=not no_runtime_deps,
+        default_timeout=timeout,
+        venv_path=venv_path,
+        cleanup_venv_on_close=False,  # Persist for faster restarts
+    )
+    executor = SubprocessExecutor(config=config)
 
     session = Session(storage=storage, executor=executor)
     await session.start()
@@ -333,6 +344,14 @@ Examples:
         "--no-runtime-deps",
         action="store_true",
         help="Disable runtime dependency installation",
+    )
+
+    # Execution timeout
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Code execution timeout in seconds (default: unlimited)",
     )
 
     args = parser.parse_args()
