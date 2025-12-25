@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import shutil
 import sys
 import tempfile
 import uuid
 from dataclasses import dataclass
+from importlib.metadata import distribution
 from pathlib import Path
 
 import py_code_mode
@@ -144,30 +146,73 @@ class VenvManager:
         )
 
     async def _install_py_code_mode(self, python_path: Path) -> None:
-        """Install py-code-mode from the local package.
+        """Install py-code-mode into the subprocess venv.
 
-        This finds the project root (where pyproject.toml lives) and installs
-        the package in editable mode so the kernel has full py-code-mode functionality.
+        Handles two installation scenarios:
+        1. Dev mode (pyproject.toml exists): Install editable from source
+        2. Git install (direct_url.json with vcs_info): Install from same git URL
 
         Args:
             python_path: Path to Python executable in the venv.
 
         Raises:
-            RuntimeError: If installation fails.
+            RuntimeError: If installation fails or install source cannot be determined.
         """
-        # Find the project root (where pyproject.toml is)
+        # Check for dev mode first (pyproject.toml exists)
         pkg_path = Path(py_code_mode.__file__).parent.parent.parent
         pyproject = pkg_path / "pyproject.toml"
 
-        if not pyproject.exists():
-            raise RuntimeError(
-                f"Cannot install py-code-mode: pyproject.toml not found at {pyproject}"
+        if pyproject.exists():
+            # Dev mode: install editable from source
+            await self._run_uv(
+                ["pip", "install", "--python", str(python_path), "-e", str(pkg_path)],
+                error_context="uv pip install py-code-mode (editable) failed",
             )
+            return
 
-        # Install in editable mode from project root
+        # Not dev mode - check direct_url.json for git install info
+        install_spec = self._get_py_code_mode_install_spec()
         await self._run_uv(
-            ["pip", "install", "--python", str(python_path), "-e", str(pkg_path)],
-            error_context="uv pip install py-code-mode failed",
+            ["pip", "install", "--python", str(python_path), install_spec],
+            error_context=f"uv pip install {install_spec} failed",
+        )
+
+    def _get_py_code_mode_install_spec(self) -> str:
+        """Determine how to install py-code-mode based on current installation.
+
+        Returns:
+            A pip install specifier (e.g., "git+https://github.com/...@commit").
+
+        Raises:
+            RuntimeError: If the install source cannot be determined.
+        """
+        dist = distribution("py-code-mode")
+
+        # Check for direct_url.json (PEP 610) to detect VCS/URL installs
+        for f in dist.files or []:
+            if f.name == "direct_url.json":
+                try:
+                    direct_url = json.loads(f.read_text())
+                    url = direct_url.get("url", "")
+
+                    # VCS install (git, hg, etc.)
+                    if "vcs_info" in direct_url:
+                        vcs = direct_url["vcs_info"].get("vcs", "git")
+                        commit = direct_url["vcs_info"].get("commit_id", "")
+                        if commit:
+                            return f"{vcs}+{url}@{commit}"
+                        return f"{vcs}+{url}"
+
+                    # Direct URL install (not VCS, not local file)
+                    if url and not url.startswith("file://"):
+                        return url
+                except (json.JSONDecodeError, OSError):
+                    pass
+                break
+
+        raise RuntimeError(
+            "Cannot determine py-code-mode install source. "
+            "py-code-mode must be installed from git or in editable mode."
         )
 
     async def add_package(self, venv: KernelVenv, package: str) -> None:
