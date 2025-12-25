@@ -85,16 +85,7 @@ async def list_tools() -> list[dict]:
     """List all available tools with their descriptions and parameters."""
     if _session is None:
         raise RuntimeError("Session not initialized")
-    registry = await _session.storage.get_tool_registry()
-    tools = registry.get_all_tools()
-    return [
-        {
-            "name": t.name,
-            "description": t.description,
-            "callables": [c.signature() for c in t.callables],
-        }
-        for t in tools
-    ]
+    return await _session.list_tools()
 
 
 @mcp.tool
@@ -108,20 +99,11 @@ async def search_tools(query: str, limit: int = 10) -> list[dict]:
         query: Natural language description of what you're trying to accomplish
         limit: Maximum number of results to return (default: 10)
 
-    Returns matching tools with their descriptions and callables.
+    Returns matching tools with their descriptions and tags.
     """
     if _session is None:
         raise RuntimeError("Session not initialized")
-    registry = await _session.storage.get_tool_registry()
-    tools = registry.search(query, limit)
-    return [
-        {
-            "name": t.name,
-            "description": t.description,
-            "callables": [c.signature() for c in t.callables],
-        }
-        for t in tools
-    ]
+    return await _session.search_tools(query, limit)
 
 
 @mcp.tool
@@ -129,20 +111,7 @@ async def list_skills() -> list[dict]:
     """List all available skills with their descriptions."""
     if _session is None:
         raise RuntimeError("Session not initialized")
-    library = _session.storage.get_skill_library()
-    # Refresh to pick up changes made by subprocess executor
-    library.refresh()
-    skills = library.list()
-    return [
-        {
-            "name": s.name,
-            "description": s.description,
-            "parameters": [
-                {"name": p.name, "type": p.type, "required": p.required} for p in s.parameters
-            ],
-        }
-        for s in skills
-    ]
+    return await _session.list_skills()
 
 
 @mcp.tool
@@ -162,20 +131,7 @@ async def search_skills(query: str, limit: int = 5) -> list[dict]:
     """
     if _session is None:
         raise RuntimeError("Session not initialized")
-    library = _session.storage.get_skill_library()
-    # Refresh to pick up changes made by subprocess executor
-    library.refresh()
-    skills = library.search(query, limit)
-    return [
-        {
-            "name": s.name,
-            "description": s.description,
-            "parameters": [
-                {"name": p.name, "type": p.type, "required": p.required} for p in s.parameters
-            ],
-        }
-        for s in skills
-    ]
+    return await _session.search_skills(query, limit)
 
 
 @mcp.tool
@@ -183,18 +139,7 @@ async def list_artifacts() -> list[dict]:
     """List all stored artifacts with their metadata."""
     if _session is None:
         raise RuntimeError("Session not initialized")
-    artifact_store = _session.storage.get_artifact_store()
-    artifacts = artifact_store.list()
-    return [
-        {
-            "name": a.name,
-            "path": a.path,
-            "description": a.description,
-            "metadata": a.metadata,
-            "created_at": a.created_at.isoformat(),
-        }
-        for a in artifacts
-    ]
+    return await _session.list_artifacts()
 
 
 @mcp.tool
@@ -218,23 +163,7 @@ async def create_skill(name: str, source: str, description: str) -> dict:
     """
     if _session is None:
         raise RuntimeError("Session not initialized")
-
-    from py_code_mode.skills import PythonSkill
-
-    # Create skill from source (validates syntax and run() function)
-    skill = PythonSkill.from_source(name=name, source=source, description=description)
-
-    # Add to library (persists to storage)
-    library = _session.storage.get_skill_library()
-    library.add(skill)
-
-    return {
-        "name": skill.name,
-        "description": skill.description,
-        "parameters": [
-            {"name": p.name, "type": p.type, "required": p.required} for p in skill.parameters
-        ],
-    }
+    return await _session.add_skill(name, source, description)
 
 
 @mcp.tool
@@ -248,16 +177,14 @@ async def delete_skill(name: str) -> bool:
     """
     if _session is None:
         raise RuntimeError("Session not initialized")
-    library = _session.storage.get_skill_library()
-    return library.remove(name)
+    return await _session.remove_skill(name)
 
 
 async def list_deps() -> list[str]:
     """List all configured dependencies."""
     if _session is None:
         return []
-    deps_namespace = _session.storage.get_deps_namespace()
-    return deps_namespace.list()
+    return await _session.list_deps()
 
 
 async def _list_deps_json() -> str:
@@ -276,18 +203,12 @@ async def add_dep(package: str) -> dict:
         package: Package name with optional version specifier (e.g., "pandas>=2.0")
 
     Returns:
-        Dict with installation result (installed, already_present, failed lists)
+        Dict with installation result (success, installed, failed, output)
     """
     if _session is None:
         return {"error": "Session not initialized"}
     try:
-        deps_namespace = _session.storage.get_deps_namespace()
-        result = deps_namespace.add(package)
-        return {
-            "installed": list(result.installed),
-            "already_present": list(result.already_present),
-            "failed": list(result.failed),
-        }
+        return await _session.add_dep(package)
     except ValueError as e:
         return {"error": str(e)}
 
@@ -303,8 +224,7 @@ async def remove_dep(package: str) -> bool:
     """
     if _session is None:
         return False
-    deps_namespace = _session.storage.get_deps_namespace()
-    return deps_namespace.remove(package)
+    return await _session.remove_dep(package)
 
 
 # Register deps tools that are always available (list only)

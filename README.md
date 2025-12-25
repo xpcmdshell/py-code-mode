@@ -85,6 +85,15 @@ artifacts.save("results", data)
 cached = artifacts.load("results")
 ```
 
+For programmatic access without code strings, Session also provides facade methods:
+
+```python
+# Direct API access (useful for MCP servers, framework integrations)
+tools = await session.list_tools()
+skills = await session.search_skills("github analysis")
+await session.save_artifact("data", {"key": "value"})
+```
+
 ## Installation
 
 ```bash
