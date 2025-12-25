@@ -1,6 +1,6 @@
 [project]
 name = "py-code-mode"
-version = "0.5.0"
+version = "0.5.1"
 description = "Code mode for LLM agents - tools as Python SDK bindings via Jupyter execution"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -21,6 +21,7 @@ dependencies = [
     "numpy>=1.26",
     "sentence-transformers>=3.0",
     "fastmcp>=2.0.0",
+    "jupyter-client>=8.6",
 ]
 
 [project.scripts]
@@ -36,7 +37,6 @@ dev = [
 jupyter = [
     "nbclient>=0.10",
     "nbformat>=5.10",
-    "jupyter-client>=8.6",
     "ipykernel>=6.0",
 ]
 chromadb = [

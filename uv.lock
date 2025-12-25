@@ -2578,10 +2578,11 @@ wheels = [
 
 [[package]]
 name = "py-code-mode"
-version = "0.5.0"
+version = "0.5.1"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
+    { name = "jupyter-client" },
     { name = "numpy" },
     { name = "pyyaml" },
     { name = "sentence-transformers" },
@@ -2608,7 +2609,6 @@ http = [
 ]
 jupyter = [
     { name = "ipykernel" },
-    { name = "jupyter-client" },
     { name = "nbclient" },
     { name = "nbformat" },
 ]
@@ -2645,7 +2645,7 @@ requires-dist = [
     { name = "fastmcp", specifier = ">=2.0.0" },
     { name = "httpx", marker = "extra == 'container'", specifier = ">=0.25" },
     { name = "ipykernel", marker = "extra == 'jupyter'", specifier = ">=6.0" },
-    { name = "jupyter-client", marker = "extra == 'jupyter'", specifier = ">=8.6" },
+    { name = "jupyter-client", specifier = ">=8.6" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
     { name = "nbclient", marker = "extra == 'jupyter'", specifier = ">=0.10" },
