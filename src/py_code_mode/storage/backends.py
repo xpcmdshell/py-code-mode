@@ -92,6 +92,7 @@ class FileStorage:
         self._base_path.mkdir(parents=True, exist_ok=True)
 
         # Lazy-initialized stores
+        self._tool_registry: ToolRegistry | None = None
         self._skill_library: SkillLibrary | None = None
         self._artifact_store: FileArtifactStore | None = None
         self._deps_namespace: DepsNamespace | None = None
@@ -138,13 +139,22 @@ class FileStorage:
         Uses ToolRegistry.from_dir() to load both CLI and MCP tools from
         the tools directory. This is async because MCP tools require
         async initialization.
+
+        The registry is cached after first load. MCP connections are bound to
+        the task that first calls this method, so call from main task context
+        before spawning handler tasks. New tool files require server restart.
         """
+        if self._tool_registry is not None:
+            return self._tool_registry
+
         from py_code_mode.tools import ToolRegistry
 
         tools_path = self._get_tools_path()
         if tools_path.exists():
-            return await ToolRegistry.from_dir(str(tools_path))
-        return ToolRegistry()
+            self._tool_registry = await ToolRegistry.from_dir(str(tools_path))
+        else:
+            self._tool_registry = ToolRegistry()
+        return self._tool_registry
 
     def get_skill_library(self) -> SkillLibrary:
         """Return SkillLibrary for in-process execution."""
@@ -223,6 +233,7 @@ class RedisStorage:
         self._prefix = prefix
 
         # Lazy-initialized stores
+        self._tool_registry: ToolRegistry | None = None
         self._tool_store: RedisToolStore | None = None
         self._skill_library: SkillLibrary | None = None
         self._artifact_store: RedisArtifactStore | None = None
@@ -278,11 +289,19 @@ class RedisStorage:
 
         Uses registry_from_redis() to load both CLI and MCP tools from
         Redis. This is async because MCP tools require async initialization.
+
+        The registry is cached after first load. MCP connections are bound to
+        the task that first calls this method, so call from main task context
+        before spawning handler tasks. New tool configs require server restart.
         """
+        if self._tool_registry is not None:
+            return self._tool_registry
+
         from py_code_mode.storage.redis_tools import registry_from_redis
 
         tool_store = self._get_tool_store()
-        return await registry_from_redis(tool_store)
+        self._tool_registry = await registry_from_redis(tool_store)
+        return self._tool_registry
 
     def get_skill_library(self) -> SkillLibrary:
         """Return SkillLibrary for in-process execution."""
