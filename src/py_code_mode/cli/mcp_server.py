@@ -83,9 +83,18 @@ async def run_code(code: str) -> str:
 @mcp.tool
 async def list_tools() -> list[dict]:
     """List all available tools with their descriptions and parameters."""
-    if _session is None or _session._executor is None:
-        return []
-    return _session._executor._namespace["tools"].list()
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    registry = await _session.storage.get_tool_registry()
+    tools = registry.get_all_tools()
+    return [
+        {
+            "name": t.name,
+            "description": t.description,
+            "callables": [c.signature() for c in t.callables],
+        }
+        for t in tools
+    ]
 
 
 @mcp.tool
@@ -101,9 +110,10 @@ async def search_tools(query: str, limit: int = 10) -> list[dict]:
 
     Returns matching tools with their descriptions and callables.
     """
-    if _session is None or _session._executor is None:
-        return []
-    tools = _session._executor._namespace["tools"].search(query, limit)
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    registry = await _session.storage.get_tool_registry()
+    tools = registry.search(query, limit)
     return [
         {
             "name": t.name,
@@ -117,9 +127,22 @@ async def search_tools(query: str, limit: int = 10) -> list[dict]:
 @mcp.tool
 async def list_skills() -> list[dict]:
     """List all available skills with their descriptions."""
-    if _session is None or _session._executor is None:
-        return []
-    return _session._executor._namespace["skills"].list()
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    library = _session.storage.get_skill_library()
+    # Refresh to pick up changes made by subprocess executor
+    library.refresh()
+    skills = library.list()
+    return [
+        {
+            "name": s.name,
+            "description": s.description,
+            "parameters": [
+                {"name": p.name, "type": p.type, "required": p.required} for p in s.parameters
+            ],
+        }
+        for s in skills
+    ]
 
 
 @mcp.tool
@@ -137,17 +160,41 @@ async def search_skills(query: str, limit: int = 5) -> list[dict]:
     If no good match exists, use run_code to solve the task ad-hoc,
     then create a skill for future reuse.
     """
-    if _session is None or _session._executor is None:
-        return []
-    return _session._executor._namespace["skills"].search(query, limit)
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    library = _session.storage.get_skill_library()
+    # Refresh to pick up changes made by subprocess executor
+    library.refresh()
+    skills = library.search(query, limit)
+    return [
+        {
+            "name": s.name,
+            "description": s.description,
+            "parameters": [
+                {"name": p.name, "type": p.type, "required": p.required} for p in s.parameters
+            ],
+        }
+        for s in skills
+    ]
 
 
 @mcp.tool
 async def list_artifacts() -> list[dict]:
     """List all stored artifacts with their metadata."""
-    if _session is None or _session._executor is None:
-        return []
-    return _session._executor._namespace["artifacts"].list()
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    artifact_store = _session.storage.get_artifact_store()
+    artifacts = artifact_store.list()
+    return [
+        {
+            "name": a.name,
+            "path": a.path,
+            "description": a.description,
+            "metadata": a.metadata,
+            "created_at": a.created_at.isoformat(),
+        }
+        for a in artifacts
+    ]
 
 
 @mcp.tool
@@ -169,9 +216,25 @@ async def create_skill(name: str, source: str, description: str) -> dict:
 
     Returns the created skill's metadata.
     """
-    if _session is None or _session._executor is None:
-        return {"error": "Session not initialized"}
-    return _session._executor._namespace["skills"].create(name, source, description)
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+
+    from py_code_mode.skills import PythonSkill
+
+    # Create skill from source (validates syntax and run() function)
+    skill = PythonSkill.from_source(name=name, source=source, description=description)
+
+    # Add to library (persists to storage)
+    library = _session.storage.get_skill_library()
+    library.add(skill)
+
+    return {
+        "name": skill.name,
+        "description": skill.description,
+        "parameters": [
+            {"name": p.name, "type": p.type, "required": p.required} for p in skill.parameters
+        ],
+    }
 
 
 @mcp.tool
@@ -183,16 +246,18 @@ async def delete_skill(name: str) -> bool:
 
     Returns True if the skill was deleted, False if it was not found.
     """
-    if _session is None or _session._executor is None:
-        return False
-    return _session._executor._namespace["skills"].delete(name)
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    library = _session.storage.get_skill_library()
+    return library.remove(name)
 
 
 async def list_deps() -> list[str]:
     """List all configured dependencies."""
-    if _session is None or _session._executor is None:
+    if _session is None:
         return []
-    return _session._executor._namespace["deps"].list()
+    deps_namespace = _session.storage.get_deps_namespace()
+    return deps_namespace.list()
 
 
 async def _list_deps_json() -> str:
@@ -213,10 +278,11 @@ async def add_dep(package: str) -> dict:
     Returns:
         Dict with installation result (installed, already_present, failed lists)
     """
-    if _session is None or _session._executor is None:
+    if _session is None:
         return {"error": "Session not initialized"}
     try:
-        result = _session._executor._namespace["deps"].add(package)
+        deps_namespace = _session.storage.get_deps_namespace()
+        result = deps_namespace.add(package)
         return {
             "installed": list(result.installed),
             "already_present": list(result.already_present),
@@ -235,9 +301,10 @@ async def remove_dep(package: str) -> bool:
     Returns:
         True if removed, False if not found
     """
-    if _session is None or _session._executor is None:
+    if _session is None:
         return False
-    return _session._executor._namespace["deps"].remove(package)
+    deps_namespace = _session.storage.get_deps_namespace()
+    return deps_namespace.remove(package)
 
 
 # Register deps tools that are always available (list only)
