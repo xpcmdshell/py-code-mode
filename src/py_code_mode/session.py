@@ -255,12 +255,13 @@ class Session:
         """List all skills (refreshes from storage first).
 
         Returns:
-            List of skill info dicts with name, description, parameters.
+            List of skill summaries (name, description, parameters - no source).
+            Use get_skill() to retrieve full source for a specific skill.
         """
         library = self._storage.get_skill_library()
         library.refresh()
         skills = library.list()
-        return [self._skill_to_dict(skill) for skill in skills]
+        return [self._skill_to_dict(skill, include_source=False) for skill in skills]
 
     async def search_skills(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
         """Search skills (refreshes from storage first).
@@ -270,12 +271,13 @@ class Session:
             limit: Maximum number of results.
 
         Returns:
-            List of matching skill info dicts.
+            List of matching skill summaries (name, description, parameters - no source).
+            Use get_skill() to retrieve full source for a specific skill.
         """
         library = self._storage.get_skill_library()
         library.refresh()
         skills = library.search(query, limit=limit)
-        return [self._skill_to_dict(skill) for skill in skills]
+        return [self._skill_to_dict(skill, include_source=False) for skill in skills]
 
     async def add_skill(self, name: str, source: str, description: str) -> dict[str, Any]:
         """Create and persist a skill.
@@ -325,12 +327,17 @@ class Session:
             return None
         return self._skill_to_dict(skill)
 
-    def _skill_to_dict(self, skill: PythonSkill) -> dict[str, Any]:
-        """Convert a PythonSkill to a JSON-serializable dict."""
-        return {
+    def _skill_to_dict(self, skill: PythonSkill, include_source: bool = True) -> dict[str, Any]:
+        """Convert a PythonSkill to a JSON-serializable dict.
+
+        Args:
+            skill: The skill to convert.
+            include_source: Whether to include full source code. False for listings,
+                True for get_skill where the caller needs the implementation.
+        """
+        result: dict[str, Any] = {
             "name": skill.name,
             "description": skill.description,
-            "source": skill.source,
             "parameters": [
                 {
                     "name": p.name,
@@ -342,6 +349,9 @@ class Session:
                 for p in skill.parameters
             ],
         }
+        if include_source:
+            result["source"] = skill.source
+        return result
 
     # -------------------------------------------------------------------------
     # Artifacts facade methods
