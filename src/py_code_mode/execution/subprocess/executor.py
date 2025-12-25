@@ -141,6 +141,7 @@ class SubprocessExecutor:
         Args:
             code: Python code to execute.
             timeout: Optional timeout in seconds. Uses config default if None.
+                    None means no timeout (unlimited).
 
         Returns:
             ExecutionResult with value, stdout, and error fields.
@@ -148,7 +149,8 @@ class SubprocessExecutor:
         if self._closed or self._kc is None:
             return ExecutionResult(value=None, stdout="", error="Executor is closed")
 
-        timeout = timeout if timeout is not None else self._config.default_timeout
+        # Use config default if not specified (could still be None for unlimited)
+        effective_timeout = timeout if timeout is not None else self._config.default_timeout
 
         # Send execute request
         msg_id = self._kc.execute(code, store_history=True)
@@ -159,28 +161,39 @@ class SubprocessExecutor:
         value: Any = None
         error: str | None = None
 
+        # Set up deadline only if timeout is specified
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + timeout
+        deadline: float | None = None
+        if effective_timeout is not None:
+            deadline = loop.time() + effective_timeout
 
         while True:
-            remaining = deadline - loop.time()
-            if remaining <= 0:
-                return ExecutionResult(
-                    value=None,
-                    stdout="".join(stdout_parts),
-                    error=f"Timeout after {timeout}s",
-                )
+            # Check deadline if set
+            if deadline is not None:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    return ExecutionResult(
+                        value=None,
+                        stdout="".join(stdout_parts),
+                        error=f"Timeout after {effective_timeout}s",
+                    )
+            else:
+                remaining = None  # No timeout
 
             try:
-                msg = await asyncio.wait_for(
-                    self._kc.get_iopub_msg(),
-                    timeout=remaining,
-                )
+                if remaining is not None:
+                    msg = await asyncio.wait_for(
+                        self._kc.get_iopub_msg(),
+                        timeout=remaining,
+                    )
+                else:
+                    # Unlimited - wait without timeout
+                    msg = await self._kc.get_iopub_msg()
             except TimeoutError:
                 return ExecutionResult(
                     value=None,
                     stdout="".join(stdout_parts),
-                    error=f"Timeout after {timeout}s",
+                    error=f"Timeout after {effective_timeout}s",
                 )
 
             parent_msg_id = msg.get("parent_header", {}).get("msg_id")

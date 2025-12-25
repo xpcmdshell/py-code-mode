@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from py_code_mode.execution import Executor
+from py_code_mode.skills import PythonSkill
 from py_code_mode.types import ExecutionResult
 
 if TYPE_CHECKING:
@@ -203,6 +204,276 @@ class Session:
         if self._executor is None:
             return set()
         return self._executor.supported_capabilities()
+
+    # -------------------------------------------------------------------------
+    # Tools facade methods
+    # -------------------------------------------------------------------------
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        """List all available tools with their descriptions.
+
+        Returns:
+            List of tool info dicts with 'name', 'description', 'tags' keys.
+        """
+        registry = await self._storage.get_tool_registry()
+        tools = registry.list_tools()
+        return [
+            {
+                "name": tool.name,
+                "description": tool.description or "",
+                "tags": list(tool.tags),
+            }
+            for tool in tools
+        ]
+
+    async def search_tools(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Search tools by name/description/semantic similarity.
+
+        Args:
+            query: Search query string.
+            limit: Maximum number of results.
+
+        Returns:
+            List of matching tool info dicts.
+        """
+        registry = await self._storage.get_tool_registry()
+        tools = registry.search(query, limit=limit)
+        return [
+            {
+                "name": tool.name,
+                "description": tool.description or "",
+                "tags": list(tool.tags),
+            }
+            for tool in tools
+        ]
+
+    # -------------------------------------------------------------------------
+    # Skills facade methods
+    # -------------------------------------------------------------------------
+
+    async def list_skills(self) -> list[dict[str, Any]]:
+        """List all skills (refreshes from storage first).
+
+        Returns:
+            List of skill info dicts with name, description, parameters.
+        """
+        library = self._storage.get_skill_library()
+        library.refresh()
+        skills = library.list()
+        return [self._skill_to_dict(skill) for skill in skills]
+
+    async def search_skills(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Search skills (refreshes from storage first).
+
+        Args:
+            query: Natural language search query.
+            limit: Maximum number of results.
+
+        Returns:
+            List of matching skill info dicts.
+        """
+        library = self._storage.get_skill_library()
+        library.refresh()
+        skills = library.search(query, limit=limit)
+        return [self._skill_to_dict(skill) for skill in skills]
+
+    async def add_skill(self, name: str, source: str, description: str) -> dict[str, Any]:
+        """Create and persist a skill.
+
+        Args:
+            name: Unique skill name (must be valid Python identifier).
+            source: Python source code with def run(...) function.
+            description: What the skill does.
+
+        Returns:
+            Skill metadata dict.
+
+        Raises:
+            ValueError: If name is invalid or source doesn't define run().
+            SyntaxError: If source has syntax errors.
+        """
+        skill = PythonSkill.from_source(name=name, source=source, description=description)
+        library = self._storage.get_skill_library()
+        library.add(skill)
+        return self._skill_to_dict(skill)
+
+    async def remove_skill(self, name: str) -> bool:
+        """Remove a skill.
+
+        Args:
+            name: Name of the skill to remove.
+
+        Returns:
+            True if removed, False if not found.
+        """
+        library = self._storage.get_skill_library()
+        return library.remove(name)
+
+    async def get_skill(self, name: str) -> dict[str, Any] | None:
+        """Get skill by name.
+
+        Args:
+            name: Skill name.
+
+        Returns:
+            Skill info dict, or None if not found.
+        """
+        library = self._storage.get_skill_library()
+        library.refresh()
+        skill = library.get(name)
+        if skill is None:
+            return None
+        return self._skill_to_dict(skill)
+
+    def _skill_to_dict(self, skill: PythonSkill) -> dict[str, Any]:
+        """Convert a PythonSkill to a JSON-serializable dict."""
+        return {
+            "name": skill.name,
+            "description": skill.description,
+            "source": skill.source,
+            "parameters": [
+                {
+                    "name": p.name,
+                    "type": p.type,
+                    "description": p.description,
+                    "required": p.required,
+                    "default": p.default,
+                }
+                for p in skill.parameters
+            ],
+        }
+
+    # -------------------------------------------------------------------------
+    # Artifacts facade methods
+    # -------------------------------------------------------------------------
+
+    async def list_artifacts(self) -> list[dict[str, Any]]:
+        """List all artifacts with metadata.
+
+        Returns:
+            List of artifact info dicts.
+        """
+        store = self._storage.get_artifact_store()
+        artifacts = store.list()
+        return [
+            {
+                "name": a.name,
+                "path": a.path,
+                "description": a.description,
+                "metadata": a.metadata,
+                "created_at": a.created_at.isoformat(),
+            }
+            for a in artifacts
+        ]
+
+    async def save_artifact(
+        self,
+        name: str,
+        data: Any,
+        description: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Save an artifact.
+
+        Args:
+            name: Artifact name.
+            data: Data to save (str, bytes, dict, or list).
+            description: Optional description.
+            metadata: Optional additional metadata.
+
+        Returns:
+            Artifact metadata dict.
+        """
+        store = self._storage.get_artifact_store()
+        artifact = store.save(name, data, description=description, metadata=metadata)
+        return {
+            "name": artifact.name,
+            "path": artifact.path,
+            "description": artifact.description,
+            "metadata": artifact.metadata,
+            "created_at": artifact.created_at.isoformat(),
+        }
+
+    async def load_artifact(self, name: str) -> Any:
+        """Load artifact content.
+
+        Args:
+            name: Artifact name.
+
+        Returns:
+            The artifact data.
+        """
+        store = self._storage.get_artifact_store()
+        return store.load(name)
+
+    async def delete_artifact(self, name: str) -> None:
+        """Delete an artifact.
+
+        Args:
+            name: Artifact name.
+        """
+        store = self._storage.get_artifact_store()
+        store.delete(name)
+
+    # -------------------------------------------------------------------------
+    # Deps facade methods
+    # -------------------------------------------------------------------------
+
+    async def list_deps(self) -> list[str]:
+        """List configured dependencies.
+
+        Returns:
+            List of package specifications.
+        """
+        deps_ns = self._storage.get_deps_namespace()
+        return deps_ns.list()
+
+    async def add_dep(self, package: str) -> dict[str, Any]:
+        """Add and install a dependency.
+
+        Args:
+            package: Package specification (e.g., "pandas>=2.0").
+
+        Returns:
+            Install result dict with success status and details.
+        """
+        deps_ns = self._storage.get_deps_namespace()
+        result = deps_ns.add(package)
+        return {
+            "installed": list(result.installed),
+            "already_present": list(result.already_present),
+            "failed": list(result.failed),
+        }
+
+    async def remove_dep(self, package: str) -> bool:
+        """Remove a dependency.
+
+        Args:
+            package: Package specification to remove.
+
+        Returns:
+            True if removed, False if not found.
+        """
+        deps_ns = self._storage.get_deps_namespace()
+        return deps_ns.remove(package)
+
+    async def sync_deps(self) -> dict[str, Any]:
+        """Sync all configured dependencies.
+
+        Returns:
+            Sync result dict with success status and details.
+        """
+        deps_ns = self._storage.get_deps_namespace()
+        result = deps_ns.sync()
+        return {
+            "installed": list(result.installed),
+            "already_present": list(result.already_present),
+            "failed": list(result.failed),
+        }
+
+    # -------------------------------------------------------------------------
+    # Context manager
+    # -------------------------------------------------------------------------
 
     async def __aenter__(self) -> Session:
         """Async context manager entry."""

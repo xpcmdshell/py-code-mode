@@ -31,6 +31,7 @@ class SubprocessConfig:
             ("ipykernel", "py-code-mode") for namespace injection support.
         startup_timeout: Timeout for kernel to become ready (seconds).
         default_timeout: Default timeout for code execution (seconds).
+            None means no timeout (unlimited).
         allow_runtime_deps: Enable deps.add() for runtime dependency installation.
         cleanup_venv_on_close: Delete temp venv on close.
     """
@@ -39,7 +40,7 @@ class SubprocessConfig:
     venv_path: Path | None = None
     base_deps: tuple[str, ...] = ("ipykernel", "py-code-mode")
     startup_timeout: float = 30.0
-    default_timeout: float = 60.0
+    default_timeout: float | None = 60.0
     allow_runtime_deps: bool = True
     cleanup_venv_on_close: bool = True
 
@@ -62,5 +63,6 @@ class SubprocessConfig:
         # Validate timeouts
         if self.startup_timeout <= 0.0:
             raise ValueError(f"startup_timeout must be positive, got: {self.startup_timeout}")
-        if self.default_timeout <= 0.0:
-            raise ValueError(f"default_timeout must be positive, got: {self.default_timeout}")
+        if self.default_timeout is not None and self.default_timeout <= 0.0:
+            msg = f"default_timeout must be positive or None, got: {self.default_timeout}"
+            raise ValueError(msg)

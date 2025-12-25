@@ -141,10 +141,7 @@ async def info():
     if session is None:
         raise HTTPException(status_code=503, detail="Session not initialized")
 
-    # Get storage info instead
-    storage = session.storage
-
     return {
-        "tools": storage.tools.list() if hasattr(storage, "tools") else [],
-        "skills": storage.skills.list() if hasattr(storage, "skills") else [],
+        "tools": await session.list_tools(),
+        "skills": await session.list_skills(),
     }

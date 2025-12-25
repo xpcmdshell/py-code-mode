@@ -10,15 +10,10 @@ Usage:
     # With Claude Code
     claude mcp add py-code-mode -- py-code-mode-mcp --storage ~/.code-mode
 
-Note on execution isolation:
-    Currently, code runs in-process (no isolation). Container-based execution
-    with Docker is supported by the library (ContainerExecutor), but automatic
-    Docker configuration for Claude Code MCP integration is not yet implemented.
-
-    For now, the MCP server uses InProcessExecutor which provides the simplest
-    "just works" experience - no Docker setup required, tools are CLI commands
-    on your system. Container isolation will be added when we solve the tool
-    discovery/management UX for containerized environments.
+Note on execution:
+    Code runs in an isolated subprocess with its own virtual environment and
+    IPython kernel (SubprocessExecutor). This provides process isolation while
+    still allowing access to CLI tools on your system.
 """
 
 from __future__ import annotations
@@ -88,9 +83,9 @@ async def run_code(code: str) -> str:
 @mcp.tool
 async def list_tools() -> list[dict]:
     """List all available tools with their descriptions and parameters."""
-    if _session is None or _session._executor is None:
-        return []
-    return _session._executor._namespace["tools"].list()
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    return await _session.list_tools()
 
 
 @mcp.tool
@@ -104,27 +99,19 @@ async def search_tools(query: str, limit: int = 10) -> list[dict]:
         query: Natural language description of what you're trying to accomplish
         limit: Maximum number of results to return (default: 10)
 
-    Returns matching tools with their descriptions and callables.
+    Returns matching tools with their descriptions and tags.
     """
-    if _session is None or _session._executor is None:
-        return []
-    tools = _session._executor._namespace["tools"].search(query, limit)
-    return [
-        {
-            "name": t.name,
-            "description": t.description,
-            "callables": [c.signature() for c in t.callables],
-        }
-        for t in tools
-    ]
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    return await _session.search_tools(query, limit)
 
 
 @mcp.tool
 async def list_skills() -> list[dict]:
     """List all available skills with their descriptions."""
-    if _session is None or _session._executor is None:
-        return []
-    return _session._executor._namespace["skills"].list()
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    return await _session.list_skills()
 
 
 @mcp.tool
@@ -142,17 +129,17 @@ async def search_skills(query: str, limit: int = 5) -> list[dict]:
     If no good match exists, use run_code to solve the task ad-hoc,
     then create a skill for future reuse.
     """
-    if _session is None or _session._executor is None:
-        return []
-    return _session._executor._namespace["skills"].search(query, limit)
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    return await _session.search_skills(query, limit)
 
 
 @mcp.tool
 async def list_artifacts() -> list[dict]:
     """List all stored artifacts with their metadata."""
-    if _session is None or _session._executor is None:
-        return []
-    return _session._executor._namespace["artifacts"].list()
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    return await _session.list_artifacts()
 
 
 @mcp.tool
@@ -174,9 +161,9 @@ async def create_skill(name: str, source: str, description: str) -> dict:
 
     Returns the created skill's metadata.
     """
-    if _session is None or _session._executor is None:
-        return {"error": "Session not initialized"}
-    return _session._executor._namespace["skills"].create(name, source, description)
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    return await _session.add_skill(name, source, description)
 
 
 @mcp.tool
@@ -188,16 +175,16 @@ async def delete_skill(name: str) -> bool:
 
     Returns True if the skill was deleted, False if it was not found.
     """
-    if _session is None or _session._executor is None:
-        return False
-    return _session._executor._namespace["skills"].delete(name)
+    if _session is None:
+        raise RuntimeError("Session not initialized")
+    return await _session.remove_skill(name)
 
 
 async def list_deps() -> list[str]:
     """List all configured dependencies."""
-    if _session is None or _session._executor is None:
+    if _session is None:
         return []
-    return _session._executor._namespace["deps"].list()
+    return await _session.list_deps()
 
 
 async def _list_deps_json() -> str:
@@ -216,17 +203,12 @@ async def add_dep(package: str) -> dict:
         package: Package name with optional version specifier (e.g., "pandas>=2.0")
 
     Returns:
-        Dict with installation result (installed, already_present, failed lists)
+        Dict with installation result (success, installed, failed, output)
     """
-    if _session is None or _session._executor is None:
+    if _session is None:
         return {"error": "Session not initialized"}
     try:
-        result = _session._executor._namespace["deps"].add(package)
-        return {
-            "installed": list(result.installed),
-            "already_present": list(result.already_present),
-            "failed": list(result.failed),
-        }
+        return await _session.add_dep(package)
     except ValueError as e:
         return {"error": str(e)}
 
@@ -240,9 +222,9 @@ async def remove_dep(package: str) -> bool:
     Returns:
         True if removed, False if not found
     """
-    if _session is None or _session._executor is None:
+    if _session is None:
         return False
-    return _session._executor._namespace["deps"].remove(package)
+    return await _session.remove_dep(package)
 
 
 # Register deps tools that are always available (list only)
@@ -275,7 +257,7 @@ def register_runtime_dep_tools(allow_runtime_deps: bool) -> None:
 async def create_session(args: argparse.Namespace) -> Session:
     """Create session based on CLI args."""
     from py_code_mode import Session
-    from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
+    from py_code_mode.execution.subprocess import SubprocessConfig, SubprocessExecutor
 
     if args.redis:
         from redis import Redis
@@ -291,10 +273,26 @@ async def create_session(args: argparse.Namespace) -> Session:
         storage_path.mkdir(parents=True, exist_ok=True)
         storage = FileStorage(base_path=storage_path)
 
-    # Configure executor with runtime deps setting
+    # Configure executor with runtime deps and timeout settings
     no_runtime_deps = getattr(args, "no_runtime_deps", False)
-    config = InProcessConfig(allow_runtime_deps=not no_runtime_deps)
-    executor = InProcessExecutor(config=config)
+    timeout = getattr(args, "timeout", None)
+
+    # Use persistent venv alongside storage for faster restarts
+    # For file storage: ./data/.venv/
+    # For redis: ~/.cache/py-code-mode/<prefix>/.venv/
+    if args.redis:
+        prefix = args.prefix or "py-code-mode"
+        venv_path = Path.home() / ".cache" / "py-code-mode" / prefix / ".venv"
+    else:
+        venv_path = storage_path / ".venv"
+
+    config = SubprocessConfig(
+        allow_runtime_deps=not no_runtime_deps,
+        default_timeout=timeout,
+        venv_path=venv_path,
+        cleanup_venv_on_close=False,  # Persist for faster restarts
+    )
+    executor = SubprocessExecutor(config=config)
 
     session = Session(storage=storage, executor=executor)
     await session.start()
@@ -333,6 +331,14 @@ Examples:
         "--no-runtime-deps",
         action="store_true",
         help="Disable runtime dependency installation",
+    )
+
+    # Execution timeout
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Code execution timeout in seconds (default: unlimited)",
     )
 
     args = parser.parse_args()

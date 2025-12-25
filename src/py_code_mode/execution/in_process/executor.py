@@ -61,7 +61,7 @@ class InProcessExecutor:
         skill_library: SkillLibrary | None = None,
         artifact_store: ArtifactStoreProtocol | None = None,
         deps_namespace: DepsNamespace | None = None,
-        default_timeout: float = 30.0,
+        default_timeout: float | None = 30.0,
         config: InProcessConfig | None = None,
     ) -> None:
         self._registry = registry
