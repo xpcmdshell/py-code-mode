@@ -45,7 +45,6 @@ except ImportError:
     HTTPX_AVAILABLE = False
     httpx = None  # type: ignore
 
-from py_code_mode.deps.namespace import RuntimeDepsDisabledError
 from py_code_mode.execution.container.client import SessionClient
 from py_code_mode.execution.container.config import DEFAULT_IMAGE, ContainerConfig
 from py_code_mode.execution.protocol import (
@@ -491,6 +490,12 @@ class ContainerExecutor:
     async def install_deps(self, packages: list[str]) -> dict[str, Any]:
         """Install packages in the container environment.
 
+        This is a system-level API called by Session._sync_deps() during startup.
+        It installs pre-configured packages and is NOT affected by allow_runtime_deps.
+
+        Agent-initiated installs via deps.add() are blocked by ControlledDepsNamespace
+        when allow_runtime_deps=False.
+
         Args:
             packages: List of package specifications (e.g., ["pandas>=2.0", "numpy"]).
 
@@ -498,11 +503,11 @@ class ContainerExecutor:
             Dict with keys: installed, already_present, failed.
 
         Raises:
-            RuntimeDepsDisabledError: If runtime deps are disabled.
             RuntimeError: If container is not started.
         """
-        if not self.config.allow_runtime_deps:
-            raise RuntimeDepsDisabledError("Runtime deps disabled")
+        # NOTE: This method does NOT check allow_runtime_deps.
+        # It's a system-level API for Session._sync_deps() to install pre-configured deps.
+        # Agent-initiated installs are blocked at the namespace level by ControlledDepsNamespace.
 
         if self._client is None:
             raise RuntimeError("Container not started")
@@ -512,6 +517,12 @@ class ContainerExecutor:
     async def uninstall_deps(self, packages: list[str]) -> dict[str, Any]:
         """Uninstall packages from the container environment.
 
+        This is a system-level API called by Session.remove_dep().
+        It uninstalls packages and is NOT affected by allow_runtime_deps.
+
+        Agent-initiated removals via deps.remove() are blocked by ControlledDepsNamespace
+        when allow_runtime_deps=False.
+
         Args:
             packages: List of package names to uninstall.
 
@@ -519,11 +530,11 @@ class ContainerExecutor:
             Dict with keys: removed, not_found, failed.
 
         Raises:
-            RuntimeDepsDisabledError: If runtime deps are disabled.
             RuntimeError: If container is not started.
         """
-        if not self.config.allow_runtime_deps:
-            raise RuntimeDepsDisabledError("Runtime deps disabled")
+        # NOTE: This method does NOT check allow_runtime_deps.
+        # It's a system-level API for Session.remove_dep() to uninstall packages.
+        # Agent-initiated removals are blocked at the namespace level by ControlledDepsNamespace.
 
         if self._client is None:
             raise RuntimeError("Container not started")

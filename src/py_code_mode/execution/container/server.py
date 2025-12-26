@@ -536,13 +536,18 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
     async def install_deps(body: DepsRequestModel) -> DepsResponseModel:
         """Install packages in the container environment.
 
-        Requires runtime deps to be enabled (allow_runtime_deps=True in config).
+        This is a system-level API called by ContainerExecutor.install_deps().
+        It installs pre-configured packages and is NOT affected by allow_runtime_deps.
+
+        Agent-initiated installs via deps.add() are blocked by ControlledDepsNamespace
+        when allow_runtime_deps=False.
         """
+        # NOTE: This endpoint does NOT check allow_runtime_deps.
+        # It's a system-level API for Session._sync_deps() to install pre-configured deps.
+        # Agent-initiated installs are blocked at the namespace level by ControlledDepsNamespace.
+
         if _state.config is None:
             raise HTTPException(status_code=503, detail="Server not initialized")
-
-        if not _state.config.allow_runtime_deps:
-            raise HTTPException(status_code=403, detail="Runtime deps disabled")
 
         if _state.deps_store is None or _state.deps_installer is None:
             raise HTTPException(status_code=503, detail="Deps store not initialized")
@@ -566,14 +571,20 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
     async def uninstall_deps(body: DepsRequestModel) -> DepsResponseModel:
         """Uninstall packages from the container environment.
 
-        Requires runtime deps to be enabled (allow_runtime_deps=True in config).
+        This is a system-level API called by ContainerExecutor.uninstall_deps().
+        It uninstalls packages and is NOT affected by allow_runtime_deps.
+
+        Agent-initiated removals via deps.remove() are blocked by ControlledDepsNamespace
+        when allow_runtime_deps=False.
+
         Note: This removes packages but does not modify the deps store.
         """
+        # NOTE: This endpoint does NOT check allow_runtime_deps.
+        # It's a system-level API for Session.remove_dep() to uninstall packages.
+        # Agent-initiated removals are blocked at the namespace level by ControlledDepsNamespace.
+
         if _state.config is None:
             raise HTTPException(status_code=503, detail="Server not initialized")
-
-        if not _state.config.allow_runtime_deps:
-            raise HTTPException(status_code=403, detail="Runtime deps disabled")
 
         removed: list[str] = []
         failed: list[str] = []
