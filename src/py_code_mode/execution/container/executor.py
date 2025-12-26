@@ -100,6 +100,8 @@ class ContainerExecutor:
             Capability.TIMEOUT,
             Capability.PROCESS_ISOLATION,
             Capability.RESET,
+            Capability.DEPS_INSTALL,
+            Capability.DEPS_UNINSTALL,
         }
     )
 
@@ -484,6 +486,60 @@ class ContainerExecutor:
         if self._client is None:
             raise RuntimeError("Container not started")
         await self._client.reset()
+
+    async def install_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Install packages in the container environment.
+
+        This is a system-level API called by Session._sync_deps() during startup.
+        It installs pre-configured packages and is NOT affected by allow_runtime_deps.
+
+        Agent-initiated installs via deps.add() are blocked by ControlledDepsNamespace
+        when allow_runtime_deps=False.
+
+        Args:
+            packages: List of package specifications (e.g., ["pandas>=2.0", "numpy"]).
+
+        Returns:
+            Dict with keys: installed, already_present, failed.
+
+        Raises:
+            RuntimeError: If container is not started.
+        """
+        # NOTE: This method does NOT check allow_runtime_deps.
+        # It's a system-level API for Session._sync_deps() to install pre-configured deps.
+        # Agent-initiated installs are blocked at the namespace level by ControlledDepsNamespace.
+
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.install_deps(packages)
+
+    async def uninstall_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Uninstall packages from the container environment.
+
+        This is a system-level API called by Session.remove_dep().
+        It uninstalls packages and is NOT affected by allow_runtime_deps.
+
+        Agent-initiated removals via deps.remove() are blocked by ControlledDepsNamespace
+        when allow_runtime_deps=False.
+
+        Args:
+            packages: List of package names to uninstall.
+
+        Returns:
+            Dict with keys: removed, not_found, failed.
+
+        Raises:
+            RuntimeError: If container is not started.
+        """
+        # NOTE: This method does NOT check allow_runtime_deps.
+        # It's a system-level API for Session.remove_dep() to uninstall packages.
+        # Agent-initiated removals are blocked at the namespace level by ControlledDepsNamespace.
+
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.uninstall_deps(packages)
 
     def _get_container_port(self) -> int:
         """Get the host port mapped to container port 8080."""

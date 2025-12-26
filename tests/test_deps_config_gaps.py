@@ -747,7 +747,7 @@ class TestDepsConfigurationWorkflow:
         User journey:
         1. Developer adds deps via storage
         2. Session starts with sync_deps_on_start=True
-        3. Runtime deps disabled, agent can only list/remove
+        3. Runtime deps disabled, agent cannot add/remove
 
         Breaks when: Any step in the workflow fails.
         """
@@ -786,7 +786,8 @@ class TestDepsConfigurationWorkflow:
             # 6. Remove is also blocked when locked (immutable config)
             result = await session.run('deps.remove("six")')
             assert not result.is_ok
-            assert "disabled" in result.error.lower()
+            # Check for RuntimeDepsDisabledError or "disabled" in error message
+            assert "RuntimeDepsDisabledError" in result.error or "disabled" in result.error.lower()
 
         finally:
             await session.close()
@@ -1038,7 +1039,8 @@ class TestSubprocessExecutorDepsConfigGaps:
             # 6. Remove is also blocked when locked (immutable config)
             result = await session.run('deps.remove("six")')
             assert not result.is_ok
-            assert "disabled" in result.error.lower()
+            # Check for RuntimeDepsDisabledError or "disabled" in error message
+            assert "RuntimeDepsDisabledError" in result.error or "disabled" in result.error.lower()
 
             # 7. List still works
             result = await session.run("deps.list()")

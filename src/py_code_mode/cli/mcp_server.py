@@ -213,18 +213,21 @@ async def add_dep(package: str) -> dict:
         return {"error": str(e)}
 
 
-async def remove_dep(package: str) -> bool:
-    """Remove a dependency from configuration.
+async def remove_dep(package: str) -> dict:
+    """Remove a dependency from configuration and uninstall it.
 
     Args:
         package: Package name to remove
 
     Returns:
-        True if removed, False if not found
+        Dict with removal result (removed, not_found, failed, removed_from_config)
     """
     if _session is None:
-        return False
-    return await _session.remove_dep(package)
+        return {"error": "Session not initialized"}
+    try:
+        return await _session.remove_dep(package)
+    except ValueError as e:
+        return {"error": str(e)}
 
 
 # Register deps tools that are always available (list only)
@@ -294,7 +297,10 @@ async def create_session(args: argparse.Namespace) -> Session:
     )
     executor = SubprocessExecutor(config=config)
 
-    session = Session(storage=storage, executor=executor)
+    # Determine if we should sync deps on start (default: True)
+    sync_deps = not getattr(args, "no_sync_deps", False)
+
+    session = Session(storage=storage, executor=executor, sync_deps_on_start=sync_deps)
     await session.start()
 
     # Pre-load tool registry to establish MCP connections in main task context.
@@ -346,6 +352,13 @@ Examples:
         type=float,
         default=None,
         help="Code execution timeout in seconds (default: unlimited)",
+    )
+
+    # Dependency sync control
+    parser.add_argument(
+        "--no-sync-deps",
+        action="store_true",
+        help="Don't install pre-configured dependencies on startup (default: sync on start)",
     )
 
     args = parser.parse_args()

@@ -85,6 +85,8 @@ class Capability:
     MEMORY_LIMIT = "memory_limit"
     CPU_LIMIT = "cpu_limit"
     RESET = "reset"
+    DEPS_INSTALL = "deps_install"  # Can install packages at runtime
+    DEPS_UNINSTALL = "deps_uninstall"  # Can uninstall packages at runtime
 
     @classmethod
     def all(cls) -> set[str]:
@@ -98,6 +100,8 @@ class Capability:
             cls.MEMORY_LIMIT,
             cls.CPU_LIMIT,
             cls.RESET,
+            cls.DEPS_INSTALL,
+            cls.DEPS_UNINSTALL,
         }
 
 
@@ -176,5 +180,46 @@ class Executor(Protocol):
                     - InProcessExecutor: uses storage.tools/skills/artifacts directly
                     - ContainerExecutor: calls storage.get_serializable_access()
                     - SubprocessExecutor: calls storage.get_serializable_access()
+        """
+        ...
+
+    async def install_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Install packages in executor's environment.
+
+        Each executor installs to its own environment:
+        - InProcessExecutor: uses sys.executable (same process)
+        - SubprocessExecutor: uses VenvManager (targets venv)
+        - ContainerExecutor: calls HTTP endpoint (targets container)
+
+        Args:
+            packages: List of package specifications (e.g., ["pandas>=2.0", "numpy"])
+
+        Returns:
+            Dict with keys:
+            - installed: List of successfully installed packages
+            - already_present: List of packages that were already installed
+            - failed: List of packages that failed to install
+
+        Raises:
+            RuntimeDepsDisabledError: If runtime deps are disabled via config
+            RuntimeError: If executor not started or deps namespace unavailable
+        """
+        ...
+
+    async def uninstall_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Uninstall packages from executor's environment.
+
+        Args:
+            packages: List of package names to uninstall
+
+        Returns:
+            Dict with keys:
+            - removed: List of successfully uninstalled packages
+            - not_found: List of packages that were not installed
+            - failed: List of packages that failed to uninstall
+
+        Raises:
+            RuntimeDepsDisabledError: If runtime deps are disabled via config
+            RuntimeError: If executor not started
         """
         ...

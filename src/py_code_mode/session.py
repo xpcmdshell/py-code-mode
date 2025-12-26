@@ -84,19 +84,14 @@ class Session:
         return self._storage
 
     async def _sync_deps(self) -> None:
-        """Sync configured dependencies by running deps.sync() via executor.
+        """Sync configured dependencies by installing them via the executor.
 
-        This method syncs pre-configured dependencies even when runtime deps are
-        disabled. It accesses the underlying DepsNamespace directly, bypassing
-        any ControlledDepsNamespace wrapper.
+        This method installs pre-configured dependencies to the correct executor
+        environment (in-process, subprocess venv, or container).
         """
-        if self._executor is None:
-            return
-
-        # Get the underlying deps namespace, bypassing any wrapper
-        deps_ns = getattr(self._executor, "_deps_namespace", None)
-        if deps_ns is not None:
-            deps_ns.sync()
+        packages = self._storage.get_deps_store().list()
+        if packages and self._executor is not None:
+            await self._executor.install_deps(packages)
 
     async def start(self) -> None:
         """Initialize the executor and inject namespaces.
@@ -441,45 +436,79 @@ class Session:
     async def add_dep(self, package: str) -> dict[str, Any]:
         """Add and install a dependency.
 
+        Persists the package to storage (survives restarts) and installs it
+        to the executor's environment (targets correct Python: in-process,
+        subprocess venv, or container).
+
         Args:
             package: Package specification (e.g., "pandas>=2.0").
 
         Returns:
-            Install result dict with success status and details.
-        """
-        deps_ns = self._storage.get_deps_namespace()
-        result = deps_ns.add(package)
-        return {
-            "installed": list(result.installed),
-            "already_present": list(result.already_present),
-            "failed": list(result.failed),
-        }
+            Install result dict with keys: installed, already_present, failed.
 
-    async def remove_dep(self, package: str) -> bool:
+        Raises:
+            RuntimeError: If session not started.
+        """
+        # 1. Persist to storage via deps namespace to maintain consistency
+        # with list_deps() which also uses the namespace's store.
+        # Note: deps_ns.add() would also install, but we use the executor
+        # to install so it targets the correct environment.
+        deps_ns = self._storage.get_deps_namespace()
+        deps_ns._store.add(package)  # Add to store only, don't install via namespace
+
+        # 2. Install via executor (targets correct environment)
+        if self._executor is None:
+            raise RuntimeError("Session not started")
+
+        return await self._executor.install_deps([package])
+
+    async def remove_dep(self, package: str) -> dict[str, Any]:
         """Remove a dependency.
+
+        Removes the package from storage and uninstalls it from the executor's
+        environment.
 
         Args:
             package: Package specification to remove.
 
         Returns:
-            True if removed, False if not found.
+            Result dict with keys: removed, not_found, failed, removed_from_config.
+
+        Raises:
+            RuntimeError: If session not started.
         """
+        # 1. Remove from storage via deps namespace to maintain consistency
+        # with list_deps() which also uses the namespace's store
         deps_ns = self._storage.get_deps_namespace()
-        return deps_ns.remove(package)
+        removed_from_store = deps_ns.remove(package)
+
+        # 2. Uninstall via executor
+        if self._executor is None:
+            raise RuntimeError("Session not started")
+
+        result = await self._executor.uninstall_deps([package])
+        result["removed_from_config"] = removed_from_store
+        return result
 
     async def sync_deps(self) -> dict[str, Any]:
         """Sync all configured dependencies.
 
+        Installs all pre-configured packages to the executor's environment.
+
         Returns:
-            Sync result dict with success status and details.
+            Sync result dict with keys: installed, already_present, failed.
+
+        Raises:
+            RuntimeError: If session not started.
         """
-        deps_ns = self._storage.get_deps_namespace()
-        result = deps_ns.sync()
-        return {
-            "installed": list(result.installed),
-            "already_present": list(result.already_present),
-            "failed": list(result.failed),
-        }
+        packages = self._storage.get_deps_store().list()
+        if not packages:
+            return {"installed": [], "already_present": [], "failed": []}
+
+        if self._executor is None:
+            raise RuntimeError("Session not started")
+
+        return await self._executor.install_deps(packages)
 
     # -------------------------------------------------------------------------
     # Context manager

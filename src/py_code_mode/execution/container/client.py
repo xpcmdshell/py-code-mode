@@ -206,6 +206,54 @@ class SessionClient:
             session_id=data.get("session_id", self.session_id),
         )
 
+    async def install_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Install packages in the container.
+
+        Args:
+            packages: List of package specifications (e.g., ["pandas>=2.0", "numpy"]).
+
+        Returns:
+            Dict with keys: installed, already_present, failed.
+
+        Raises:
+            RuntimeError: If installation fails.
+        """
+        client = await self._get_client()
+        response = await client.post(
+            f"{self.base_url}/install_deps",
+            json={"packages": packages},
+            headers=self._headers(),
+            timeout=300.0,  # Long timeout for package installation
+        )
+        data = response.json()
+        if response.status_code != 200:
+            raise RuntimeError(data.get("error", "Install failed"))
+        return data
+
+    async def uninstall_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Uninstall packages from the container.
+
+        Args:
+            packages: List of package names to uninstall.
+
+        Returns:
+            Dict with keys: removed, not_found, failed.
+
+        Raises:
+            RuntimeError: If uninstallation fails.
+        """
+        client = await self._get_client()
+        response = await client.post(
+            f"{self.base_url}/uninstall_deps",
+            json={"packages": packages},
+            headers=self._headers(),
+            timeout=120.0,  # Reasonable timeout for uninstall
+        )
+        data = response.json()
+        if response.status_code != 200:
+            raise RuntimeError(data.get("error", "Uninstall failed"))
+        return data
+
     async def close(self) -> None:
         """Close HTTP client."""
         if self._client is not None:

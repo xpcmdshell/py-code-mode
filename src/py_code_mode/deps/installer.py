@@ -11,11 +11,14 @@ __all__ = [
     "clear_install_cache",
 ]
 
+import logging
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from py_code_mode.deps.store import DepsStore
@@ -111,6 +114,7 @@ class PackageInstaller:
             return [uv_path, "pip", "install", "--python", sys.executable]
 
         # Fall back to pip via current interpreter
+        logger.warning("uv not found, falling back to pip")
         return [sys.executable, "-m", "pip", "install"]
 
     def _build_install_command(self, packages: list[str]) -> list[str]:

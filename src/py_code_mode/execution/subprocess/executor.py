@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -21,6 +22,8 @@ from py_code_mode.execution.subprocess.config import SubprocessConfig
 from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
 from py_code_mode.execution.subprocess.venv import KernelVenv, VenvManager
 from py_code_mode.types import ExecutionResult
+
+logger = logging.getLogger(__name__)
 
 
 def _deserialize_value(text_repr: str | None) -> Any:
@@ -68,6 +71,8 @@ class SubprocessExecutor:
             Capability.TIMEOUT,
             Capability.PROCESS_ISOLATION,
             Capability.RESET,
+            Capability.DEPS_INSTALL,
+            Capability.DEPS_UNINSTALL,
         }
     )
 
@@ -238,6 +243,82 @@ class SubprocessExecutor:
             if self._kc is not None:
                 await self._kc.wait_for_ready(timeout=self._config.startup_timeout)
             await self._setup_namespaces()
+
+    async def install_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Install packages in the subprocess venv.
+
+        This is a system-level API called by Session._sync_deps() during startup.
+        It installs pre-configured packages and is NOT affected by allow_runtime_deps.
+
+        Agent-initiated installs via deps.add() are blocked by ControlledDepsNamespace
+        when allow_runtime_deps=False.
+
+        Args:
+            packages: List of package specifications to install.
+
+        Returns:
+            Dict with "installed", "already_present", and "failed" lists.
+
+        Raises:
+            RuntimeError: If venv is not initialized.
+        """
+        # NOTE: This method does NOT check allow_runtime_deps.
+        # It's a system-level API for Session._sync_deps() to install pre-configured deps.
+        # Agent-initiated installs are blocked at the namespace level by ControlledDepsNamespace.
+
+        if self._venv_manager is None or self._venv is None:
+            raise RuntimeError("Venv not initialized")
+
+        installed: list[str] = []
+        failed: list[str] = []
+
+        for pkg in packages:
+            try:
+                await self._venv_manager.add_package(self._venv, pkg)
+                installed.append(pkg)
+            except Exception as e:
+                logger.warning("Failed to install %s: %s", pkg, e)
+                failed.append(pkg)
+
+        return {"installed": installed, "already_present": [], "failed": failed}
+
+    async def uninstall_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Uninstall packages from the subprocess venv.
+
+        This is a system-level API called by Session.remove_dep().
+        It uninstalls packages and is NOT affected by allow_runtime_deps.
+
+        Agent-initiated removals via deps.remove() are blocked by ControlledDepsNamespace
+        when allow_runtime_deps=False.
+
+        Args:
+            packages: List of package names to uninstall.
+
+        Returns:
+            Dict with "removed", "not_found", and "failed" lists.
+
+        Raises:
+            RuntimeError: If venv is not initialized.
+        """
+        # NOTE: This method does NOT check allow_runtime_deps.
+        # It's a system-level API for Session.remove_dep() to uninstall packages.
+        # Agent-initiated removals are blocked at the namespace level by ControlledDepsNamespace.
+
+        if self._venv_manager is None or self._venv is None:
+            raise RuntimeError("Venv not initialized")
+
+        removed: list[str] = []
+        failed: list[str] = []
+
+        for pkg in packages:
+            try:
+                await self._venv_manager.remove_package(self._venv, pkg)
+                removed.append(pkg)
+            except Exception as e:
+                logger.warning("Failed to uninstall %s: %s", pkg, e)
+                failed.append(pkg)
+
+        return {"removed": removed, "not_found": [], "failed": failed}
 
     async def close(self) -> None:
         """Shutdown kernel and cleanup venv."""

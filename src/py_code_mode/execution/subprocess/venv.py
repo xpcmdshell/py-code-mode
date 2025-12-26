@@ -232,6 +232,23 @@ class VenvManager:
             error_context=f"uv pip install {package} failed",
         )
 
+    async def remove_package(self, venv: KernelVenv, package: str) -> None:
+        """Uninstall a package from an existing venv.
+
+        Args:
+            venv: The KernelVenv to uninstall the package from.
+            package: The package name to uninstall.
+
+        Raises:
+            ValueError: If the package specifier is invalid.
+            RuntimeError: If package uninstallation fails.
+        """
+        _validate_package_spec(package)
+        await self._run_uv(
+            ["pip", "uninstall", "--python", str(venv.python_path), package],
+            error_context=f"uv pip uninstall {package} failed",
+        )
+
     async def cleanup(self, venv: KernelVenv) -> None:
         """Remove a venv directory.
 

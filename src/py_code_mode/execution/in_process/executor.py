@@ -10,6 +10,9 @@ import ast
 import asyncio
 import builtins
 import io
+import logging
+import subprocess
+import sys
 import traceback
 from contextlib import redirect_stdout
 from typing import TYPE_CHECKING, Any
@@ -26,6 +29,8 @@ from py_code_mode.types import ExecutionResult
 if TYPE_CHECKING:
     from py_code_mode.artifacts import ArtifactStoreProtocol
     from py_code_mode.storage.backends import StorageBackend
+
+logger = logging.getLogger(__name__)
 
 # Use builtins to avoid security hook false positive on Python's code execution
 _run_code = getattr(builtins, "exec")
@@ -53,7 +58,14 @@ class InProcessExecutor:
     """
 
     # Capabilities this backend supports
-    _CAPABILITIES = frozenset({Capability.TIMEOUT, Capability.RESET})
+    _CAPABILITIES = frozenset(
+        {
+            Capability.TIMEOUT,
+            Capability.RESET,
+            Capability.DEPS_INSTALL,
+            Capability.DEPS_UNINSTALL,
+        }
+    )
 
     def __init__(
         self,
@@ -254,6 +266,105 @@ class InProcessExecutor:
             )
         else:
             self._namespace["deps"] = self._deps_namespace
+
+    async def install_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Install packages in the in-process environment.
+
+        This is a system-level API called by Session._sync_deps() during startup.
+        It installs pre-configured packages and is NOT affected by allow_runtime_deps.
+
+        Agent-initiated installs via deps.add() are blocked by ControlledDepsNamespace
+        when allow_runtime_deps=False.
+
+        Args:
+            packages: List of package specifications (e.g., ["pandas>=2.0"])
+
+        Returns:
+            Dict with installed, already_present, and failed lists.
+
+        Raises:
+            RuntimeError: If deps namespace not initialized.
+        """
+        # NOTE: This method does NOT check allow_runtime_deps.
+        # It's a system-level API for Session._sync_deps() to install pre-configured deps.
+        # Agent-initiated installs are blocked at the namespace level by ControlledDepsNamespace.
+
+        if self._deps_namespace is None:
+            raise RuntimeError("Deps namespace not initialized")
+
+        installed: list[str] = []
+        already_present: list[str] = []
+        failed: list[str] = []
+
+        for pkg in packages:
+            try:
+                self._deps_namespace.add(pkg)
+                installed.append(pkg)
+            except Exception as e:
+                logger.warning("Failed to install %s: %s", pkg, e)
+                failed.append(pkg)
+
+        return {
+            "installed": installed,
+            "already_present": already_present,
+            "failed": failed,
+        }
+
+    async def uninstall_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Uninstall packages from the in-process environment.
+
+        This is a system-level API called by Session.remove_dep().
+        It uninstalls packages and is NOT affected by allow_runtime_deps.
+
+        Agent-initiated removals via deps.remove() are blocked by ControlledDepsNamespace
+        when allow_runtime_deps=False.
+
+        Args:
+            packages: List of package names to uninstall.
+
+        Returns:
+            Dict with removed, not_found, and failed lists.
+        """
+        # NOTE: This method does NOT check allow_runtime_deps.
+        # It's a system-level API for Session.remove_dep() to uninstall packages.
+        # Agent-initiated removals are blocked at the namespace level by ControlledDepsNamespace.
+
+        removed: list[str] = []
+        not_found: list[str] = []
+        failed: list[str] = []
+
+        for pkg in packages:
+            # Validate package name to prevent flag injection
+            if pkg.startswith("-"):
+                logger.warning("Invalid package name (starts with '-'): %s", pkg)
+                failed.append(pkg)
+                continue
+
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "uninstall", "-y", pkg],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                if result.returncode == 0:
+                    removed.append(pkg)
+                else:
+                    # pip returns non-zero if package not found
+                    if "not installed" in result.stderr.lower():
+                        not_found.append(pkg)
+                    else:
+                        failed.append(pkg)
+            except subprocess.TimeoutExpired:
+                failed.append(pkg)
+            except Exception:
+                failed.append(pkg)
+
+        return {
+            "removed": removed,
+            "not_found": not_found,
+            "failed": failed,
+        }
 
     async def __aenter__(self) -> InProcessExecutor:
         return self
