@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
 
 from jupyter_client import AsyncKernelManager
 
+from py_code_mode.deps.namespace import RuntimeDepsDisabledError
 from py_code_mode.execution.protocol import (
     Capability,
     StorageAccess,
@@ -21,6 +23,8 @@ from py_code_mode.execution.subprocess.config import SubprocessConfig
 from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
 from py_code_mode.execution.subprocess.venv import KernelVenv, VenvManager
 from py_code_mode.types import ExecutionResult
+
+logger = logging.getLogger(__name__)
 
 
 def _deserialize_value(text_repr: str | None) -> Any:
@@ -238,6 +242,70 @@ class SubprocessExecutor:
             if self._kc is not None:
                 await self._kc.wait_for_ready(timeout=self._config.startup_timeout)
             await self._setup_namespaces()
+
+    async def install_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Install packages in the subprocess venv.
+
+        Args:
+            packages: List of package specifications to install.
+
+        Returns:
+            Dict with "installed", "already_present", and "failed" lists.
+
+        Raises:
+            RuntimeDepsDisabledError: If runtime deps are disabled.
+            RuntimeError: If venv is not initialized.
+        """
+        if not self._config.allow_runtime_deps:
+            raise RuntimeDepsDisabledError("Runtime deps disabled")
+
+        if self._venv_manager is None or self._venv is None:
+            raise RuntimeError("Venv not initialized")
+
+        installed: list[str] = []
+        failed: list[str] = []
+
+        for pkg in packages:
+            try:
+                await self._venv_manager.add_package(self._venv, pkg)
+                installed.append(pkg)
+            except Exception as e:
+                logger.warning(f"Failed to install {pkg}: {e}")
+                failed.append(pkg)
+
+        return {"installed": installed, "already_present": [], "failed": failed}
+
+    async def uninstall_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Uninstall packages from the subprocess venv.
+
+        Args:
+            packages: List of package names to uninstall.
+
+        Returns:
+            Dict with "removed", "not_found", and "failed" lists.
+
+        Raises:
+            RuntimeDepsDisabledError: If runtime deps are disabled.
+            RuntimeError: If venv is not initialized.
+        """
+        if not self._config.allow_runtime_deps:
+            raise RuntimeDepsDisabledError("Runtime deps disabled")
+
+        if self._venv_manager is None or self._venv is None:
+            raise RuntimeError("Venv not initialized")
+
+        removed: list[str] = []
+        failed: list[str] = []
+
+        for pkg in packages:
+            try:
+                await self._venv_manager.remove_package(self._venv, pkg)
+                removed.append(pkg)
+            except Exception as e:
+                logger.warning(f"Failed to uninstall {pkg}: {e}")
+                failed.append(pkg)
+
+        return {"removed": removed, "not_found": [], "failed": failed}
 
     async def close(self) -> None:
         """Shutdown kernel and cleanup venv."""
