@@ -1293,13 +1293,13 @@ class TestMCPServerDepsTools:
                 assert isinstance(deps_data, list)
 
     @pytest.mark.asyncio
-    async def test_remove_dep_returns_bool(
+    async def test_remove_dep_returns_dict(
         self,
         mcp_storage_dir: Path,
     ) -> None:
-        """E2E: remove_dep returns a boolean.
+        """E2E: remove_dep returns a dict with removal results.
 
-        Contract: remove_dep() returns bool.
+        Contract: remove_dep() returns dict with removed_from_config key.
         Breaks when: Return type is wrong.
         """
         from mcp import ClientSession
@@ -1313,12 +1313,12 @@ class TestMCPServerDepsTools:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Try to remove non-existent package (should return False)
+                # Try to remove non-existent package (should return dict with removed_from_config=False)
                 result = await session.call_tool("remove_dep", {"package": "nonexistent-pkg-xyz"})
                 result_data = json.loads(result.content[0].text)
 
-                assert isinstance(result_data, bool)
-                assert result_data is False
+                assert isinstance(result_data, dict)
+                assert result_data["removed_from_config"] is False
 
     @pytest.mark.asyncio
     async def test_add_dep_returns_dict(
@@ -1420,8 +1420,8 @@ class TestMCPServerDepsTools:
 
                 # 3. Remove the package
                 remove_result = await session.call_tool("remove_dep", {"package": "six"})
-                removed = json.loads(remove_result.content[0].text)
-                assert removed is True
+                result_data = json.loads(remove_result.content[0].text)
+                assert result_data["removed_from_config"] is True
 
                 # 4. Verify it's gone
                 list_result2 = await session.call_tool("list_deps", {})
@@ -1503,11 +1503,11 @@ class TestMCPServerDepsTools:
     # -------------------------------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_remove_dep_nonexistent_returns_false(
+    async def test_remove_dep_nonexistent_returns_false_in_config(
         self,
         mcp_storage_dir: Path,
     ) -> None:
-        """E2E: remove_dep returns False for non-existent package.
+        """E2E: remove_dep returns removed_from_config=False for non-existent package.
 
         Breaks when: Returns True or throws.
         """
@@ -1525,9 +1525,9 @@ class TestMCPServerDepsTools:
                 result = await session.call_tool(
                     "remove_dep", {"package": "nonexistent-package-xyz"}
                 )
-                removed = json.loads(result.content[0].text)
+                result_data = json.loads(result.content[0].text)
 
-                assert removed is False
+                assert result_data["removed_from_config"] is False
 
     @pytest.mark.asyncio
     async def test_add_dep_empty_string_returns_error(
@@ -1628,10 +1628,10 @@ class TestMCPServerDepsToolsSessionNotInitialized:
             mcp_server._session = original_session
 
     @pytest.mark.asyncio
-    async def test_remove_dep_without_session_returns_false(self) -> None:
-        """remove_dep returns False when _session is None.
+    async def test_remove_dep_without_session_returns_error_dict(self) -> None:
+        """remove_dep returns error dict when _session is None.
 
-        Breaks when: Tool crashes instead of returning False.
+        Breaks when: Tool crashes instead of returning error dict.
         """
         from py_code_mode.cli import mcp_server
 
@@ -1640,6 +1640,7 @@ class TestMCPServerDepsToolsSessionNotInitialized:
 
         try:
             result = await mcp_server.remove_dep("pandas")
-            assert result is False
+            assert isinstance(result, dict)
+            assert "error" in result
         finally:
             mcp_server._session = original_session

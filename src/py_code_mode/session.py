@@ -449,8 +449,12 @@ class Session:
         Raises:
             RuntimeError: If session not started.
         """
-        # 1. Persist to storage (survives restarts)
-        self._storage.get_deps_store().add(package)
+        # 1. Persist to storage via deps namespace to maintain consistency
+        # with list_deps() which also uses the namespace's store.
+        # Note: deps_ns.add() would also install, but we use the executor
+        # to install so it targets the correct environment.
+        deps_ns = self._storage.get_deps_namespace()
+        deps_ns._store.add(package)  # Add to store only, don't install via namespace
 
         # 2. Install via executor (targets correct environment)
         if self._executor is None:
@@ -473,8 +477,10 @@ class Session:
         Raises:
             RuntimeError: If session not started.
         """
-        # 1. Remove from storage
-        removed_from_store = self._storage.get_deps_store().remove(package)
+        # 1. Remove from storage via deps namespace to maintain consistency
+        # with list_deps() which also uses the namespace's store
+        deps_ns = self._storage.get_deps_namespace()
+        removed_from_store = deps_ns.remove(package)
 
         # 2. Uninstall via executor
         if self._executor is None:

@@ -101,6 +101,8 @@ class ContainerExecutor:
             Capability.TIMEOUT,
             Capability.PROCESS_ISOLATION,
             Capability.RESET,
+            Capability.DEPS_INSTALL,
+            Capability.DEPS_UNINSTALL,
         }
     )
 

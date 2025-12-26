@@ -579,6 +579,12 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         failed: list[str] = []
 
         for pkg in body.packages:
+            # Validate package name to prevent flag injection
+            if pkg.startswith("-"):
+                logger.warning("Invalid package name (starts with '-'): %s", pkg)
+                failed.append(pkg)
+                continue
+
             try:
                 result = subprocess.run(
                     [sys.executable, "-m", "pip", "uninstall", "-y", pkg],
