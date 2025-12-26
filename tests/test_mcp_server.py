@@ -1313,7 +1313,7 @@ class TestMCPServerDepsTools:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Try to remove non-existent package (should return dict with removed_from_config=False)
+                # Try to remove non-existent package (returns dict with removed_from_config=False)
                 result = await session.call_tool("remove_dep", {"package": "nonexistent-pkg-xyz"})
                 result_data = json.loads(result.content[0].text)
 
