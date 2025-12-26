@@ -10,11 +10,13 @@ import ast
 import asyncio
 import builtins
 import io
+import subprocess
+import sys
 import traceback
 from contextlib import redirect_stdout
 from typing import TYPE_CHECKING, Any
 
-from py_code_mode.deps import ControlledDepsNamespace, DepsNamespace
+from py_code_mode.deps import ControlledDepsNamespace, DepsNamespace, RuntimeDepsDisabledError
 from py_code_mode.execution.in_process.config import InProcessConfig
 from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
 from py_code_mode.execution.protocol import Capability, validate_storage_not_access
@@ -53,7 +55,14 @@ class InProcessExecutor:
     """
 
     # Capabilities this backend supports
-    _CAPABILITIES = frozenset({Capability.TIMEOUT, Capability.RESET})
+    _CAPABILITIES = frozenset(
+        {
+            Capability.TIMEOUT,
+            Capability.RESET,
+            Capability.DEPS_INSTALL,
+            Capability.DEPS_UNINSTALL,
+        }
+    )
 
     def __init__(
         self,
@@ -254,6 +263,98 @@ class InProcessExecutor:
             )
         else:
             self._namespace["deps"] = self._deps_namespace
+
+    async def install_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Install packages in the in-process environment.
+
+        Uses the deps namespace to add and install packages via pip/uv.
+
+        Args:
+            packages: List of package specifications (e.g., ["pandas>=2.0"])
+
+        Returns:
+            Dict with installed, already_present, and failed lists.
+
+        Raises:
+            RuntimeDepsDisabledError: If runtime deps are disabled.
+            RuntimeError: If deps namespace not initialized.
+        """
+        if not self._config.allow_runtime_deps:
+            raise RuntimeDepsDisabledError(
+                "Runtime dependency installation is disabled. "
+                "Dependencies must be pre-configured before session start."
+            )
+
+        if self._deps_namespace is None:
+            raise RuntimeError("Deps namespace not initialized")
+
+        installed: list[str] = []
+        already_present: list[str] = []
+        failed: list[str] = []
+
+        for pkg in packages:
+            try:
+                self._deps_namespace.add(pkg)
+                installed.append(pkg)
+            except Exception:
+                failed.append(pkg)
+
+        return {
+            "installed": installed,
+            "already_present": already_present,
+            "failed": failed,
+        }
+
+    async def uninstall_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Uninstall packages from the in-process environment.
+
+        Uses pip uninstall to remove packages from the current Python environment.
+
+        Args:
+            packages: List of package names to uninstall.
+
+        Returns:
+            Dict with removed, not_found, and failed lists.
+
+        Raises:
+            RuntimeDepsDisabledError: If runtime deps are disabled.
+        """
+        if not self._config.allow_runtime_deps:
+            raise RuntimeDepsDisabledError(
+                "Runtime dependency modification is disabled. "
+                "Dependencies must be pre-configured before session start."
+            )
+
+        removed: list[str] = []
+        not_found: list[str] = []
+        failed: list[str] = []
+
+        for pkg in packages:
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "uninstall", "-y", pkg],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                if result.returncode == 0:
+                    removed.append(pkg)
+                else:
+                    # pip returns non-zero if package not found
+                    if "not installed" in result.stderr.lower():
+                        not_found.append(pkg)
+                    else:
+                        failed.append(pkg)
+            except subprocess.TimeoutExpired:
+                failed.append(pkg)
+            except Exception:
+                failed.append(pkg)
+
+        return {
+            "removed": removed,
+            "not_found": not_found,
+            "failed": failed,
+        }
 
     async def __aenter__(self) -> InProcessExecutor:
         return self
