@@ -45,6 +45,7 @@ except ImportError:
     HTTPX_AVAILABLE = False
     httpx = None  # type: ignore
 
+from py_code_mode.deps.namespace import RuntimeDepsDisabledError
 from py_code_mode.execution.container.client import SessionClient
 from py_code_mode.execution.container.config import DEFAULT_IMAGE, ContainerConfig
 from py_code_mode.execution.protocol import (
@@ -484,6 +485,48 @@ class ContainerExecutor:
         if self._client is None:
             raise RuntimeError("Container not started")
         await self._client.reset()
+
+    async def install_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Install packages in the container environment.
+
+        Args:
+            packages: List of package specifications (e.g., ["pandas>=2.0", "numpy"]).
+
+        Returns:
+            Dict with keys: installed, already_present, failed.
+
+        Raises:
+            RuntimeDepsDisabledError: If runtime deps are disabled.
+            RuntimeError: If container is not started.
+        """
+        if not self.config.allow_runtime_deps:
+            raise RuntimeDepsDisabledError("Runtime deps disabled")
+
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.install_deps(packages)
+
+    async def uninstall_deps(self, packages: list[str]) -> dict[str, Any]:
+        """Uninstall packages from the container environment.
+
+        Args:
+            packages: List of package names to uninstall.
+
+        Returns:
+            Dict with keys: removed, not_found, failed.
+
+        Raises:
+            RuntimeDepsDisabledError: If runtime deps are disabled.
+            RuntimeError: If container is not started.
+        """
+        if not self.config.allow_runtime_deps:
+            raise RuntimeDepsDisabledError("Runtime deps disabled")
+
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.uninstall_deps(packages)
 
     def _get_container_port(self) -> int:
         """Get the host port mapped to container port 8080."""

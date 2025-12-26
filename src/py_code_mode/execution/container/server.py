@@ -17,6 +17,7 @@ import importlib
 import logging
 import os
 import subprocess
+import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -130,6 +131,20 @@ if FASTAPI_AVAILABLE:
         execution_count: int
         created_at: float
         last_used: float
+
+    class DepsRequestModel(BaseModel):  # type: ignore
+        """Request to install or uninstall packages."""
+
+        packages: list[str]
+
+    class DepsResponseModel(BaseModel):  # type: ignore
+        """Response from package installation/uninstallation."""
+
+        installed: list[str] = []
+        already_present: list[str] = []
+        removed: list[str] = []
+        not_found: list[str] = []
+        failed: list[str] = []
 
 
 @dataclass
@@ -516,6 +531,71 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
             )
             for s in _state.sessions.values()
         ]
+
+    @app.post("/install_deps", response_model=DepsResponseModel)
+    async def install_deps(body: DepsRequestModel) -> DepsResponseModel:
+        """Install packages in the container environment.
+
+        Requires runtime deps to be enabled (allow_runtime_deps=True in config).
+        """
+        if _state.config is None:
+            raise HTTPException(status_code=503, detail="Server not initialized")
+
+        if not _state.config.allow_runtime_deps:
+            raise HTTPException(status_code=403, detail="Runtime deps disabled")
+
+        if _state.deps_store is None or _state.deps_installer is None:
+            raise HTTPException(status_code=503, detail="Deps store not initialized")
+
+        installed: list[str] = []
+        failed: list[str] = []
+
+        for pkg in body.packages:
+            try:
+                # Add to store and sync (DepsNamespace.add behavior)
+                _state.deps_store.add(pkg)
+                _state.deps_installer.sync(_state.deps_store)
+                installed.append(pkg)
+            except Exception as e:
+                logger.warning("Failed to install %s: %s", pkg, e)
+                failed.append(pkg)
+
+        return DepsResponseModel(installed=installed, failed=failed)
+
+    @app.post("/uninstall_deps", response_model=DepsResponseModel)
+    async def uninstall_deps(body: DepsRequestModel) -> DepsResponseModel:
+        """Uninstall packages from the container environment.
+
+        Requires runtime deps to be enabled (allow_runtime_deps=True in config).
+        Note: This removes packages but does not modify the deps store.
+        """
+        if _state.config is None:
+            raise HTTPException(status_code=503, detail="Server not initialized")
+
+        if not _state.config.allow_runtime_deps:
+            raise HTTPException(status_code=403, detail="Runtime deps disabled")
+
+        removed: list[str] = []
+        failed: list[str] = []
+
+        for pkg in body.packages:
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "uninstall", "-y", pkg],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                if result.returncode == 0:
+                    removed.append(pkg)
+                else:
+                    logger.warning("Failed to uninstall %s: %s", pkg, result.stderr)
+                    failed.append(pkg)
+            except Exception as e:
+                logger.warning("Failed to uninstall %s: %s", pkg, e)
+                failed.append(pkg)
+
+        return DepsResponseModel(removed=removed, failed=failed)
 
     return app
 
