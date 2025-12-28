@@ -56,6 +56,10 @@ class SessionConfig:
     # Deps configuration
     allow_runtime_deps: bool = True
 
+    # Authentication
+    auth_token: str | None = None  # Bearer token for API authentication
+    auth_disabled: bool = False  # Explicit opt-out of authentication
+
     @classmethod
     def from_yaml(cls, path: Path) -> SessionConfig:
         """Load configuration from YAML file."""
@@ -66,7 +70,12 @@ class SessionConfig:
 
     @classmethod
     def from_env(cls) -> SessionConfig:
-        """Load configuration from environment variables."""
+        """Load configuration from environment variables.
+
+        Raises:
+            ValueError: If neither CONTAINER_AUTH_TOKEN nor CONTAINER_AUTH_DISABLED=true
+                       is set. Server requires explicit auth configuration (fail-closed).
+        """
         config = cls()
 
         # Load paths from env
@@ -105,6 +114,26 @@ class SessionConfig:
                     tools_data = yaml.safe_load(f) or {}
                 config.mcp_servers = cls._parse_mcp_servers(tools_data.get("mcp_servers", []))
                 config.python_deps = tools_data.get("python_deps", [])
+
+        # Authentication configuration (FAIL-CLOSED)
+        # Server requires either an auth token OR explicit disable flag
+        auth_token = os.environ.get("CONTAINER_AUTH_TOKEN")
+        auth_disabled_str = os.environ.get("CONTAINER_AUTH_DISABLED", "").lower()
+        auth_disabled = auth_disabled_str == "true"
+
+        # Empty string token is not valid - treat as missing
+        if auth_token is not None and auth_token.strip() == "":
+            auth_token = None
+
+        if auth_token is None and not auth_disabled:
+            raise ValueError(
+                "Server authentication requires CONTAINER_AUTH_TOKEN or "
+                "CONTAINER_AUTH_DISABLED=true. Set one of these environment "
+                "variables to start the server."
+            )
+
+        config.auth_token = auth_token
+        config.auth_disabled = auth_disabled
 
         return config
 
@@ -168,6 +197,9 @@ class ContainerConfig:
 
     # Deps configuration
     allow_runtime_deps: bool = True
+
+    # Authentication
+    auth_token: str | None = None  # Bearer token for container API authentication
 
     def to_docker_config(
         self,
@@ -255,6 +287,10 @@ class ContainerConfig:
 
         # Deps configuration
         config["environment"]["ALLOW_RUNTIME_DEPS"] = "true" if self.allow_runtime_deps else "false"
+
+        # Authentication configuration
+        if self.auth_token:
+            config["environment"]["CONTAINER_AUTH_TOKEN"] = self.auth_token
 
         # Add host.docker.internal mapping for Linux
         # macOS/Windows Docker Desktop provides this natively, but Linux needs it

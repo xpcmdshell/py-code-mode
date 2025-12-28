@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import dataclasses
+import hmac
 import importlib
 import logging
 import os
@@ -29,7 +30,8 @@ logger = logging.getLogger(__name__)
 
 # Check for FastAPI at import time for cleaner error messages
 try:
-    from fastapi import FastAPI, Header, HTTPException
+    from fastapi import Depends, FastAPI, Header, HTTPException
+    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
     from pydantic import BaseModel
 
     FASTAPI_AVAILABLE = True
@@ -40,6 +42,9 @@ except ImportError:
     FastAPI = None  # type: ignore
     HTTPException = Exception  # type: ignore
     Header = None  # type: ignore
+    Depends = None  # type: ignore
+    HTTPBearer = None  # type: ignore
+    HTTPAuthorizationCredentials = None  # type: ignore
 
 from py_code_mode.artifacts import (  # noqa: E402
     ArtifactStoreProtocol,
@@ -109,7 +114,6 @@ if FASTAPI_AVAILABLE:
 
         status: str
         uptime_seconds: float
-        active_sessions: int
 
     class InfoResponseModel(BaseModel):  # type: ignore
         """Server info response."""
@@ -176,6 +180,25 @@ class ServerState:
 
 # Global state
 _state = ServerState()
+
+
+# Authentication helpers
+# HTTPBearer with auto_error=False returns None instead of raising 401
+# This lets us handle missing credentials ourselves for better error messages
+BEARER_SCHEME = HTTPBearer(auto_error=False) if FASTAPI_AVAILABLE else None
+
+
+def verify_auth_token(provided: str, expected: str) -> bool:
+    """Verify auth token using timing-safe comparison.
+
+    Args:
+        provided: Token from Authorization header.
+        expected: Expected token from config.
+
+    Returns:
+        True if tokens match, False otherwise.
+    """
+    return hmac.compare_digest(provided.encode(), expected.encode())
 
 
 def build_skill_library(config: SessionConfig) -> SkillLibrary | None:
@@ -437,7 +460,55 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
-    @app.post("/execute", response_model=ExecuteResponseModel)
+    # Authentication dependency - defined inside create_app to access config via closure
+    async def require_auth(
+        credentials: HTTPAuthorizationCredentials | None = Depends(BEARER_SCHEME),
+    ) -> None:
+        """Verify authentication for protected endpoints.
+
+        Uses the config captured in closure to check auth settings.
+        Fail-safe: any exception during auth check results in 500, not 200.
+        """
+        # Get config from state (set during lifespan startup)
+        config = _state.config
+
+        # Server not initialized - fail-safe with 500
+        if config is None:
+            raise HTTPException(status_code=500, detail="Server not initialized")
+
+        # Auth explicitly disabled - allow all requests
+        if config.auth_disabled:
+            return
+
+        # Auth enabled but no token configured - server misconfigured (fail-safe)
+        if config.auth_token is None:
+            raise HTTPException(status_code=500, detail="Server misconfigured")
+
+        # No credentials provided - reject with 401
+        if credentials is None:
+            raise HTTPException(status_code=401, detail="Authorization required")
+
+        # Verify scheme is exactly "Bearer" (case-sensitive for strict compliance)
+        # HTTP allows case-insensitive schemes, but we enforce exact match for security
+        if credentials.scheme != "Bearer":
+            raise HTTPException(status_code=401, detail="Invalid authorization scheme")
+
+        # Validate token provided is not empty/whitespace
+        provided_token = credentials.credentials
+        if not provided_token or not provided_token.strip():
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        # Verify token using timing-safe comparison (fail-safe wrapper)
+        try:
+            if not verify_auth_token(provided_token, config.auth_token):
+                raise HTTPException(status_code=401, detail="Invalid token")
+        except HTTPException:
+            raise
+        except Exception:
+            # Any unexpected exception during verification - fail-safe with 500
+            raise HTTPException(status_code=500, detail="Authentication error")
+
+    @app.post("/execute", response_model=ExecuteResponseModel, dependencies=[Depends(require_auth)])
     async def execute(
         body: ExecuteRequestModel,
         x_session_id: str | None = Header(None, alias="X-Session-ID"),
@@ -478,14 +549,19 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
 
     @app.get("/health", response_model=HealthResponseModel)
     async def health() -> HealthResponseModel:
-        """Health check endpoint."""
+        """Health check endpoint.
+
+        Does NOT require authentication - allows orchestrators (Kubernetes, Docker)
+        to check container health without needing auth credentials.
+
+        Does NOT expose active_sessions count (information leakage).
+        """
         return HealthResponseModel(
             status="healthy",
             uptime_seconds=time.time() - _state.start_time,
-            active_sessions=len(_state.sessions),
         )
 
-    @app.get("/info", response_model=InfoResponseModel)
+    @app.get("/info", response_model=InfoResponseModel, dependencies=[Depends(require_auth)])
     async def info() -> InfoResponseModel:
         """Get information about available tools and skills."""
         tools = []
@@ -506,7 +582,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
             artifacts_path=artifacts_path,
         )
 
-    @app.post("/reset", response_model=ResetResponseModel)
+    @app.post("/reset", response_model=ResetResponseModel, dependencies=[Depends(require_auth)])
     async def reset(
         x_session_id: str | None = Header(None, alias="X-Session-ID"),
     ) -> ResetResponseModel:
@@ -519,20 +595,13 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
             session_id=x_session_id or "",
         )
 
-    @app.get("/sessions")
-    async def list_sessions() -> list[SessionInfoModel]:
-        """List all active sessions."""
-        return [
-            SessionInfoModel(
-                session_id=s.session_id,
-                execution_count=s.execution_count,
-                created_at=s.created_at,
-                last_used=s.last_used,
-            )
-            for s in _state.sessions.values()
-        ]
+    # NOTE: /sessions endpoint removed - session enumeration is an information disclosure risk
 
-    @app.post("/install_deps", response_model=DepsResponseModel)
+    @app.post(
+        "/install_deps",
+        response_model=DepsResponseModel,
+        dependencies=[Depends(require_auth)],
+    )
     async def install_deps(body: DepsRequestModel) -> DepsResponseModel:
         """Install packages in the container environment.
 
@@ -567,7 +636,11 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
 
         return DepsResponseModel(installed=installed, failed=failed)
 
-    @app.post("/uninstall_deps", response_model=DepsResponseModel)
+    @app.post(
+        "/uninstall_deps",
+        response_model=DepsResponseModel,
+        dependencies=[Depends(require_auth)],
+    )
     async def uninstall_deps(body: DepsRequestModel) -> DepsResponseModel:
         """Uninstall packages from the container environment.
 

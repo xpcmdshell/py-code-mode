@@ -407,6 +407,7 @@ class ContainerExecutor:
             self._client = SessionClient(
                 base_url=f"http://{self.config.host}:{self._port}",
                 timeout=self.config.timeout,
+                auth_token=self.config.auth_token,
             )
 
             # Wait for container to be healthy
