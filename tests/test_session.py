@@ -380,7 +380,7 @@ class TestSessionWithDifferentExecutors:
 
         from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 
-        config = ContainerConfig(timeout=30.0)
+        config = ContainerConfig(timeout=30.0, auth_disabled=True)
         executor = ContainerExecutor(config)
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("2 + 2")
@@ -569,7 +569,7 @@ class TestSessionTypedExecutorAPI:
         """Session works with ContainerExecutor instance."""
         from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 
-        config = ContainerConfig(timeout=30.0)
+        config = ContainerConfig(timeout=30.0, auth_disabled=True)
         executor = ContainerExecutor(config)
 
         async with Session(storage=storage, executor=executor) as session:
@@ -648,7 +648,7 @@ class TestContainerExecutorStorageAccess:
         artifacts_dir.mkdir()
         storage = FileStorage(tmp_path)
 
-        config = ContainerConfig(timeout=30.0)
+        config = ContainerConfig(timeout=30.0, auth_disabled=True)
         executor = ContainerExecutor(config)
 
         async with Session(storage=storage, executor=executor) as session:
@@ -663,7 +663,7 @@ class TestContainerExecutorStorageAccess:
         from py_code_mode.execution.container import ContainerConfig
 
         # These fields should NOT exist on ContainerConfig
-        config = ContainerConfig(timeout=30.0)
+        config = ContainerConfig(timeout=30.0, auth_disabled=True)
 
         assert not hasattr(config, "host_tools_path")
         assert not hasattr(config, "host_skills_path")
@@ -700,7 +700,7 @@ class TestExecutorStartSignature:
         from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 
         storage = FileStorage(tmp_path)
-        config = ContainerConfig(timeout=30.0)
+        config = ContainerConfig(timeout=30.0, auth_disabled=True)
         executor = ContainerExecutor(config)
 
         # Should not raise
@@ -771,7 +771,7 @@ class TestCapabilityPreservation:
         from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
         from py_code_mode.execution.protocol import Capability
 
-        config = ContainerConfig(timeout=30.0)
+        config = ContainerConfig(timeout=30.0, auth_disabled=True)
         executor = ContainerExecutor(config)
 
         async with Session(storage=storage, executor=executor) as session:

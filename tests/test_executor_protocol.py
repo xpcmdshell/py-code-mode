@@ -286,7 +286,7 @@ class TestContainerExecutorAcceptsStorageBackend:
         original_method = storage.get_serializable_access
         storage.get_serializable_access = MagicMock(return_value=original_method())
 
-        config = ContainerConfig(image="py-code-mode:test")
+        config = ContainerConfig(image="py-code-mode:test", auth_disabled=True)
         executor = ContainerExecutor(config)
 
         # Mock Docker to avoid actually starting containers
@@ -341,7 +341,7 @@ class TestContainerExecutorAcceptsStorageBackend:
         )
         storage.get_serializable_access = MagicMock(return_value=expected_access)
 
-        config = ContainerConfig(image="py-code-mode:test")
+        config = ContainerConfig(image="py-code-mode:test", auth_disabled=True)
         executor = ContainerExecutor(config)
 
         # Mock Docker
@@ -383,7 +383,7 @@ class TestContainerExecutorRejectsOldTypes:
             deps_path=tmp_path / "deps",
         )
 
-        config = ContainerConfig(image="py-code-mode:test")
+        config = ContainerConfig(image="py-code-mode:test", auth_disabled=True)
         executor = ContainerExecutor(config)
 
         # Should raise TypeError - wrong type

@@ -1,7 +1,9 @@
-"""TDD tests for ContainerExecutor authentication.
+"""Tests for ContainerExecutor API authentication.
 
-These tests define the expected behavior for the authentication feature.
-They should FAIL initially until the implementation is complete.
+Auth is ENABLED by default with fail-closed behavior:
+- Server requires CONTAINER_AUTH_TOKEN or CONTAINER_AUTH_DISABLED=true
+- Client sends Bearer token if ContainerConfig.auth_token is set
+- Explicit auth_disabled=True required to opt-out
 
 Feature areas covered:
 1. Auth rejection (missing/invalid/malformed tokens)
@@ -378,15 +380,34 @@ class TestSessionConfigFailClosed:
 
 
 class TestContainerConfigClientSide:
-    """Tests for ContainerConfig (client/host side configuration)."""
+    """Tests for ContainerConfig (client/host side configuration).
+
+    Auth is ENABLED by default (opt-out required):
+    - ContainerConfig() - valid, but no auth env vars set (server will fail-closed)
+    - ContainerConfig(auth_token="...") - auth enabled with token
+    - ContainerConfig(auth_disabled=True) - explicit opt-out for local dev
+    """
 
     def test_container_config_no_args_is_valid(self) -> None:
-        """ContainerConfig() without args is valid (simple client side)."""
+        """ContainerConfig() without args is valid (config object created)."""
         config = ContainerConfig()
         assert config is not None
+        assert config.auth_token is None
+        assert config.auth_disabled is False  # Auth enabled by default
+
+    def test_container_config_no_args_sets_no_auth_env_vars(self) -> None:
+        """ContainerConfig() without auth settings sets NO auth env vars.
+
+        This means the server will fail-closed at startup (correct behavior).
+        """
+        config = ContainerConfig()
+        docker_config = config.to_docker_config()
+
+        assert "CONTAINER_AUTH_TOKEN" not in docker_config["environment"]
+        assert "CONTAINER_AUTH_DISABLED" not in docker_config["environment"]
 
     def test_container_config_with_auth_token_is_valid(self) -> None:
-        """ContainerConfig(auth_token='secret') is valid."""
+        """ContainerConfig(auth_token='secret') enables auth with token."""
         config = ContainerConfig(auth_token="my-secret")
         assert config.auth_token == "my-secret"
 
@@ -399,6 +420,27 @@ class TestContainerConfigClientSide:
         assert "environment" in docker_config
         assert "CONTAINER_AUTH_TOKEN" in docker_config["environment"]
         assert docker_config["environment"]["CONTAINER_AUTH_TOKEN"] == "my-secret-token"
+        assert "CONTAINER_AUTH_DISABLED" not in docker_config["environment"]
+
+    def test_container_config_auth_disabled_explicit_opt_out(self) -> None:
+        """ContainerConfig(auth_disabled=True) explicitly disables auth."""
+        config = ContainerConfig(auth_disabled=True)
+
+        docker_config = config.to_docker_config()
+
+        assert "CONTAINER_AUTH_DISABLED" in docker_config["environment"]
+        assert docker_config["environment"]["CONTAINER_AUTH_DISABLED"] == "true"
+        assert "CONTAINER_AUTH_TOKEN" not in docker_config["environment"]
+
+    def test_container_config_auth_token_takes_precedence(self) -> None:
+        """If both auth_token and auth_disabled set, token takes precedence."""
+        config = ContainerConfig(auth_token="my-token", auth_disabled=True)
+
+        docker_config = config.to_docker_config()
+
+        # Token should be set, disabled should not be set
+        assert docker_config["environment"]["CONTAINER_AUTH_TOKEN"] == "my-token"
+        assert "CONTAINER_AUTH_DISABLED" not in docker_config["environment"]
 
 
 # =============================================================================

@@ -152,7 +152,7 @@ skills.create(
         This validates that all namespace injections work in container context.
         """
         storage = FileStorage(tools_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=60.0))
+        executor = ContainerExecutor(ContainerConfig(timeout=60.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
             # 1. Agent lists available tools
@@ -208,7 +208,7 @@ class TestContainerToolsInvocation:
     async def test_tools_list_in_container(self, tools_storage: Path) -> None:
         """tools.list() returns configured tools inside container."""
         storage = FileStorage(tools_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("tools.list()")
@@ -222,7 +222,7 @@ class TestContainerToolsInvocation:
     async def test_tools_call_in_container(self, tools_storage: Path) -> None:
         """tools.<name>() works inside container."""
         storage = FileStorage(tools_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run('tools.echo.echo(text="container test")')
@@ -234,7 +234,7 @@ class TestContainerToolsInvocation:
     async def test_tools_search_in_container(self, tools_storage: Path) -> None:
         """tools.search() works inside container."""
         storage = FileStorage(tools_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run('tools.search("echo")')
@@ -256,7 +256,7 @@ class TestContainerSkillsLifecycle:
     async def test_skills_create_invoke_delete(self, empty_storage: Path) -> None:
         """Skills can be created, invoked, and deleted in container."""
         storage = FileStorage(empty_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
             # 1. Verify empty skills
@@ -300,7 +300,7 @@ skills.create(
     async def test_skill_uses_tools_in_container(self, tools_storage: Path) -> None:
         """Skills can call tools from within container execution."""
         storage = FileStorage(tools_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
             # Create skill that uses tools
@@ -337,7 +337,7 @@ class TestContainerSessionPersistence:
         """Skills created in one container session are available in next."""
         # Session 1: Create skill
         storage1 = FileStorage(empty_storage)
-        executor1 = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor1 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage1, executor=executor1) as session:
             result = await session.run("""
@@ -355,7 +355,7 @@ skills.create(
 
         # Session 2: Skill should still exist
         storage2 = FileStorage(empty_storage)
-        executor2 = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor2 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage2, executor=executor2) as session:
             result = await session.run("skills.list()")
@@ -373,7 +373,7 @@ skills.create(
         """Artifacts saved in one container session are loadable in next."""
         # Session 1: Save artifact
         storage1 = FileStorage(empty_storage)
-        executor1 = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor1 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage1, executor=executor1) as session:
             result = await session.run(
@@ -383,7 +383,7 @@ skills.create(
 
         # Session 2: Load artifact
         storage2 = FileStorage(empty_storage)
-        executor2 = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor2 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage2, executor=executor2) as session:
             result = await session.run('artifacts.load("persistent.json")')
@@ -410,7 +410,7 @@ class TestRedisContainerIntegration:
         """Complete workflow with Redis storage and container executor."""
         client = redis.from_url(redis_url)
         storage = RedisStorage(client, prefix="test")
-        executor = ContainerExecutor(ContainerConfig(timeout=60.0))
+        executor = ContainerExecutor(ContainerConfig(timeout=60.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
             # 1. Create skill (stored in Redis)
@@ -447,7 +447,7 @@ skills.create(
 
         # Session 1: Create skill
         storage1 = RedisStorage(client, prefix="persist_test")
-        executor1 = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor1 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage1, executor=executor1) as session:
             result = await session.run("""
@@ -461,7 +461,7 @@ skills.create(
 
         # Session 2: Skill should exist
         storage2 = RedisStorage(client, prefix="persist_test")
-        executor2 = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor2 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage2, executor=executor2) as session:
             result = await session.run("skills.list()")
@@ -488,7 +488,7 @@ class TestContainerNegativeCases:
     async def test_container_timeout_returns_error(self, empty_storage: Path) -> None:
         """Infinite loop with short timeout produces error."""
         storage = FileStorage(empty_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("while True: pass", timeout=1.0)
@@ -501,7 +501,7 @@ class TestContainerNegativeCases:
     async def test_container_tool_not_found_error(self, empty_storage: Path) -> None:
         """Calling non-existent tool gives clear error."""
         storage = FileStorage(empty_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run('tools.nonexistent_tool(arg="value")')
@@ -513,7 +513,7 @@ class TestContainerNegativeCases:
     async def test_container_skill_not_found_error(self, empty_storage: Path) -> None:
         """Calling non-existent skill gives clear error."""
         storage = FileStorage(empty_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("skills.nonexistent_skill()")
@@ -525,7 +525,7 @@ class TestContainerNegativeCases:
     async def test_container_invalid_skill_source_rejected(self, empty_storage: Path) -> None:
         """Creating skill with syntax error fails gracefully."""
         storage = FileStorage(empty_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("""
@@ -554,7 +554,7 @@ class TestContainerInvariants:
         """Variables in one container session don't leak to another."""
         # Session 1: Define variable
         storage1 = FileStorage(empty_storage)
-        executor1 = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor1 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage1, executor=executor1) as session:
             await session.run("secret = 'private_data'")
@@ -564,7 +564,7 @@ class TestContainerInvariants:
 
         # Session 2: Variable should NOT exist
         storage2 = FileStorage(empty_storage)
-        executor2 = ContainerExecutor(ContainerConfig(timeout=30.0))
+        executor2 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage2, executor=executor2) as session:
             result = await session.run("secret")

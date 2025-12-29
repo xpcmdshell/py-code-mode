@@ -128,13 +128,8 @@ if FASTAPI_AVAILABLE:
         status: str
         session_id: str
 
-    class SessionInfoModel(BaseModel):  # type: ignore
-        """Session information."""
-
-        session_id: str
-        execution_count: int
-        created_at: float
-        last_used: float
+    # NOTE: SessionInfoModel removed - /sessions endpoint was removed for security
+    # (session enumeration attack vector)
 
     class DepsRequestModel(BaseModel):  # type: ignore
         """Request to install or uninstall packages."""
@@ -431,6 +426,19 @@ async def initialize_server(config: SessionConfig) -> None:
             start_time=time.time(),
             redis_mode=False,
         )
+
+    # Log authentication status (important for security awareness)
+    if config.auth_disabled:
+        logger.warning(
+            "SECURITY: Authentication is DISABLED. "
+            "This should only be used for local development. "
+            "Set CONTAINER_AUTH_TOKEN for production deployments."
+        )
+    elif config.auth_token:
+        logger.info("Authentication enabled with Bearer token")
+    else:
+        # This shouldn't happen (from_env validates), but log if it does
+        logger.error("Authentication configuration missing - server may reject requests")
 
 
 def create_app(config: SessionConfig | None = None) -> FastAPI:

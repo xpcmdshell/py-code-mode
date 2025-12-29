@@ -198,8 +198,9 @@ class ContainerConfig:
     # Deps configuration
     allow_runtime_deps: bool = True
 
-    # Authentication
+    # Authentication (auth ENABLED by default, opt-out required)
     auth_token: str | None = None  # Bearer token for container API authentication
+    auth_disabled: bool = False  # Explicit opt-out for local development only
 
     def to_docker_config(
         self,
@@ -288,12 +289,15 @@ class ContainerConfig:
         # Deps configuration
         config["environment"]["ALLOW_RUNTIME_DEPS"] = "true" if self.allow_runtime_deps else "false"
 
-        # Authentication configuration
-        # If token provided: auth enabled. If not: auth disabled (local dev).
+        # Authentication configuration (auth ENABLED by default, explicit opt-out)
+        # - With token: auth enabled, server validates requests
+        # - With auth_disabled=True: auth explicitly disabled (local dev only)
+        # - Neither: server will fail-closed (refuses to start)
         if self.auth_token:
             config["environment"]["CONTAINER_AUTH_TOKEN"] = self.auth_token
-        else:
+        elif self.auth_disabled:
             config["environment"]["CONTAINER_AUTH_DISABLED"] = "true"
+        # If neither set, server will fail-closed at startup (correct behavior)
 
         # Add host.docker.internal mapping for Linux
         # macOS/Windows Docker Desktop provides this natively, but Linux needs it
