@@ -289,8 +289,11 @@ class ContainerConfig:
         config["environment"]["ALLOW_RUNTIME_DEPS"] = "true" if self.allow_runtime_deps else "false"
 
         # Authentication configuration
+        # If token provided: auth enabled. If not: auth disabled (local dev).
         if self.auth_token:
             config["environment"]["CONTAINER_AUTH_TOKEN"] = self.auth_token
+        else:
+            config["environment"]["CONTAINER_AUTH_DISABLED"] = "true"
 
         # Add host.docker.internal mapping for Linux
         # macOS/Windows Docker Desktop provides this natively, but Linux needs it
