@@ -19,10 +19,11 @@ from py_code_mode.execution import ContainerExecutor, ContainerConfig
 redis_client = Redis.from_url(os.getenv("REDIS_URL"))
 storage = RedisStorage(redis=redis_client, prefix="production")
 
-# Isolated execution
+# Isolated execution with authentication
 config = ContainerConfig(
     timeout=60.0,
-    allow_runtime_deps=False  # Lock down package installation
+    allow_runtime_deps=False,  # Lock down package installation
+    auth_token=os.getenv("CONTAINER_AUTH_TOKEN"),  # Required for production
 )
 executor = ContainerExecutor(config)
 
@@ -40,7 +41,24 @@ async with Session(storage=storage, executor=executor, sync_deps_on_start=True) 
 
 ## Security Best Practices
 
-### 1. Lock Down Dependencies
+### 1. Enable API Authentication
+
+The container HTTP API requires authentication by default. **Never deploy without authentication.**
+
+```python
+# Load token from environment/secret store
+token = os.getenv("CONTAINER_AUTH_TOKEN")
+# Or: token = azure_keyvault.get_secret("container-auth-token")
+# Or: token = hashicorp_vault.read("secret/container-auth")["token"]
+
+config = ContainerConfig(
+    auth_token=token,  # Required - server refuses to start without it
+)
+```
+
+**Fail-closed design:** If you forget to configure auth, the container refuses to start. This prevents accidental unauthenticated deployments.
+
+### 2. Lock Down Dependencies
 
 Prevent agents from installing arbitrary packages:
 
@@ -55,20 +73,21 @@ deps_store.add("pandas>=2.0")
 deps_store.add("requests>=2.28.0")
 ```
 
-### 2. Use Container Isolation
+### 3. Use Container Isolation
 
 Run untrusted agent code in containers:
 
 ```python
 executor = ContainerExecutor(ContainerConfig(
     timeout=60.0,
+    auth_token=os.getenv("CONTAINER_AUTH_TOKEN"),
     network_disabled=False,  # Set True to disable network
     memory_limit="512m",
     cpu_quota=None
 ))
 ```
 
-### 3. Validate Input
+### 4. Validate Input
 
 Never trust agent code without validation:
 
@@ -83,7 +102,7 @@ else:
     raise SecurityError("Unsafe code detected")
 ```
 
-### 4. Isolate Storage by Tenant
+### 5. Isolate Storage by Tenant
 
 Use separate Redis prefixes for multi-tenant deployments:
 
@@ -249,6 +268,7 @@ See [examples/azure-container-apps/](../examples/azure-container-apps/) for a co
 
 Before going to production:
 
+- [ ] **Container API authentication configured** (`auth_token` set from secret store)
 - [ ] Dependencies pre-configured and locked (`allow_runtime_deps=False`)
 - [ ] Using ContainerExecutor for isolation
 - [ ] Redis configured with persistence and backups
@@ -256,6 +276,6 @@ Before going to production:
 - [ ] Logging and metrics in place
 - [ ] Multi-instance testing completed
 - [ ] Resource limits set (memory, CPU, timeout)
-- [ ] Secrets management configured (API keys, credentials)
+- [ ] Secrets management configured (API keys, credentials, container auth token)
 - [ ] Disaster recovery plan documented
 - [ ] Monitoring and alerting configured
