@@ -13,7 +13,7 @@ class TestContainerConfig:
 
     def test_default_values(self) -> None:
         """ContainerConfig has sensible defaults."""
-        config = ContainerConfig()
+        config = ContainerConfig(auth_disabled=True)
 
         assert config.image == "py-code-mode-tools:latest"
         assert config.port == 0  # Auto-assign
@@ -21,12 +21,12 @@ class TestContainerConfig:
 
     def test_custom_image(self) -> None:
         """Can set custom image."""
-        config = ContainerConfig(image="my-tools:v1")
+        config = ContainerConfig(image="my-tools:v1", auth_disabled=True)
         assert config.image == "my-tools:v1"
 
     def test_custom_timeout(self) -> None:
         """Can set custom timeout."""
-        config = ContainerConfig(timeout=60.0)
+        config = ContainerConfig(timeout=60.0, auth_disabled=True)
         assert config.timeout == 60.0
 
 
@@ -38,6 +38,7 @@ class TestContainerExecutor:
         """Create test config."""
         return ContainerConfig(
             image="py-code-mode-test:latest",
+            auth_disabled=True,
         )
 
     def _make_mock_container(self) -> MagicMock:
@@ -212,7 +213,7 @@ class TestContainerExecutorVolumes:
         artifacts_path = tmp_path / "artifacts"
         artifacts_path.mkdir()
 
-        config = ContainerConfig(image="py-code-mode:latest")
+        config = ContainerConfig(image="py-code-mode:latest", auth_disabled=True)
 
         docker_config = config.to_docker_config(artifacts_path=artifacts_path)
 

@@ -126,7 +126,7 @@ def _create_container_executor():
         pytest.skip("Docker not available")
     from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 
-    return ContainerExecutor(ContainerConfig(timeout=30.0))
+    return ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
 
 # =============================================================================
@@ -302,7 +302,7 @@ skills.create(
         from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 
         storage = FileStorage(empty_base_dir)
-        config = ContainerConfig(timeout=30.0)
+        config = ContainerConfig(timeout=30.0, auth_disabled=True)
         executor = ContainerExecutor(config)
 
         async with Session(storage=storage, executor=executor) as session:

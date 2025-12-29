@@ -283,7 +283,7 @@ class TestContainerCapabilities:
         """Container executor supports timeout."""
         from py_code_mode.execution.container import ContainerConfig
 
-        config = ContainerConfig()
+        config = ContainerConfig(auth_disabled=True)
         executor = container_executor_class(config)
         assert executor.supports(Capability.TIMEOUT)
 
@@ -291,7 +291,7 @@ class TestContainerCapabilities:
         """Container executor supports process isolation."""
         from py_code_mode.execution.container import ContainerConfig
 
-        config = ContainerConfig()
+        config = ContainerConfig(auth_disabled=True)
         executor = container_executor_class(config)
         assert executor.supports(Capability.PROCESS_ISOLATION)
 
@@ -299,7 +299,7 @@ class TestContainerCapabilities:
         """Container executor supports reset capability."""
         from py_code_mode.execution.container import ContainerConfig
 
-        config = ContainerConfig()
+        config = ContainerConfig(auth_disabled=True)
         executor = container_executor_class(config)
         assert executor.supports(Capability.RESET)
 
@@ -307,7 +307,7 @@ class TestContainerCapabilities:
         """Container executor does NOT support network isolation."""
         from py_code_mode.execution.container import ContainerConfig
 
-        config = ContainerConfig()
+        config = ContainerConfig(auth_disabled=True)
         executor = container_executor_class(config)
         assert not executor.supports(Capability.NETWORK_ISOLATION)
 
@@ -315,7 +315,7 @@ class TestContainerCapabilities:
         """supported_capabilities() returns correct set."""
         from py_code_mode.execution.container import ContainerConfig
 
-        config = ContainerConfig()
+        config = ContainerConfig(auth_disabled=True)
         executor = container_executor_class(config)
         caps = executor.supported_capabilities()
 

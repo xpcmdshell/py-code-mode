@@ -1251,7 +1251,7 @@ class TestContainerExecutorDepsConfigGaps:
         deps_store = storage.get_deps_store()
         deps_store.add("six")
 
-        config = ContainerConfig()
+        config = ContainerConfig(auth_disabled=True)
         executor = ContainerExecutor(config=config)
 
         async with Session(storage=storage, executor=executor) as session:
@@ -1282,7 +1282,7 @@ class TestContainerExecutorDepsConfigGaps:
         deps_store = storage.get_deps_store()
         deps_store.add("six")
 
-        config = ContainerConfig()
+        config = ContainerConfig(auth_disabled=True)
         executor = ContainerExecutor(config=config)
 
         async with Session(storage=storage, executor=executor, sync_deps_on_start=True) as session:
@@ -1308,7 +1308,7 @@ class TestContainerExecutorDepsConfigGaps:
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
-        config = ContainerConfig(allow_runtime_deps=False)
+        config = ContainerConfig(allow_runtime_deps=False, auth_disabled=True)
         executor = ContainerExecutor(config=config)
         storage = FileStorage(tmp_path)
 
@@ -1334,7 +1334,7 @@ class TestContainerExecutorDepsConfigGaps:
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
-        config = ContainerConfig(allow_runtime_deps=False)
+        config = ContainerConfig(allow_runtime_deps=False, auth_disabled=True)
         executor = ContainerExecutor(config=config)
         storage = FileStorage(tmp_path)
 
@@ -1364,7 +1364,7 @@ class TestContainerExecutorDepsConfigGaps:
         # Pre-add a dep
         storage.get_deps_store().add("six")
 
-        config = ContainerConfig(allow_runtime_deps=False)
+        config = ContainerConfig(allow_runtime_deps=False, auth_disabled=True)
         executor = ContainerExecutor(config=config)
 
         async with Session(storage=storage, executor=executor) as session:
@@ -1392,7 +1392,7 @@ class TestContainerExecutorDepsConfigGaps:
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
-        config = ContainerConfig(allow_runtime_deps=False)
+        config = ContainerConfig(allow_runtime_deps=False, auth_disabled=True)
         executor = ContainerExecutor(config=config)
         storage = FileStorage(tmp_path)
 
@@ -1417,7 +1417,7 @@ class TestContainerExecutorDepsConfigGaps:
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
-        config = ContainerConfig(allow_runtime_deps=False)
+        config = ContainerConfig(allow_runtime_deps=False, auth_disabled=True)
         executor = ContainerExecutor(config=config)
         storage = FileStorage(tmp_path)
 
@@ -1449,7 +1449,7 @@ class TestContainerExecutorDepsConfigGaps:
         deps_store = storage.get_deps_store()
         deps_store.add("six")
 
-        config = ContainerConfig()
+        config = ContainerConfig(auth_disabled=True)
         executor = ContainerExecutor(config=config)
 
         async with Session(storage=storage, executor=executor) as session:
@@ -1478,7 +1478,7 @@ class TestContainerExecutorDepsConfigGaps:
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        config = ContainerConfig(allow_runtime_deps=True)
+        config = ContainerConfig(allow_runtime_deps=True, auth_disabled=True)
 
         # Session 1: add a dep
         executor1 = ContainerExecutor(config=config)

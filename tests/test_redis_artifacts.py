@@ -321,43 +321,17 @@ class TestRedisArtifactStoreSubpaths:
 
 
 class TestRedisArtifactStoreIntegration:
-    """Integration tests with real Redis (skipped if Redis not available)."""
+    """Integration tests with real Redis using testcontainers."""
 
-    @pytest.fixture
-    def redis_client(self, request):
-        """Get real Redis client with unique prefix per test."""
-        try:
-            import redis
-
-            client = redis.Redis(host="localhost", port=6379, decode_responses=True)
-            client.ping()  # Test connection
-
-            # Use unique prefix per test to avoid parallel test interference
-            test_name = request.node.name.replace("[", "_").replace("]", "_")
-            prefix = f"test-artifacts-{test_name}"
-
-            # Cleanup before test (leftover from previous run)
-            for key in client.keys(f"{prefix}:*"):
-                client.delete(key)
-            client.delete(f"{prefix}:__index__")
-
-            # Store prefix on client for tests to use
-            client._test_prefix = prefix
-
-            yield client
-
-            # Cleanup after test
-            for key in client.keys(f"{prefix}:*"):
-                client.delete(key)
-            client.delete(f"{prefix}:__index__")
-        except Exception:
-            pytest.skip("Redis not available")
-
-    def test_roundtrip_json(self, redis_client) -> None:
+    def test_roundtrip_json(self, redis_client, request) -> None:
         """Save and load JSON data through real Redis."""
         from py_code_mode.artifacts import RedisArtifactStore
 
-        store = RedisArtifactStore(redis_client, prefix=redis_client._test_prefix)
+        # Use unique prefix per test for isolation
+        test_name = request.node.name.replace("[", "_").replace("]", "_")
+        prefix = f"test-artifacts-{test_name}"
+
+        store = RedisArtifactStore(redis_client, prefix=prefix)
 
         data = {"hosts": ["10.0.0.1", "10.0.0.2"], "count": 2}
         store.save("hosts.json", data, description="Host list")
@@ -365,24 +339,31 @@ class TestRedisArtifactStoreIntegration:
         loaded = store.load("hosts.json")
         assert loaded == data
 
-    def test_list_after_saves(self, redis_client) -> None:
+    def test_list_after_saves(self, redis_client, request) -> None:
         """List returns all saved artifacts."""
         from py_code_mode.artifacts import RedisArtifactStore
 
-        store = RedisArtifactStore(redis_client, prefix=redis_client._test_prefix)
+        test_name = request.node.name.replace("[", "_").replace("]", "_")
+        prefix = f"test-artifacts-{test_name}"
+
+        store = RedisArtifactStore(redis_client, prefix=prefix)
 
         store.save("a.json", {}, description="First")
         store.save("b.json", {}, description="Second")
 
         artifacts = store.list()
-        names = {a.name for a in artifacts}
+        # Handle both bytes and string names (depends on decode_responses setting)
+        names = {a.name.decode() if isinstance(a.name, bytes) else a.name for a in artifacts}
         assert names == {"a.json", "b.json"}
 
-    def test_delete_removes(self, redis_client) -> None:
+    def test_delete_removes(self, redis_client, request) -> None:
         """Delete removes artifact completely."""
         from py_code_mode.artifacts import RedisArtifactStore
 
-        store = RedisArtifactStore(redis_client, prefix=redis_client._test_prefix)
+        test_name = request.node.name.replace("[", "_").replace("]", "_")
+        prefix = f"test-artifacts-{test_name}"
+
+        store = RedisArtifactStore(redis_client, prefix=prefix)
 
         store.save("temp.json", {}, description="Temporary")
         assert store.exists("temp.json")

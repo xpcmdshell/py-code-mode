@@ -111,13 +111,22 @@ from py_code_mode.execution import ContainerExecutor, ContainerConfig
 
 config = ContainerConfig(
     timeout=60.0,  # Execution timeout
-    allow_runtime_deps=False  # Lock down deps for security
+    allow_runtime_deps=False,  # Lock down deps for security
+    auth_token="your-secret-token",  # API authentication (required for production)
 )
 
 executor = ContainerExecutor(config)
 
 async with Session(storage=storage, executor=executor) as session:
     result = await session.run(agent_code)
+```
+
+For local development, you can disable auth:
+
+```python
+config = ContainerConfig(
+    auth_disabled=True,  # Only for local development!
+)
 ```
 
 ### Features
@@ -133,11 +142,25 @@ async with Session(storage=storage, executor=executor) as session:
 ContainerConfig(
     timeout=60.0,               # Execution timeout
     allow_runtime_deps=False,   # Lock down package installation
+    auth_token="secret",        # Bearer token for API auth (production)
+    auth_disabled=False,        # Set True for local dev only (no auth)
     network_disabled=False,     # Disable container network access
     memory_limit="512m",        # Container memory limit
     cpu_quota=None             # CPU quota (default: no limit)
 )
 ```
+
+### Authentication
+
+The container HTTP API requires authentication by default (fail-closed design):
+
+| Setting | Behavior |
+|---------|----------|
+| `auth_token="secret"` | Requests must include `Authorization: Bearer secret` |
+| `auth_disabled=True` | No authentication required (local dev only) |
+| Neither set | Container refuses to start |
+
+**Important:** Always use `auth_token` in production. The `auth_disabled` option is only for local development convenience.
 
 ### Container Images
 
@@ -195,8 +218,8 @@ executor = SubprocessExecutor(SubprocessConfig())
 async with Session(storage=storage, executor=executor) as session:
     result = await session.run(code)
 
-# Production: Container for security
-executor = ContainerExecutor(ContainerConfig())
+# Production: Container for security (with auth)
+executor = ContainerExecutor(ContainerConfig(auth_token=os.getenv("AUTH_TOKEN")))
 async with Session(storage=storage, executor=executor) as session:
     result = await session.run(code)
 ```

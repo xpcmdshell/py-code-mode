@@ -1053,32 +1053,16 @@ class TestRedisStorageIntegration:
     """
 
     @pytest.fixture
-    def redis_storage(self, tmp_path: Path) -> "RedisStorage":
-        """Create RedisStorage connected to local Redis.
-
-        Skips if Redis is not available.
-        """
-        pytest.importorskip("redis")
-        from redis import Redis
-
+    def redis_storage(self, redis_client, request) -> "RedisStorage":
+        """Create RedisStorage from testcontainers redis_client."""
         from py_code_mode.storage import RedisStorage
 
-        try:
-            client = Redis.from_url("redis://localhost:6379", decode_responses=False)
-            client.ping()
-        except Exception:
-            pytest.skip("Redis server not available")
-
         # Use unique prefix for test isolation
-        import uuid
+        test_name = request.node.name.replace("[", "_").replace("]", "_")
+        prefix = f"test_subprocess_{test_name}"
 
-        prefix = f"test_subprocess_{uuid.uuid4().hex[:8]}"
-        storage = RedisStorage(redis=client, prefix=prefix)
-        yield storage
-
-        # Cleanup: delete all keys with this prefix
-        for key in client.scan_iter(f"{prefix}:*"):
-            client.delete(key)
+        storage = RedisStorage(redis=redis_client, prefix=prefix)
+        return storage
 
     @pytest.mark.asyncio
     async def test_redis_namespace_full_execution(

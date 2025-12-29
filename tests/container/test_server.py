@@ -36,6 +36,8 @@ port: 9000
         monkeypatch.setenv("PORT", "8888")
         monkeypatch.setenv("ARTIFACT_BACKEND", "redis")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
+        # Auth is required - set disabled for this test
+        monkeypatch.setenv("CONTAINER_AUTH_DISABLED", "true")
 
         config = SessionConfig.from_env()
 
@@ -43,6 +45,7 @@ port: 9000
         assert config.port == 8888
         assert config.artifact_backend == "redis"
         assert config.redis_url == "redis://localhost:6379"
+        assert config.auth_disabled is True
 
 
 class TestSessionServer:
@@ -59,7 +62,8 @@ class TestSessionServer:
         from py_code_mode.execution.container.server import create_app
 
         # Use temp directory for artifacts
-        config = SessionConfig(artifacts_path=tmp_path / "artifacts")
+        # Auth disabled for these functional tests (auth tested separately)
+        config = SessionConfig(artifacts_path=tmp_path / "artifacts", auth_disabled=True)
         app = create_app(config)
         # Use context manager to trigger lifespan events
         with TestClient(app) as client:
@@ -73,7 +77,7 @@ class TestSessionServer:
         data = response.json()
         assert data["status"] == "healthy"
         assert "uptime_seconds" in data
-        assert "active_sessions" in data
+        # Note: active_sessions removed for security (information disclosure)
 
     def test_info_endpoint(self, client) -> None:
         """Info endpoint returns tools and skills."""

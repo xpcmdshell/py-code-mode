@@ -48,7 +48,6 @@ class HealthResult:
 
     status: str
     uptime_seconds: float
-    active_sessions: int
 
 
 @dataclass
@@ -84,6 +83,7 @@ class SessionClient:
         base_url: str = "http://localhost:8080",
         timeout: float = 30.0,
         session_id: str | None = None,
+        auth_token: str | None = None,
     ) -> None:
         """Initialize session client.
 
@@ -92,6 +92,8 @@ class SessionClient:
             timeout: Default timeout for HTTP requests.
             session_id: Optional session ID. If not provided, a new
                        unique session is created on first request.
+            auth_token: Optional Bearer token for API authentication.
+                       If provided, sent as Authorization header.
         """
         if not HTTPX_AVAILABLE:
             raise ImportError("httpx required for SessionClient. Install with: pip install httpx")
@@ -100,6 +102,7 @@ class SessionClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session_id = session_id or str(uuid.uuid4())
+        self.auth_token = auth_token
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -109,8 +112,11 @@ class SessionClient:
         return self._client
 
     def _headers(self) -> dict[str, str]:
-        """Get headers with session ID."""
-        return {"X-Session-ID": self.session_id}
+        """Get headers with session ID and optional auth token."""
+        headers = {"X-Session-ID": self.session_id}
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+        return headers
 
     async def execute(
         self,
@@ -165,7 +171,6 @@ class SessionClient:
         return HealthResult(
             status=data["status"],
             uptime_seconds=data["uptime_seconds"],
-            active_sessions=data.get("active_sessions", 0),
         )
 
     async def info(self) -> InfoResult:
@@ -175,7 +180,7 @@ class SessionClient:
             InfoResult with available tools and skills.
         """
         client = await self._get_client()
-        response = await client.get(f"{self.base_url}/info")
+        response = await client.get(f"{self.base_url}/info", headers=self._headers())
         response.raise_for_status()
         data = response.json()
 
