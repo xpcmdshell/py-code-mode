@@ -56,7 +56,7 @@ skills.create(
 **Also ships as an MCP server for Claude Code:**
 
 ```bash
-claude mcp add py-code-mode -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.5.3 py-code-mode-mcp
+claude mcp add py-code-mode -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.6.0 py-code-mode-mcp
 ```
 
 ## Three Namespaces
@@ -97,7 +97,7 @@ await session.save_artifact("data", {"key": "value"})
 ## Installation
 
 ```bash
-uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.5.3
+uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.6.0
 ```
 
 For MCP server installation, see [Getting Started](./docs/getting-started.md).
