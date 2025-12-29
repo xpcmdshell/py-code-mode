@@ -285,28 +285,17 @@ class TestRegistryFromRedis:
 
 @pytest.mark.integration
 class TestRedisToolStoreIntegration:
-    """Integration tests requiring live Redis."""
+    """Integration tests with real Redis using testcontainers."""
 
-    @pytest.fixture
-    def redis_client(self):
-        """Get Redis client, skip if unavailable."""
-        try:
-            import redis
-
-            r = redis.Redis()
-            r.ping()
-            yield r
-            # Cleanup
-            for key in r.keys("test-tools:*"):
-                r.delete(key)
-        except Exception:
-            pytest.skip("Redis not available")
-
-    def test_round_trip_tool(self, redis_client) -> None:
+    def test_round_trip_tool(self, redis_client, request) -> None:
         """Tool config survives Redis round-trip."""
         from py_code_mode.storage.redis_tools import RedisToolStore
 
-        store = RedisToolStore(redis_client, prefix="test-tools")
+        # Use unique prefix per test for isolation
+        test_name = request.node.name.replace("[", "_").replace("]", "_")
+        prefix = f"test-tools-{test_name}"
+
+        store = RedisToolStore(redis_client, prefix=prefix)
 
         config = {
             "name": "test_tool",
@@ -326,11 +315,14 @@ class TestRedisToolStoreIntegration:
         assert retrieved["tags"] == ["test", "example"]
 
     @pytest.mark.asyncio
-    async def test_registry_from_redis_integration(self, redis_client) -> None:
+    async def test_registry_from_redis_integration(self, redis_client, request) -> None:
         """registry_from_redis works with real Redis."""
         from py_code_mode.storage.redis_tools import RedisToolStore, registry_from_redis
 
-        store = RedisToolStore(redis_client, prefix="test-tools")
+        test_name = request.node.name.replace("[", "_").replace("]", "_")
+        prefix = f"test-tools-{test_name}"
+
+        store = RedisToolStore(redis_client, prefix=prefix)
 
         store.add(
             "echo",

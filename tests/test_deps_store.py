@@ -838,42 +838,20 @@ class TestDepsStoreNegativeCases:
 
 
 class TestRedisDepsStoreIntegration:
-    """Integration tests with real Redis (skipped if Redis not available)."""
+    """Integration tests with real Redis using testcontainers."""
 
-    @pytest.fixture
-    def redis_client(self, request):
-        """Get real Redis client with unique prefix per test."""
-        try:
-            import redis
-
-            client = redis.Redis(host="localhost", port=6379, decode_responses=True)
-            client.ping()
-
-            test_name = request.node.name.replace("[", "_").replace("]", "_")
-            prefix = f"test-deps-{test_name}"
-
-            # Cleanup before test
-            for key in client.keys(f"{prefix}:*"):
-                client.delete(key)
-
-            client._test_prefix = prefix
-            yield client
-
-            # Cleanup after test
-            for key in client.keys(f"{prefix}:*"):
-                client.delete(key)
-
-        except Exception:
-            pytest.skip("Redis not available")
-
-    def test_roundtrip_packages(self, redis_client) -> None:
+    def test_roundtrip_packages(self, redis_client, request) -> None:
         """Add and list packages through real Redis.
 
         Breaks when: Redis serialization/deserialization is broken.
         """
         from py_code_mode.deps import RedisDepsStore
 
-        store = RedisDepsStore(redis_client, prefix=redis_client._test_prefix)
+        # Use unique prefix per test for isolation
+        test_name = request.node.name.replace("[", "_").replace("]", "_")
+        prefix = f"test-deps-{test_name}"
+
+        store = RedisDepsStore(redis_client, prefix=prefix)
 
         store.add("pandas>=2.0")
         store.add("numpy")
@@ -882,14 +860,17 @@ class TestRedisDepsStoreIntegration:
         deps = store.list()
         assert set(deps) == {"pandas>=2.0", "numpy", "requests==2.31.0"}
 
-    def test_clear_through_real_redis(self, redis_client) -> None:
+    def test_clear_through_real_redis(self, redis_client, request) -> None:
         """clear() removes all packages in real Redis.
 
         Breaks when: clear() doesn't delete Redis keys.
         """
         from py_code_mode.deps import RedisDepsStore
 
-        store = RedisDepsStore(redis_client, prefix=redis_client._test_prefix)
+        test_name = request.node.name.replace("[", "_").replace("]", "_")
+        prefix = f"test-deps-{test_name}"
+
+        store = RedisDepsStore(redis_client, prefix=prefix)
 
         store.add("pandas")
         store.add("numpy")
@@ -897,21 +878,24 @@ class TestRedisDepsStoreIntegration:
 
         assert store.list() == []
 
-    def test_hash_consistency_across_connections(self, redis_client) -> None:
+    def test_hash_consistency_across_connections(self, redis_client, request) -> None:
         """hash() is consistent across different store instances.
 
         Breaks when: hash() uses instance-local state.
         """
         from py_code_mode.deps import RedisDepsStore
 
-        store1 = RedisDepsStore(redis_client, prefix=redis_client._test_prefix)
+        test_name = request.node.name.replace("[", "_").replace("]", "_")
+        prefix = f"test-deps-{test_name}"
+
+        store1 = RedisDepsStore(redis_client, prefix=prefix)
         store1.add("pandas")
         store1.add("numpy")
 
         h1 = store1.hash()
 
         # Create new store instance pointing to same Redis data
-        store2 = RedisDepsStore(redis_client, prefix=redis_client._test_prefix)
+        store2 = RedisDepsStore(redis_client, prefix=prefix)
         h2 = store2.hash()
 
         assert h1 == h2
