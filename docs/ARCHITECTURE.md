@@ -38,7 +38,6 @@ Storage handles where tools, skills, artifacts, and deps live. Two implementatio
 **Current API:**
 ```python
 from pathlib import Path
-from redis import Redis
 from py_code_mode import Session, FileStorage, RedisStorage
 from py_code_mode.execution import InProcessExecutor, ContainerExecutor, ContainerConfig
 
@@ -46,9 +45,8 @@ from py_code_mode.execution import InProcessExecutor, ContainerExecutor, Contain
 storage = FileStorage(base_path=Path("./storage"))
 # Creates: ./storage/tools/, ./storage/skills/, ./storage/artifacts/
 
-# Redis-based storage (client instance + prefix)
-redis_client = Redis.from_url("redis://localhost:6379")
-storage = RedisStorage(redis=redis_client, prefix="myapp")
+# Redis-based storage (URL + prefix)
+storage = RedisStorage(url="redis://localhost:6379", prefix="myapp")
 # Uses keys: myapp:tools:*, myapp:skills:*, myapp:artifacts:*
 
 # Session with default in-process executor
@@ -64,7 +62,7 @@ async with Session(storage=storage, executor=executor) as session:
 **Key design:**
 - `Session` accepts typed `Executor` instances, not `backend="container"` strings
 - `FileStorage` takes single `base_path`, creates subdirs automatically
-- `RedisStorage` takes Redis client instance and prefix, not separate URL/prefix params
+- `RedisStorage` takes `url` parameter (or `redis` client for advanced use cases)
 - Session uses `StorageBackend` protocol to get components directly
 
 ## StorageBackend Protocol
@@ -275,7 +273,7 @@ storage = FileStorage(base_path=Path("./storage"))
 **With RedisStorage:**
 
 ```python
-storage = RedisStorage(redis=client, prefix="myapp")
+storage = RedisStorage(url="redis://localhost:6379", prefix="myapp")
 # Uses keys: myapp:deps (JSON list of package names)
 ```
 
@@ -396,10 +394,8 @@ async with Session(storage=storage) as session:
 |   +----------------------------------------------------------+   |
 |   |                     Your Agent                           |   |
 |   |                                                          |   |
-|   |   from redis import Redis                                |   |
-|   |   redis = Redis.from_url("redis://localhost:6379")       |   |
 |   |   storage = RedisStorage(                                |   |
-|   |       redis=redis,                                       |   |
+|   |       url="redis://localhost:6379",                      |   |
 |   |       prefix="agent"                                     |   |
 |   |   )  # Uses agent:tools:*, agent:skills:*, etc.          |   |
 |   |                                                          |   |
@@ -429,12 +425,10 @@ async with Session(storage=storage) as session:
 
 **Code:**
 ```python
-from redis import Redis
 from py_code_mode import Session, RedisStorage
 
-# RedisStorage takes client instance and prefix
-redis_client = Redis.from_url("redis://localhost:6379")
-storage = RedisStorage(redis=redis_client, prefix="agent")
+# RedisStorage takes URL and prefix
+storage = RedisStorage(url="redis://localhost:6379", prefix="agent")
 # Creates keys: agent:tools:*, agent:skills:*, agent:artifacts:*
 
 async with Session(storage=storage) as session:
@@ -547,13 +541,12 @@ Session derives RedisStorageAccess from RedisStorage and passes to container.
 |   +----------------------------------------------------------+   |
 |   |                     Your Agent                           |   |
 |   |                                                          |   |
-|   |   from redis import Redis                                |   |
 |   |   from py_code_mode.execution import (                   |   |
 |   |       ContainerExecutor, ContainerConfig                 |   |
 |   |   )                                                      |   |
 |   |                                                          |   |
-|   |   redis = Redis.from_url("redis://redis:6379")           |   |
-|   |   storage = RedisStorage(redis=redis, prefix="agent")    |   |
+|   |   storage = RedisStorage(url="redis://redis:6379",       |   |
+|   |                          prefix="agent")                 |   |
 |   |   executor = ContainerExecutor(config=ContainerConfig(   |   |
 |   |       image="py-code-mode:latest"                        |   |
 |   |   ))                                                     |   |
@@ -632,7 +625,7 @@ python -m py_code_mode.store bootstrap \
 | Storage Type | API | Tools Source | Skills Source | Artifacts Store |
 |--------------|-----|--------------|---------------|-----------------|
 | FileStorage | `Session(storage=FileStorage(base_path=...))` | `<base>/tools/*.yaml` | `<base>/skills/*.py` | `<base>/artifacts/` |
-| RedisStorage | `Session(storage=RedisStorage(redis=client, prefix=...))` | `<prefix>:tools:*` | `<prefix>:skills:*` | `<prefix>:artifacts:*` |
+| RedisStorage | `Session(storage=RedisStorage(url=..., prefix=...))` | `<prefix>:tools:*` | `<prefix>:skills:*` | `<prefix>:artifacts:*` |
 | Container + File | `Session(storage=FileStorage(...), executor=ContainerExecutor(...))` | Volume mounted | Volume mounted | Volume mounted |
 | Container + Redis | `Session(storage=RedisStorage(...), executor=ContainerExecutor(...))` | Redis keys | Redis keys | Redis keys |
 
@@ -642,7 +635,7 @@ python -m py_code_mode.store bootstrap \
 Choose storage backend:
     |
     +-- Single machine, local dev?  -> FileStorage(base_path=Path("./storage"))
-    +-- Distributed, production?    -> RedisStorage(redis=client, prefix="app")
+    +-- Distributed, production?    -> RedisStorage(url="redis://...", prefix="app")
 
 Choose executor:
     |
@@ -1032,13 +1025,13 @@ recipes:                          # Named presets
 - [ ] Bootstrap tools: `python -m py_code_mode.store bootstrap --type tools --target redis://... --prefix myapp:tools`
 - [ ] Bootstrap skills: `python -m py_code_mode.store bootstrap --target redis://... --prefix myapp:skills`
 - [ ] Initialize deps (optional): Pre-populate `myapp:deps` Redis key if needed
-- [ ] Create storage: `RedisStorage(redis=Redis.from_url("redis://..."), prefix="myapp")`
+- [ ] Create storage: `RedisStorage(url="redis://...", prefix="myapp")`
 - [ ] Use `Session(storage=storage)`
 
 ### Production with Container Isolation
 - [ ] Provision Redis instance
 - [ ] Bootstrap tools and skills to Redis (as above)
 - [ ] Initialize deps in Redis (optional)
-- [ ] Create storage: `RedisStorage(redis=redis_client, prefix="myapp")`
+- [ ] Create storage: `RedisStorage(url="redis://...", prefix="myapp")`
 - [ ] Create executor: `ContainerExecutor(config=ContainerConfig(...))`
 - [ ] Use `Session(storage=storage, executor=executor)`

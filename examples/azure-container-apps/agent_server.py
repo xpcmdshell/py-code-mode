@@ -1,23 +1,18 @@
 """FastAPI server for py-code-mode agent.
 
 Exposes the AutoGen agent as an HTTP API for Azure Container Apps.
+Connects to an external session server for code execution.
 """
 
 import os
-from contextlib import asynccontextmanager
-from pathlib import Path
 
-import redis as redis_lib
 from autogen_agentchat.agents import AssistantAgent
-from fastapi import FastAPI, HTTPException
+from autogen_core.tools import FunctionTool
+from fastapi import FastAPI
 from pydantic import BaseModel
 
-from py_code_mode import FileStorage, RedisStorage, Session
-from py_code_mode.integrations.autogen import create_run_code_tool
-
-# Global session and agent (initialized at startup)
-session = None
-agent = None
+from py_code_mode import RedisStorage, Session
+from py_code_mode.execution import ContainerConfig, ContainerExecutor
 
 
 class TaskRequest(BaseModel):
@@ -30,118 +25,150 @@ class TaskResponse(BaseModel):
 
 
 def get_model_client():
-    """Get model client - Azure AI Foundry in cloud, Anthropic API locally."""
-    azure_endpoint = os.environ.get("AZURE_AI_ENDPOINT")
+    """Get Azure OpenAI model client."""
+    from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
+    from autogen_core.models import ModelFamily, ModelInfo
+    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
-    if azure_endpoint:
-        from autogen_ext.models.azure import AzureAIChatCompletionClient
-        from azure.identity import DefaultAzureCredential
-
-        return AzureAIChatCompletionClient(
-            model="claude-sonnet-4-20250514",
-            endpoint=azure_endpoint,
-            credential=DefaultAzureCredential(),
-        )
-    else:
-        from autogen_ext.models.anthropic import AnthropicChatCompletionClient
-
-        return AnthropicChatCompletionClient(model="claude-sonnet-4-20250514")
-
-
-def create_storage():
-    """Create storage - Redis mode if REDIS_URL set, file mode otherwise."""
-    redis_url = os.environ.get("REDIS_URL")
-
-    # Base path for file storage (mounted via Azure Files or local)
-    base_path = os.environ.get("STORAGE_PATH", "/workspace/configs")
-
-    if redis_url:
-        r = redis_lib.from_url(redis_url)
-        return RedisStorage(redis=r, prefix="agent")
-    else:
-        return FileStorage(base_path=Path(base_path))
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Initialize session and agent at startup."""
-    global session, agent
-
-    storage = create_storage()
-    session = Session(storage=storage)
-    await session.start()
-
-    run_code = create_run_code_tool(session=session)
-
-    system_prompt = """You are a helpful assistant that writes Python code to accomplish tasks.
-
-You have access to `tools` and `skills` namespaces in your code environment.
-
-WORKFLOW:
-1. For any nontrivial task, FIRST search skills: skills.search("relevant keywords")
-2. If a skill exists, use it: skills.invoke("name", arg=value)
-3. If no skill matches, search tools: tools.search("keywords")
-4. Script tools together: tools.name(arg=value)
-
-DISCOVERY:
-- skills.search("query") / skills.list() - find prebaked solutions
-- tools.search("query") / tools.list() - find individual tools
-
-Skills are reusable recipes that combine tools. Prefer them over scripting from scratch.
-
-ARTIFACTS (persistent storage):
-- artifacts.save("name", data, description="...") - Save data for later
-- artifacts.load("name") - Load previously saved data
-- artifacts.list() - List saved artifacts
-
-Always wrap your code in ```python blocks."""
-
-    model = get_model_client()
-
-    agent = AssistantAgent(
-        name="assistant",
-        model_client=model,
-        tools=[run_code],
-        system_message=system_prompt,
-        reflect_on_tool_use=True,
-        max_tool_iterations=5,
+    # Use managed identity for Azure OpenAI auth
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default",
     )
 
-    yield
+    deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
 
-    await session.close()
+    # Model info for models not yet in autogen's registry
+    model_info_map = {
+        "gpt-41": ModelInfo(
+            vision=True,
+            function_calling=True,
+            json_output=True,
+            family=ModelFamily.GPT_4O,  # GPT-4.1 is similar to GPT-4o
+            context_window=128000,
+        ),
+    }
+
+    return AzureOpenAIChatCompletionClient(
+        azure_deployment=deployment,
+        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+        azure_ad_token_provider=token_provider,
+        model=deployment,
+        api_version="2024-08-01-preview",
+        model_info=model_info_map.get(deployment),
+    )
 
 
-app = FastAPI(title="py-code-mode Agent", lifespan=lifespan)
+app = FastAPI(title="py-code-mode Agent")
 
 
 @app.get("/health")
 async def health():
     """Health check endpoint."""
-    return {"status": "healthy", "agent": agent is not None}
+    return {"status": "healthy"}
 
 
 @app.post("/task", response_model=TaskResponse)
 async def run_task(request: TaskRequest):
     """Run a task with the agent."""
-    if agent is None:
-        raise HTTPException(status_code=503, detail="Agent not initialized")
+    # Create storage pointing to same Redis as session server
+    storage = RedisStorage(
+        url=os.environ["REDIS_URL"],
+        prefix=os.environ.get("REDIS_PREFIX", "pycodemode"),
+    )
 
-    try:
-        result = await agent.run(task=request.task)
-        final_message = result.messages[-1].content
-        return TaskResponse(result=final_message)
-    except Exception as e:
-        return TaskResponse(result="", error=str(e))
+    # Create executor in remote mode
+    config = ContainerConfig(
+        remote_url=os.environ.get("SESSION_URL", "http://session-server:8080"),
+        auth_token=os.environ.get("SESSION_AUTH_TOKEN"),
+    )
+    executor = ContainerExecutor(config)
+
+    async with Session(storage=storage, executor=executor) as session:
+
+        async def _run_code(code: str) -> str:
+            """Execute Python code via the session server.
+
+            Args:
+                code: Python code to execute. Has access to tools, skills,
+                      artifacts, and deps namespaces.
+
+            Returns:
+                String result of execution, or error message if failed.
+            """
+            result = await session.run(code)
+            if result.error:
+                return f"Error: {result.error}"
+            parts = []
+            if result.stdout:
+                parts.append(result.stdout)
+            if result.value is not None:
+                parts.append(str(result.value))
+            return "\n".join(parts) if parts else "OK"
+
+        run_code_tool = FunctionTool(
+            func=_run_code,
+            name="run_code",
+            description="Execute Python code with tools, skills, artifacts, deps.",
+        )
+
+        system_prompt = """You are a helpful assistant that writes Python code to accomplish tasks.
+
+You have access to these namespaces in run_code:
+- tools.* - CLI tools (curl, jq, etc.)
+- skills.* - Reusable Python functions
+- artifacts.* - Persistent data storage
+- deps.* - Python package management
+
+WORKFLOW:
+1. Discover tools: tools.list() or tools.search("keyword")
+2. Use tools: tools.curl.get(url="...") or tools.jq.query(filter=".")
+3. Save results: artifacts.save("name", data)
+
+Example code:
+```python
+import json
+response = tools.curl.get(url="https://api.github.com/repos/python/cpython")
+data = json.loads(response)
+print(f"Stars: {data['stargazers_count']}")
+```
+
+Always use the run_code tool to execute Python code."""
+
+        agent = AssistantAgent(
+            name="assistant",
+            model_client=get_model_client(),
+            tools=[run_code_tool],
+            system_message=system_prompt,
+        )
+
+        try:
+            result = await agent.run(task=request.task)
+            return TaskResponse(result=result.messages[-1].content)
+        except Exception as e:
+            return TaskResponse(result="", error=str(e))
 
 
 @app.get("/info")
 async def info():
-    """Get available tools and skills."""
-    if session is None:
-        raise HTTPException(status_code=503, detail="Session not initialized")
+    """Get available tools and skills from session server."""
+    # Create storage pointing to same Redis as session server
+    storage = RedisStorage(
+        url=os.environ["REDIS_URL"],
+        prefix=os.environ.get("REDIS_PREFIX", "pycodemode"),
+    )
 
-    return {
-        "tools": await session.list_tools(),
-        "skills": await session.list_skills(),
-    }
+    # Create executor in remote mode
+    config = ContainerConfig(
+        remote_url=os.environ.get("SESSION_URL", "http://session-server:8080"),
+        auth_token=os.environ.get("SESSION_AUTH_TOKEN"),
+    )
+    executor = ContainerExecutor(config)
+
+    async with Session(storage=storage, executor=executor) as session:
+        tools = await session.list_tools()
+        skills = await session.list_skills()
+        return {
+            "tools": tools,
+            "skills": skills,
+        }

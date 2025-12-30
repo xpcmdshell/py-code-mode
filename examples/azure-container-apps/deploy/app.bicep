@@ -16,11 +16,19 @@ param acrUsername string
 @description('ACR password')
 param acrPassword string
 
-@description('Azure OpenAI endpoint')
-param openAiEndpoint string
+@secure()
+@description('Redis connection URL (rediss:// format)')
+param redisUrl string
 
-@description('Azure OpenAI deployment name')
-param openAiDeployment string = 'gpt-4o'
+@secure()
+@description('Session server authentication token')
+param sessionAuthToken string
+
+@description('Azure OpenAI endpoint URL')
+param azureOpenAiEndpoint string
+
+@description('Azure OpenAI deployment name (e.g., gpt-4o)')
+param azureOpenAiDeployment string = 'gpt-4o'
 
 // Session Server - internal only, provides code execution
 resource sessionApp 'Microsoft.App/containerApps@2023-05-01' = {
@@ -49,6 +57,14 @@ resource sessionApp 'Microsoft.App/containerApps@2023-05-01' = {
           name: 'acr-password'
           value: acrPassword
         }
+        {
+          name: 'redis-url'
+          value: redisUrl
+        }
+        {
+          name: 'session-auth-token'
+          value: sessionAuthToken
+        }
       ]
     }
     template: {
@@ -66,6 +82,18 @@ resource sessionApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: '8080'
             }
             {
+              name: 'REDIS_URL'
+              secretRef: 'redis-url'
+            }
+            {
+              name: 'CONTAINER_AUTH_TOKEN'
+              secretRef: 'session-auth-token'
+            }
+            {
+              name: 'ALLOW_RUNTIME_DEPS'
+              value: 'false'
+            }
+            {
               name: 'TOOLS_CONFIG'
               value: '/workspace/configs/tools.yaml'
             }
@@ -76,6 +104,22 @@ resource sessionApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               name: 'ARTIFACTS_PATH'
               value: '/workspace/artifacts'
+            }
+            {
+              name: 'REDIS_TOOLS_PREFIX'
+              value: 'pycodemode:tools'
+            }
+            {
+              name: 'REDIS_SKILLS_PREFIX'
+              value: 'pycodemode:skills'
+            }
+            {
+              name: 'REDIS_ARTIFACTS_PREFIX'
+              value: 'pycodemode:artifacts'
+            }
+            {
+              name: 'REDIS_DEPS_PREFIX'
+              value: 'pycodemode:deps'
             }
           ]
           volumeMounts: [
@@ -158,6 +202,22 @@ resource agentApp 'Microsoft.App/containerApps@2023-05-01' = {
           name: 'acr-password'
           value: acrPassword
         }
+        {
+          name: 'redis-url'
+          value: redisUrl
+        }
+        {
+          name: 'session-auth-token'
+          value: sessionAuthToken
+        }
+        {
+          name: 'azure-openai-endpoint'
+          value: azureOpenAiEndpoint
+        }
+        {
+          name: 'azure-openai-deployment'
+          value: azureOpenAiDeployment
+        }
       ]
     }
     template: {
@@ -179,12 +239,24 @@ resource agentApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: 'http://session-server'  // Internal DNS name
             }
             {
+              name: 'SESSION_AUTH_TOKEN'
+              secretRef: 'session-auth-token'
+            }
+            {
               name: 'AZURE_OPENAI_ENDPOINT'
-              value: openAiEndpoint
+              secretRef: 'azure-openai-endpoint'
             }
             {
               name: 'AZURE_OPENAI_DEPLOYMENT'
-              value: openAiDeployment
+              secretRef: 'azure-openai-deployment'
+            }
+            {
+              name: 'REDIS_URL'
+              secretRef: 'redis-url'
+            }
+            {
+              name: 'REDIS_PREFIX'
+              value: 'pycodemode'
             }
           ]
           probes: [
@@ -218,12 +290,6 @@ resource agentApp 'Microsoft.App/containerApps@2023-05-01' = {
   dependsOn: [
     sessionApp
   ]
-}
-
-// Grant agent managed identity access to Azure OpenAI
-// The agent uses DefaultAzureCredential which will use the managed identity
-resource openAiAccount 'Microsoft.CognitiveServices/accounts@2024-04-01-preview' existing = {
-  name: split(openAiEndpoint, '.')[0]
 }
 
 // Outputs

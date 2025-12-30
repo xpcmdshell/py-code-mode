@@ -2,14 +2,14 @@
 
 This example shows:
 - Same agent pattern as the autogen example
-- Deployed to Azure Container Apps with Claude via Azure AI Foundry
+- Deployed to Azure Container Apps with GPT-4o via Azure OpenAI
 - Uses Redis for both skills and artifacts when REDIS_URL is set
 - CLI tools (curl, jq) and MCP tools (fetch, time)
 - Multi-tool skill (analyze_repo.py)
 
-Run locally (with ANTHROPIC_API_KEY):
+Run locally (with Azure OpenAI):
     cd examples/azure-container-apps
-    uv run python agent.py
+    AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com uv run python agent.py
 
 Run with Redis backend:
     # First, provision skills to Redis (one-time or deploy-time)
@@ -29,7 +29,6 @@ import asyncio
 import os
 from pathlib import Path
 
-import redis as redis_lib
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.ui import Console
 from dotenv import load_dotenv
@@ -46,24 +45,38 @@ SHARED = HERE.parent / "shared"
 
 
 def get_model_client():
-    """Get model client - Azure AI Foundry in cloud, Anthropic API locally."""
-    azure_endpoint = os.environ.get("AZURE_AI_ENDPOINT")
+    """Get Azure OpenAI model client."""
+    from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
+    from autogen_core.models import ModelFamily, ModelInfo
+    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
-    if azure_endpoint:
-        # Running in Azure - use Azure AI Foundry with managed identity
-        from autogen_ext.models.azure import AzureAIChatCompletionClient
-        from azure.identity import DefaultAzureCredential
+    # Use managed identity for Azure OpenAI auth
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default",
+    )
 
-        return AzureAIChatCompletionClient(
-            model="claude-sonnet-4-20250514",
-            endpoint=azure_endpoint,
-            credential=DefaultAzureCredential(),
-        )
-    else:
-        # Running locally - use Anthropic API directly
-        from autogen_ext.models.anthropic import AnthropicChatCompletionClient
+    deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
 
-        return AnthropicChatCompletionClient(model="claude-sonnet-4-20250514")
+    # Model info for models not yet in autogen's registry
+    model_info_map = {
+        "gpt-41": ModelInfo(
+            vision=True,
+            function_calling=True,
+            json_output=True,
+            family=ModelFamily.GPT_4O,
+            context_window=128000,
+        ),
+    }
+
+    return AzureOpenAIChatCompletionClient(
+        azure_deployment=deployment,
+        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+        azure_ad_token_provider=token_provider,
+        model=deployment,
+        api_version="2024-08-01-preview",
+        model_info=model_info_map.get(deployment),
+    )
 
 
 def create_storage():
@@ -79,11 +92,9 @@ def create_storage():
 
     if redis_url:
         # Redis mode: everything from Redis (provisioned separately)
-        r = redis_lib.from_url(redis_url)
-
         print(f"Using Redis backend: {redis_url}")
 
-        return RedisStorage(redis=r, prefix="agent")
+        return RedisStorage(url=redis_url, prefix="agent")
     else:
         # File mode: load directly from shared/
         print("Using file-based backend (set REDIS_URL for Redis mode)")

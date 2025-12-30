@@ -12,8 +12,8 @@ RUN pip install uv
 COPY pyproject.toml README.md ./
 COPY src/ src/
 
-# Install py-code-mode
-RUN uv pip install --system -e ".[container]"
+# Install py-code-mode with redis support
+RUN uv pip install --system -e ".[redis]"
 
 # Copy example dependencies and agent code
 COPY examples/azure-container-apps/pyproject.toml ./example-pyproject.toml
@@ -22,12 +22,13 @@ COPY examples/azure-container-apps/agent_server.py ./
 # Install agent dependencies (autogen, azure-identity, etc.)
 RUN uv pip install --system \
     "autogen-agentchat>=0.4" \
-    "autogen-ext[anthropic,azure]>=0.4" \
+    "autogen-ext[openai]>=0.4" \
     "azure-identity>=1.15.0" \
     "fastapi>=0.115.0" \
     "uvicorn>=0.32.0" \
     "httpx>=0.27.0" \
-    "tiktoken>=0.12.0"
+    "tiktoken>=0.12.0" \
+    "aiohttp>=3.9.0"
 
 # Environment
 ENV PYTHONUNBUFFERED=1

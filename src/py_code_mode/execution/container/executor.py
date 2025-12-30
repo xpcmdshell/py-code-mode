@@ -111,7 +111,9 @@ class ContainerExecutor:
         Args:
             config: Container configuration.
         """
-        if not DOCKER_AVAILABLE:
+        # Docker only required for local mode (starting containers)
+        # Remote mode just needs httpx for HTTP calls
+        if not DOCKER_AVAILABLE and not config.remote_url:
             raise ImportError(
                 "docker required for ContainerExecutor. Install with: pip install docker"
             )
@@ -332,6 +334,15 @@ class ContainerExecutor:
         """
         # Reject old StorageAccess types - no backward compatibility
         validate_storage_not_access(storage, "ContainerExecutor")
+
+        # Remote mode: connect to existing server, skip Docker
+        if self.config.remote_url:
+            self._client = SessionClient(
+                base_url=self.config.remote_url,
+                timeout=self.config.timeout,
+                auth_token=self.config.auth_token,
+            )
+            return
 
         # Initialize Docker client with fallback socket detection
         self._docker = self._create_docker_client()

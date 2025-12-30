@@ -263,12 +263,9 @@ async def create_session(args: argparse.Namespace) -> Session:
     from py_code_mode.execution.subprocess import SubprocessConfig, SubprocessExecutor
 
     if args.redis:
-        from redis import Redis
-
         from py_code_mode import RedisStorage
 
-        redis = Redis.from_url(args.redis)
-        storage = RedisStorage(redis=redis, prefix=args.prefix or "py-code-mode")
+        storage = RedisStorage(url=args.redis, prefix=args.prefix or "py-code-mode")
     else:
         from py_code_mode import FileStorage
 

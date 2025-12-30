@@ -222,14 +222,38 @@ class FileStorage:
 class RedisStorage:
     """Redis-based storage for tools, skills, and artifacts."""
 
-    def __init__(self, redis: Redis, prefix: str = "py_code_mode") -> None:
+    def __init__(
+        self,
+        url: str | None = None,
+        redis: Redis | None = None,
+        prefix: str = "py_code_mode",
+    ) -> None:
         """Initialize Redis storage.
 
         Args:
-            redis: Redis client instance.
+            url: Redis URL (e.g., "redis://localhost:6379" or
+                "rediss://:password@host:6380"). Preferred parameter.
+            redis: Redis client instance. Use for advanced configurations
+                (custom connection pools, etc.). Mutually exclusive with url.
             prefix: Key prefix for all storage. Default: "py_code_mode"
+
+        Raises:
+            ValueError: If neither url nor redis is provided, or if both are.
         """
-        self._redis = redis
+        if url is not None and redis is not None:
+            raise ValueError("Provide either 'url' or 'redis', not both")
+        if url is None and redis is None:
+            raise ValueError("Either 'url' or 'redis' must be provided")
+
+        if url is not None:
+            from redis import Redis as RedisClient
+
+            self._redis = RedisClient.from_url(url)
+            self._url = url
+        else:
+            self._redis = redis
+            self._url = None  # Will be reconstructed if needed
+
         self._prefix = prefix
 
         # Lazy-initialized stores
@@ -257,23 +281,27 @@ class RedisStorage:
 
     def get_serializable_access(self) -> RedisStorageAccess:
         """Return RedisStorageAccess for cross-process communication."""
-        # Reconstruct Redis URL from client connection
-        pool = self._redis.connection_pool
-        kwargs = pool.connection_kwargs
-        host = kwargs.get("host", "localhost")
-        port = kwargs.get("port", 6379)
-        db = kwargs.get("db", 0)
-        username = kwargs.get("username")
-        password = kwargs.get("password")
-
-        if username and password:
-            encoded_user = quote(username, safe="")
-            encoded_pass = quote(password, safe="")
-            redis_url = f"redis://{encoded_user}:{encoded_pass}@{host}:{port}/{db}"
-        elif password:
-            redis_url = f"redis://:{quote(password, safe='')}@{host}:{port}/{db}"
+        # Use stored URL if available, otherwise reconstruct from client
+        if self._url is not None:
+            redis_url = self._url
         else:
-            redis_url = f"redis://{host}:{port}/{db}"
+            # Reconstruct Redis URL from client connection (backward compat)
+            pool = self._redis.connection_pool
+            kwargs = pool.connection_kwargs
+            host = kwargs.get("host", "localhost")
+            port = kwargs.get("port", 6379)
+            db = kwargs.get("db", 0)
+            username = kwargs.get("username")
+            password = kwargs.get("password")
+
+            if username and password:
+                encoded_user = quote(username, safe="")
+                encoded_pass = quote(password, safe="")
+                redis_url = f"redis://{encoded_user}:{encoded_pass}@{host}:{port}/{db}"
+            elif password:
+                redis_url = f"redis://:{quote(password, safe='')}@{host}:{port}/{db}"
+            else:
+                redis_url = f"redis://{host}:{port}/{db}"
 
         prefix = self._prefix
         return RedisStorageAccess(

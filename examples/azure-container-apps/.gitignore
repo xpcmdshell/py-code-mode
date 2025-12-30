@@ -2,3 +2,6 @@
 .venv/
 __pycache__/
 artifacts/
+deploy/.session_auth_token
+deploy/.agent_url
+deploy/.resource_group

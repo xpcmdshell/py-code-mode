@@ -142,7 +142,7 @@ class TestGetSerializableAccess:
 
             Breaks when: Return type is wrong or method doesn't exist.
             """
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
 
             result = storage.get_serializable_access()
 
@@ -153,7 +153,7 @@ class TestGetSerializableAccess:
 
             Breaks when: URL format is wrong or components are missing.
             """
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
 
             result = storage.get_serializable_access()
 
@@ -174,7 +174,7 @@ class TestGetSerializableAccess:
                 db=2,
                 password="secret123",
             )
-            storage = RedisStorage(mock_with_password, prefix="secure")
+            storage = RedisStorage(redis=mock_with_password, prefix="secure")
 
             result = storage.get_serializable_access()
 
@@ -193,7 +193,7 @@ class TestGetSerializableAccess:
                 db=0,
                 password=None,
             )
-            storage = RedisStorage(mock_no_password, prefix="test")
+            storage = RedisStorage(redis=mock_no_password, prefix="test")
 
             result = storage.get_serializable_access()
 
@@ -206,7 +206,7 @@ class TestGetSerializableAccess:
 
             Breaks when: Prefix format doesn't match expected pattern.
             """
-            storage = RedisStorage(mock_redis, prefix="myapp")
+            storage = RedisStorage(redis=mock_redis, prefix="myapp")
 
             result = storage.get_serializable_access()
 
@@ -217,7 +217,7 @@ class TestGetSerializableAccess:
 
             Breaks when: Prefix format doesn't match expected pattern.
             """
-            storage = RedisStorage(mock_redis, prefix="myapp")
+            storage = RedisStorage(redis=mock_redis, prefix="myapp")
 
             result = storage.get_serializable_access()
 
@@ -228,7 +228,7 @@ class TestGetSerializableAccess:
 
             Breaks when: Prefix format doesn't match expected pattern.
             """
-            storage = RedisStorage(mock_redis, prefix="myapp")
+            storage = RedisStorage(redis=mock_redis, prefix="myapp")
 
             result = storage.get_serializable_access()
 
@@ -239,7 +239,7 @@ class TestGetSerializableAccess:
 
             Breaks when: Descriptor can be mutated after creation.
             """
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
 
             result = storage.get_serializable_access()
 
@@ -258,7 +258,7 @@ class TestGetSerializableAccess:
                 port=16379,
                 db=5,
             )
-            storage = RedisStorage(mock_custom, prefix="production")
+            storage = RedisStorage(redis=mock_custom, prefix="production")
 
             result = storage.get_serializable_access()
 
@@ -288,7 +288,7 @@ class TestGetSerializableAccess:
 
             Breaks when: Return type doesn't match expected union.
             """
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
 
             result = storage.get_serializable_access()
 
@@ -310,7 +310,7 @@ class TestGetSerializableAccess:
 
             Breaks when: Method is missing from implementation.
             """
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
 
             assert hasattr(storage, "get_serializable_access")
             assert callable(storage.get_serializable_access)
@@ -420,7 +420,7 @@ def run(name: str) -> str:
             from py_code_mode.tools import ToolRegistry
 
             # Setup: Create storage
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
 
             # Populate a skill directly to Redis store
             skill_store = storage.get_skill_store()
@@ -611,7 +611,7 @@ def run() -> str:
             """
             from py_code_mode.tools import ToolRegistry
 
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
 
             result = await storage.get_tool_registry()
 
@@ -629,7 +629,7 @@ def run() -> str:
             """
             from py_code_mode.skills import SkillLibrary
 
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
 
             result = storage.get_skill_library()
 
@@ -647,7 +647,7 @@ def run() -> str:
             """
             import json
 
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
 
             # Store a tool config directly in Redis using RedisToolStore format
             tool_config = {
@@ -681,7 +681,7 @@ def run() -> str:
             """
             from py_code_mode.skills import PythonSkill
 
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
 
             # Store a skill via the skill store
             skill_store = storage.get_skill_store()
@@ -708,7 +708,7 @@ def run() -> str:
             Verification: Returns valid but empty ToolRegistry
             Breaks when: Method raises exception or returns None
             """
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
             # Don't store any tools
 
             registry = await storage.get_tool_registry()
@@ -726,7 +726,7 @@ def run() -> str:
             Verification: Returns valid but empty SkillLibrary
             Breaks when: Method raises exception or returns None
             """
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
             # Don't store any skills
 
             library = storage.get_skill_library()
@@ -800,7 +800,7 @@ def run() -> str:
             """
             from py_code_mode.skills import PythonSkill
 
-            storage = RedisStorage(mock_redis, prefix="myapp")
+            storage = RedisStorage(redis=mock_redis, prefix="myapp")
 
             # Store a skill
             skill_store = storage.get_skill_store()
@@ -924,7 +924,7 @@ def run() -> str:
             """
             from py_code_mode.tools import ToolRegistry
 
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
 
             # Store corrupted data
             mock_redis._data["test:tools:broken"] = "{ invalid json ]"
@@ -945,7 +945,7 @@ def run() -> str:
             """
             from py_code_mode.skills import SkillLibrary
 
-            storage = RedisStorage(mock_redis, prefix="test")
+            storage = RedisStorage(redis=mock_redis, prefix="test")
 
             # Store corrupted data directly
             mock_redis._data["test:skills:broken"] = "{ invalid json ]"

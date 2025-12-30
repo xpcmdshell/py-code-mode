@@ -565,7 +565,7 @@ class TestRedisStorageFromScratch:
         """Create RedisStorage with mock client."""
         from py_code_mode.storage import RedisStorage
 
-        return RedisStorage(mock_redis, prefix="test")
+        return RedisStorage(redis=mock_redis, prefix="test")
 
     @pytest.mark.asyncio
     async def test_skills_create_and_persist_in_redis(self, redis_storage) -> None:
