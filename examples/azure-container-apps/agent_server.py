@@ -26,32 +26,20 @@ class TaskResponse(BaseModel):
 
 def get_model_client():
     """Get model client - Azure AI Foundry in cloud, Anthropic API locally."""
-    azure_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
-
-    # Prefer Anthropic API if available (simpler, no Azure AI Foundry setup needed)
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-    if anthropic_key and not azure_endpoint:
-        from autogen_ext.models.anthropic import AnthropicChatCompletionClient
-
-        return AnthropicChatCompletionClient(model="claude-sonnet-4-20250514")
+    azure_endpoint = os.environ.get("AZURE_AI_ENDPOINT")
 
     if azure_endpoint:
+        # Running in Azure - use Azure AI Foundry with managed identity
         from autogen_ext.models.azure import AzureAIChatCompletionClient
         from azure.identity import DefaultAzureCredential
 
-        # model_info required for Claude models on Azure AI Foundry
         return AzureAIChatCompletionClient(
             model="claude-sonnet-4-20250514",
             endpoint=azure_endpoint,
             credential=DefaultAzureCredential(),
-            model_info={
-                "vision": True,
-                "function_calling": True,
-                "json_output": True,
-                "family": "claude",
-            },
         )
     else:
+        # Running locally - use Anthropic API directly
         from autogen_ext.models.anthropic import AnthropicChatCompletionClient
 
         return AnthropicChatCompletionClient(model="claude-sonnet-4-20250514")

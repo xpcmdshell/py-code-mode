@@ -304,11 +304,10 @@ previous = artifacts.load("scan_results")
 | `PORT` | No | Server port (default: 8080) |
 | `SESSION_URL` | Yes | Session server URL (e.g., `http://session-server`) |
 | `SESSION_AUTH_TOKEN` | Yes | Bearer token to authenticate with session server |
-| `ANTHROPIC_API_KEY` | Yes* | Anthropic API key for Claude models |
-| `AZURE_OPENAI_ENDPOINT` | No | Azure OpenAI endpoint (alternative to Anthropic) |
-| `AZURE_OPENAI_DEPLOYMENT` | No | Azure OpenAI deployment name |
+| `AZURE_AI_ENDPOINT` | Yes* | Azure AI Foundry endpoint for Claude models |
+| `ANTHROPIC_API_KEY` | No | Anthropic API key (for local development) |
 
-*Required if not using Azure OpenAI.
+*Required in production. Use `ANTHROPIC_API_KEY` for local development instead.
 
 ## Security Considerations
 
