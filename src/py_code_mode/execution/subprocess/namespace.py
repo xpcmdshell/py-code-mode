@@ -41,6 +41,53 @@ def build_namespace_setup_code(
     return ""
 
 
+def _build_vector_store_setup_code(vectors_path_str: str) -> str:
+    """Generate vector store setup code if vectors_path is provided.
+
+    Args:
+        vectors_path_str: String representation of vectors path or "None".
+
+    Returns:
+        Code string for vector store setup, or empty string if not needed.
+    """
+    if vectors_path_str == "None":
+        return """
+_vector_store = None"""
+
+    return f"""
+_vectors_path = Path({vectors_path_str})
+
+# Setup vector store if vectors_path provided
+_vector_store = None
+try:
+    from py_code_mode.skills.vector_stores.chroma import ChromaVectorStore
+    from py_code_mode.skills import Embedder
+    _vectors_path.mkdir(parents=True, exist_ok=True)
+    _embedder = Embedder()
+    _vector_store = ChromaVectorStore(path=_vectors_path, embedder=_embedder)
+except ImportError:
+    _vector_store = None"""
+
+
+def _build_vector_store_cleanup_code(has_vectors_path: bool) -> str:
+    """Generate cleanup code for vector store variables.
+
+    Args:
+        has_vectors_path: Whether vectors_path was provided.
+
+    Returns:
+        Code string to cleanup vector store-related variables.
+    """
+    if not has_vectors_path:
+        return "del _vector_store"
+
+    return """del _vectors_path, _vector_store
+try:
+    del ChromaVectorStore, Embedder, _embedder
+except NameError:
+    pass"""
+
+
 def _build_file_storage_setup_code(
     storage_access: FileStorageAccess,
     allow_runtime_deps: bool,
@@ -54,6 +101,14 @@ def _build_file_storage_setup_code(
     # Base path is parent of artifacts for deps store
     base_path_str = repr(str(storage_access.artifacts_path.parent))
     allow_deps_str = "True" if allow_runtime_deps else "False"
+    vectors_path_str = (
+        repr(str(storage_access.vectors_path)) if storage_access.vectors_path else "None"
+    )
+    has_vectors_path = storage_access.vectors_path is not None
+
+    # Generate vector store setup code conditionally
+    vector_store_setup = _build_vector_store_setup_code(vectors_path_str)
+    vector_store_cleanup = _build_vector_store_cleanup_code(has_vectors_path)
 
     return f'''# Auto-generated namespace setup for SubprocessExecutor
 # This code sets up full py-code-mode namespaces in the kernel
@@ -145,22 +200,23 @@ class _SyncCallableWrapper:
 tools = _SyncToolsWrapper(_base_tools)
 
 # =============================================================================
-# Skills Namespace
+# Skills Namespace (with optional vector store)
 # =============================================================================
 
 from py_code_mode.skills import FileSkillStore, create_skill_library
 from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
 
 _skills_path = Path({skills_path_str}) if {skills_path_str} else None
+{vector_store_setup}
 
 if _skills_path is not None:
     _skills_path.mkdir(parents=True, exist_ok=True)
     _store = FileSkillStore(_skills_path)
-    _library = create_skill_library(store=_store)
+    _library = create_skill_library(store=_store, vector_store=_vector_store)
 else:
     from py_code_mode.skills import MemorySkillStore, MockEmbedder, SkillLibrary
     _store = MemorySkillStore()
-    _library = SkillLibrary(embedder=MockEmbedder(), store=_store)
+    _library = SkillLibrary(embedder=MockEmbedder(), store=_store, vector_store=_vector_store)
 
 # SkillsNamespace now takes a namespace dict directly (no executor needed).
 # Create the namespace dict first, then wire up circular references.
@@ -327,6 +383,7 @@ _skills_ns_dict["deps"] = deps
 
 del _tools_path, _registry, _base_tools, _async_setup_tools
 del _skills_path, _store, _library, _skills_ns_dict
+{vector_store_cleanup}
 del _artifacts_path, _base_artifacts
 del _base_path, _deps_store, _installer, _base_deps, _allow_runtime_deps
 del Path

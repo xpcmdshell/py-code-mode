@@ -33,6 +33,7 @@ class FileStorageAccess:
     skills_path: Path | None
     artifacts_path: Path
     deps_path: Path | None
+    vectors_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class RedisStorageAccess:
     skills_prefix: str
     artifacts_prefix: str
     deps_prefix: str
+    vectors_prefix: str | None = None
 
 
 StorageAccess = FileStorageAccess | RedisStorageAccess

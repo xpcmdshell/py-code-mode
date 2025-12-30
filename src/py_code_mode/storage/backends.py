@@ -19,9 +19,17 @@ from py_code_mode.skills import (
     RedisSkillStore,
     SkillLibrary,
     SkillStore,
+    VectorStore,
     create_skill_library,
 )
 from py_code_mode.storage.redis_tools import RedisToolStore
+
+# Import ChromaVectorStore at module level for test mocking support
+# The actual import in get_vector_store() handles the ImportError gracefully
+try:
+    from py_code_mode.skills.vector_stores.chroma import ChromaVectorStore
+except ImportError:
+    ChromaVectorStore = None  # type: ignore[misc, assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +104,8 @@ class FileStorage:
         self._skill_library: SkillLibrary | None = None
         self._artifact_store: FileArtifactStore | None = None
         self._deps_namespace: DepsNamespace | None = None
+        self._vector_store: VectorStore | None = None
+        self._vector_store_initialized: bool = False
 
     @property
     def root(self) -> Path:
@@ -118,11 +128,45 @@ class FileStorage:
         artifacts_path.mkdir(parents=True, exist_ok=True)
         return artifacts_path
 
+    def _get_vectors_path(self) -> Path:
+        """Get the vectors directory path."""
+        vectors_path = self._base_path / "vectors"
+        vectors_path.mkdir(parents=True, exist_ok=True)
+        return vectors_path
+
+    def get_vector_store(self) -> VectorStore | None:
+        """Return ChromaVectorStore if chromadb available, else None.
+
+        The vector store is cached after first creation.
+
+        Returns:
+            ChromaVectorStore instance if chromadb is installed, None otherwise.
+        """
+        if self._vector_store_initialized:
+            return self._vector_store
+
+        # ChromaVectorStore is imported at module level (None if chromadb unavailable)
+        if ChromaVectorStore is None:
+            self._vector_store = None
+        else:
+            try:
+                from py_code_mode.skills import Embedder
+
+                vectors_path = self._get_vectors_path()
+                embedder = Embedder()
+                self._vector_store = ChromaVectorStore(path=vectors_path, embedder=embedder)
+            except ImportError:
+                self._vector_store = None
+
+        self._vector_store_initialized = True
+        return self._vector_store
+
     def get_serializable_access(self) -> FileStorageAccess:
         """Return FileStorageAccess for cross-process communication."""
         base_path = self._base_path
         tools_path = base_path / "tools"
         deps_path = base_path / "deps"
+        vectors_path = base_path / "vectors"
         # Ensure deps directory exists for volume mount
         deps_path.mkdir(parents=True, exist_ok=True)
 
@@ -131,6 +175,7 @@ class FileStorage:
             skills_path=base_path / "skills",
             artifacts_path=base_path / "artifacts",
             deps_path=deps_path,
+            vectors_path=vectors_path if vectors_path.exists() else None,
         )
 
     async def get_tool_registry(self) -> ToolRegistry:
@@ -161,8 +206,12 @@ class FileStorage:
         if self._skill_library is None:
             skills_path = self._get_skills_path()
             raw_store = FileSkillStore(skills_path)
+            vector_store = self.get_vector_store()
             try:
-                self._skill_library = create_skill_library(store=raw_store)
+                self._skill_library = create_skill_library(
+                    store=raw_store,
+                    vector_store=vector_store,
+                )
             except ImportError:
                 logger.warning(
                     "Semantic search dependencies not available, falling back to MockEmbedder. "
@@ -170,7 +219,11 @@ class FileStorage:
                 )
                 from py_code_mode.skills import MockEmbedder
 
-                self._skill_library = SkillLibrary(embedder=MockEmbedder(), store=raw_store)
+                self._skill_library = SkillLibrary(
+                    embedder=MockEmbedder(),
+                    store=raw_store,
+                    vector_store=vector_store,
+                )
         return self._skill_library
 
     def get_artifact_store(self) -> ArtifactStoreProtocol:
@@ -279,6 +332,14 @@ class RedisStorage:
             self._tool_store = RedisToolStore(self._redis, prefix=f"{self._prefix}:tools")
         return self._tool_store
 
+    def get_vector_store(self) -> VectorStore | None:
+        """Return RedisVectorStore if available, else None.
+
+        Note: RedisVectorStore not yet implemented (Phase 6).
+        Returns None until Phase 6 implementation.
+        """
+        return None
+
     def get_serializable_access(self) -> RedisStorageAccess:
         """Return RedisStorageAccess for cross-process communication."""
         # Use stored URL if available, otherwise reconstruct from client
@@ -304,12 +365,15 @@ class RedisStorage:
                 redis_url = f"redis://{host}:{port}/{db}"
 
         prefix = self._prefix
+        # vectors_prefix is None until RedisVectorStore is implemented (Phase 6)
+        vectors_prefix = f"{prefix}:vectors" if self.get_vector_store() is not None else None
         return RedisStorageAccess(
             redis_url=redis_url,
             tools_prefix=f"{prefix}:tools",
             skills_prefix=f"{prefix}:skills",
             artifacts_prefix=f"{prefix}:artifacts",
             deps_prefix=f"{prefix}:deps",
+            vectors_prefix=vectors_prefix,
         )
 
     async def get_tool_registry(self) -> ToolRegistry:

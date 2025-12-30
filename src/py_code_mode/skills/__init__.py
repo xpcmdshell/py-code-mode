@@ -11,6 +11,12 @@ from py_code_mode.skills.store import (
     RedisSkillStore,
     SkillStore,
 )
+from py_code_mode.skills.vector_store import (
+    ModelInfo,
+    SearchResult,
+    VectorStore,
+    compute_content_hash,
+)
 
 # Semantic features require numpy/scikit-learn - optional import
 try:
@@ -51,6 +57,11 @@ __all__ = [
     "MemorySkillStore",
     "FileSkillStore",
     "RedisSkillStore",
+    # VectorStore types
+    "VectorStore",
+    "ModelInfo",
+    "SearchResult",
+    "compute_content_hash",
     # Semantic (optional)
     "SEMANTIC_AVAILABLE",
     "MODEL_ALIASES",
