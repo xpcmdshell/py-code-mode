@@ -7,9 +7,9 @@ This example shows:
 - CLI tools (curl, jq) and MCP tools (fetch, time)
 - Multi-tool skill (analyze_repo.py)
 
-Run locally (with ANTHROPIC_API_KEY):
+Run locally (with AZURE_AI_ENDPOINT):
     cd examples/azure-container-apps
-    uv run python agent.py
+    AZURE_AI_ENDPOINT=https://your-endpoint.azure.com uv run python agent.py
 
 Run with Redis backend:
     # First, provision skills to Redis (one-time or deploy-time)
@@ -45,24 +45,15 @@ SHARED = HERE.parent / "shared"
 
 
 def get_model_client():
-    """Get model client - Azure AI Foundry in cloud, Anthropic API locally."""
-    azure_endpoint = os.environ.get("AZURE_AI_ENDPOINT")
+    """Get Azure AI Foundry model client."""
+    from autogen_ext.models.azure import AzureAIChatCompletionClient
+    from azure.identity import DefaultAzureCredential
 
-    if azure_endpoint:
-        # Running in Azure - use Azure AI Foundry with managed identity
-        from autogen_ext.models.azure import AzureAIChatCompletionClient
-        from azure.identity import DefaultAzureCredential
-
-        return AzureAIChatCompletionClient(
-            model="claude-sonnet-4-20250514",
-            endpoint=azure_endpoint,
-            credential=DefaultAzureCredential(),
-        )
-    else:
-        # Running locally - use Anthropic API directly
-        from autogen_ext.models.anthropic import AnthropicChatCompletionClient
-
-        return AnthropicChatCompletionClient(model="claude-sonnet-4-20250514")
+    return AzureAIChatCompletionClient(
+        model="claude-sonnet-4-20250514",
+        endpoint=os.environ["AZURE_AI_ENDPOINT"],
+        credential=DefaultAzureCredential(),
+    )
 
 
 def create_storage():

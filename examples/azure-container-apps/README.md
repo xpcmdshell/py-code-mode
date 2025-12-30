@@ -40,7 +40,7 @@ Production deployment of py-code-mode on Azure Container Apps with Redis-backed 
 - Docker installed (for building images)
 - `jq` installed (for JSON parsing in deploy script)
 - Python 3.11+ (for running bootstrap script)
-- `ANTHROPIC_API_KEY` environment variable (for local development)
+- Azure AI Foundry endpoint with Claude models
 
 ## Quick Start
 
@@ -130,7 +130,7 @@ az deployment group create \
         acrPassword="<acr-password>" \
         redisUrl="$REDIS_URL" \
         sessionAuthToken="$SESSION_AUTH_TOKEN" \
-        anthropicApiKey="$ANTHROPIC_API_KEY"
+        azureAiEndpoint="$AZURE_AI_ENDPOINT"
 ```
 
 ### 5. Test the Deployment
@@ -304,10 +304,7 @@ previous = artifacts.load("scan_results")
 | `PORT` | No | Server port (default: 8080) |
 | `SESSION_URL` | Yes | Session server URL (e.g., `http://session-server`) |
 | `SESSION_AUTH_TOKEN` | Yes | Bearer token to authenticate with session server |
-| `AZURE_AI_ENDPOINT` | Yes* | Azure AI Foundry endpoint for Claude models |
-| `ANTHROPIC_API_KEY` | No | Anthropic API key (for local development) |
-
-*Required in production. Use `ANTHROPIC_API_KEY` for local development instead.
+| `AZURE_AI_ENDPOINT` | Yes | Azure AI Foundry endpoint for Claude models |
 
 ## Security Considerations
 
@@ -349,7 +346,7 @@ All secrets are managed via Container Apps secrets (not Key Vault):
 | `acr-password` | Both | Pull images from ACR |
 | `redis-url` | Session | Connect to Redis |
 | `session-auth-token` | Both | API authentication |
-| `anthropic-api-key` | Agent | Claude API access |
+| `azure-ai-endpoint` | Agent | Azure AI Foundry endpoint |
 
 Container Apps secrets are:
 - Encrypted at rest
@@ -522,7 +519,7 @@ REDIS_URL=redis://localhost:6379 python -m py_code_mode.store bootstrap \
 
 # Run agent
 cd examples/azure-container-apps
-REDIS_URL=redis://localhost:6379 ANTHROPIC_API_KEY=your-key uv run python agent.py
+REDIS_URL=redis://localhost:6379 AZURE_AI_ENDPOINT=https://your-endpoint.azure.com uv run python agent.py
 ```
 
 Or run against the deployed Azure resources:
@@ -534,6 +531,6 @@ az containerapp tunnel --name session-server --resource-group my-rg &
 # Run agent locally pointing to tunnel
 SESSION_URL=http://localhost:8080 \
 SESSION_AUTH_TOKEN=<token> \
-ANTHROPIC_API_KEY=your-key \
+AZURE_AI_ENDPOINT=https://your-endpoint.azure.com \
 uv run python agent.py
 ```

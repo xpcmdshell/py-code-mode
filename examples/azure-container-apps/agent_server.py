@@ -25,24 +25,15 @@ class TaskResponse(BaseModel):
 
 
 def get_model_client():
-    """Get model client - Azure AI Foundry in cloud, Anthropic API locally."""
-    azure_endpoint = os.environ.get("AZURE_AI_ENDPOINT")
+    """Get Azure AI Foundry model client."""
+    from autogen_ext.models.azure import AzureAIChatCompletionClient
+    from azure.identity import DefaultAzureCredential
 
-    if azure_endpoint:
-        # Running in Azure - use Azure AI Foundry with managed identity
-        from autogen_ext.models.azure import AzureAIChatCompletionClient
-        from azure.identity import DefaultAzureCredential
-
-        return AzureAIChatCompletionClient(
-            model="claude-sonnet-4-20250514",
-            endpoint=azure_endpoint,
-            credential=DefaultAzureCredential(),
-        )
-    else:
-        # Running locally - use Anthropic API directly
-        from autogen_ext.models.anthropic import AnthropicChatCompletionClient
-
-        return AnthropicChatCompletionClient(model="claude-sonnet-4-20250514")
+    return AzureAIChatCompletionClient(
+        model="claude-sonnet-4-20250514",
+        endpoint=os.environ["AZURE_AI_ENDPOINT"],
+        credential=DefaultAzureCredential(),
+    )
 
 
 app = FastAPI(title="py-code-mode Agent")

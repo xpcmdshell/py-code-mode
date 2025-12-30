@@ -11,13 +11,13 @@
 # - Docker installed (for building images)
 # - jq installed (for JSON parsing)
 # - Python 3.11+ with py-code-mode installed (for bootstrap)
-# - ANTHROPIC_API_KEY environment variable set
+# - AZURE_AI_ENDPOINT environment variable set (Azure AI Foundry endpoint)
 #
 # Usage:
-#   ANTHROPIC_API_KEY=sk-... ./deploy.sh [resource-group] [location]
+#   AZURE_AI_ENDPOINT=https://your-endpoint.azure.com ./deploy.sh [resource-group] [location]
 #
 # Example:
-#   ANTHROPIC_API_KEY=sk-ant-... ./deploy.sh py-code-mode-demo eastus
+#   AZURE_AI_ENDPOINT=https://my-ai-foundry.azure.com ./deploy.sh py-code-mode-demo eastus
 
 set -euo pipefail
 
@@ -25,9 +25,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Validate required environment variables
-if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-    echo "Error: ANTHROPIC_API_KEY environment variable is required"
-    echo "Set it before running: ANTHROPIC_API_KEY=sk-ant-... ./deploy.sh"
+if [ -z "${AZURE_AI_ENDPOINT:-}" ]; then
+    echo "Error: AZURE_AI_ENDPOINT environment variable is required"
+    echo "Set it before running: AZURE_AI_ENDPOINT=https://your-endpoint.azure.com ./deploy.sh"
     exit 1
 fi
 
@@ -122,7 +122,7 @@ APP_OUTPUT=$(az deployment group create \
         acrPassword="$ACR_PASSWORD" \
         redisUrl="$REDIS_CONNECTION_STRING" \
         sessionAuthToken="$SESSION_AUTH_TOKEN" \
-        anthropicApiKey="$ANTHROPIC_API_KEY" \
+        azureAiEndpoint="$AZURE_AI_ENDPOINT" \
     --query 'properties.outputs' \
     --output json)
 

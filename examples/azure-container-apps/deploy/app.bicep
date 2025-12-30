@@ -24,9 +24,8 @@ param redisUrl string
 @description('Session server authentication token')
 param sessionAuthToken string
 
-@secure()
-@description('Anthropic API key for Claude models')
-param anthropicApiKey string
+@description('Azure AI Foundry endpoint for Claude models')
+param azureAiEndpoint string
 
 // Session Server - internal only, provides code execution
 resource sessionApp 'Microsoft.App/containerApps@2023-05-01' = {
@@ -209,8 +208,8 @@ resource agentApp 'Microsoft.App/containerApps@2023-05-01' = {
           value: sessionAuthToken
         }
         {
-          name: 'anthropic-api-key'
-          value: anthropicApiKey
+          name: 'azure-ai-endpoint'
+          value: azureAiEndpoint
         }
       ]
     }
@@ -237,8 +236,8 @@ resource agentApp 'Microsoft.App/containerApps@2023-05-01' = {
               secretRef: 'session-auth-token'
             }
             {
-              name: 'ANTHROPIC_API_KEY'
-              secretRef: 'anthropic-api-key'
+              name: 'AZURE_AI_ENDPOINT'
+              secretRef: 'azure-ai-endpoint'
             }
             {
               name: 'REDIS_URL'
