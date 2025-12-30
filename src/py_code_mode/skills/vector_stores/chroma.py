@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
+from py_code_mode.skills.vector_store import ModelInfo, SearchResult  # noqa: E402
+
 try:
     import chromadb
 
@@ -15,8 +17,6 @@ try:
 except ImportError:
     chromadb = None  # type: ignore[assignment]
     CHROMADB_AVAILABLE = False
-
-from py_code_mode.skills.vector_store import ModelInfo, SearchResult
 
 if TYPE_CHECKING:
     from py_code_mode.skills.embeddings import EmbeddingProvider

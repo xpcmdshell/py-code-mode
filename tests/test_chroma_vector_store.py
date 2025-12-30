@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import Mock
 
 import pytest
 
@@ -29,11 +28,10 @@ class TestChromaVectorStoreImport:
     def test_chroma_vector_store_satisfies_protocol(self) -> None:
         """ChromaVectorStore should implement VectorStore protocol."""
         pytest.importorskip("chromadb")
-        from py_code_mode.skills.vector_store import VectorStore
-        from py_code_mode.skills.vector_stores.chroma import ChromaVectorStore
-
         # Protocol compliance via isinstance check
         from py_code_mode.skills.embeddings import MockEmbedder
+        from py_code_mode.skills.vector_store import VectorStore
+        from py_code_mode.skills.vector_stores.chroma import ChromaVectorStore
 
         embedder = MockEmbedder()
         store = ChromaVectorStore(path=Path("/tmp/test"), embedder=embedder)
@@ -59,7 +57,7 @@ class TestChromaVectorStoreInitialization:
         from py_code_mode.skills.vector_stores.chroma import ChromaVectorStore
 
         store_path = tmp_path / "chroma_store"
-        store = ChromaVectorStore(path=store_path, embedder=mock_embedder)
+        ChromaVectorStore(path=store_path, embedder=mock_embedder)
 
         # ChromaDB should create the directory
         assert store_path.exists()
@@ -127,7 +125,10 @@ class TestChromaVectorStoreModelValidation:
         return MockEmbedder(dimension=768)
 
     def test_detects_model_change_different_dimension(
-        self, tmp_path: Path, mock_embedder: EmbeddingProvider, different_embedder: EmbeddingProvider
+        self,
+        tmp_path: Path,
+        mock_embedder: EmbeddingProvider,
+        different_embedder: EmbeddingProvider,
     ) -> None:
         """Should detect when model dimension changes."""
         pytest.importorskip("chromadb")
@@ -182,7 +183,10 @@ class TestChromaVectorStoreModelValidation:
         assert store2.count() == 1
 
     def test_clears_all_vectors_on_model_change(
-        self, tmp_path: Path, mock_embedder: EmbeddingProvider, different_embedder: EmbeddingProvider
+        self,
+        tmp_path: Path,
+        mock_embedder: EmbeddingProvider,
+        different_embedder: EmbeddingProvider,
     ) -> None:
         """Model change should clear entire index, not partial."""
         pytest.importorskip("chromadb")
@@ -354,14 +358,14 @@ class TestChromaVectorStoreSimilaritySearch:
         store.add(
             id="web_scraper",
             description="Fetch and parse HTML from a webpage",
-            source='requests.get(url).text',
+            source="requests.get(url).text",
             content_hash="hash2",
         )
 
         store.add(
             id="file_reader",
             description="Read file contents from disk",
-            source='Path(file_path).read_text()',
+            source="Path(file_path).read_text()",
             content_hash="hash3",
         )
 
@@ -464,9 +468,7 @@ class TestChromaVectorStoreSimilaritySearch:
         from py_code_mode.skills.embeddings import MockEmbedder
         from py_code_mode.skills.vector_stores.chroma import ChromaVectorStore
 
-        empty_store = ChromaVectorStore(
-            path=tmp_path / "empty_chroma", embedder=MockEmbedder()
-        )
+        empty_store = ChromaVectorStore(path=tmp_path / "empty_chroma", embedder=MockEmbedder())
 
         results = empty_store.search(
             query="anything",

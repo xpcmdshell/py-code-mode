@@ -16,10 +16,9 @@ class TestVectorStoreProtocol:
 
     def test_vector_store_protocol_exists(self) -> None:
         """VectorStore protocol should be importable from skills module."""
-        from py_code_mode.skills.vector_store import VectorStore
-
         # Protocol should be runtime checkable
-        from typing import Protocol, runtime_checkable
+
+        from py_code_mode.skills.vector_store import VectorStore
 
         assert isinstance(VectorStore, type)
 
@@ -68,14 +67,12 @@ class TestVectorStoreProtocol:
 
     def test_protocol_is_runtime_checkable(self) -> None:
         """Protocol should support isinstance() checks."""
+
         from py_code_mode.skills.vector_store import VectorStore
-        from typing import runtime_checkable
 
         # Check that VectorStore has the runtime_checkable marker
         # This allows isinstance(obj, VectorStore) to work
-        assert hasattr(VectorStore, "__protocol_attrs__") or hasattr(
-            VectorStore, "_is_protocol"
-        )
+        assert hasattr(VectorStore, "__protocol_attrs__") or hasattr(VectorStore, "_is_protocol")
 
 
 class TestModelInfo:
@@ -302,9 +299,7 @@ class TestVectorStoreSignatures:
         from py_code_mode.skills.vector_store import VectorStore
 
         class MinimalVectorStore:
-            def add(
-                self, id: str, description: str, source: str, content_hash: str
-            ) -> None:
+            def add(self, id: str, description: str, source: str, content_hash: str) -> None:
                 pass
 
             def remove(self, id: str) -> bool:
@@ -345,9 +340,7 @@ class TestVectorStoreSignatures:
         from py_code_mode.skills.vector_store import SearchResult, VectorStore
 
         class MinimalVectorStore:
-            def add(
-                self, id: str, description: str, source: str, content_hash: str
-            ) -> None:
+            def add(self, id: str, description: str, source: str, content_hash: str) -> None:
                 pass
 
             def remove(self, id: str) -> bool:
@@ -386,9 +379,7 @@ class TestVectorStoreSignatures:
         from py_code_mode.skills.vector_store import ModelInfo, VectorStore
 
         class MinimalVectorStore:
-            def add(
-                self, id: str, description: str, source: str, content_hash: str
-            ) -> None:
+            def add(self, id: str, description: str, source: str, content_hash: str) -> None:
                 pass
 
             def remove(self, id: str) -> bool:

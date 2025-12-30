@@ -483,13 +483,13 @@ skills.create(
 
         async with Session(storage=storage, executor=executor) as session:
             # 1. Create a skill with clear description
-            result = await session.run('''
+            result = await session.run("""
 skills.create(
     name="port_scanner",
     description="Scan network ports to find open services",
     source="def run(host: str) -> list:\\n    return ['port scanning', host]"
 )
-''')
+""")
             assert result.is_ok, f"skills.create() failed: {result.error}"
 
             # 2. Search for the skill using semantic query
@@ -498,7 +498,9 @@ skills.create(
 
             # Should find port_scanner since query matches description
             found_names = [s["name"] if isinstance(s, dict) else s.name for s in result.value]
-            assert "port_scanner" in found_names, f"Expected port_scanner in results, got: {found_names}"
+            assert "port_scanner" in found_names, (
+                f"Expected port_scanner in results, got: {found_names}"
+            )
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
@@ -513,7 +515,7 @@ skills.create(
             await session.add_skill(
                 name="web_scraper",
                 source="def run(url: str) -> str:\n    return f'scraped {url}'",
-                description="Scrape web pages and extract content"
+                description="Scrape web pages and extract content",
             )
 
             # 2. Search using facade method (host-side library)
@@ -521,7 +523,9 @@ skills.create(
 
             # Should find web_scraper since query matches description
             found_names = [s["name"] for s in results]
-            assert "web_scraper" in found_names, f"Expected web_scraper in results, got: {found_names}"
+            assert "web_scraper" in found_names, (
+                f"Expected web_scraper in results, got: {found_names}"
+            )
 
 
 # =============================================================================
@@ -575,14 +579,16 @@ class TestRedisStackIntegration:
             await session.add_skill(
                 name="data_analyzer",
                 source="def run(data: list) -> dict:\n    return {'count': len(data)}",
-                description="Analyze data and return statistics"
+                description="Analyze data and return statistics",
             )
 
             # 2. Search using facade method - this uses RedisVectorStore
             results = await session.search_skills("data analysis statistics")
 
             found_names = [s["name"] for s in results]
-            assert "data_analyzer" in found_names, f"Expected data_analyzer in results, got: {found_names}"
+            assert "data_analyzer" in found_names, (
+                f"Expected data_analyzer in results, got: {found_names}"
+            )
 
 
 # =============================================================================

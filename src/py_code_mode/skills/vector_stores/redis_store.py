@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 _VALID_SKILL_ID = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 _MAX_ID_LENGTH = 128
 
+from py_code_mode.skills.vector_store import ModelInfo, SearchResult  # noqa: E402
+
 try:
     import redis.exceptions
     from redis import Redis
@@ -26,8 +28,6 @@ except ImportError:
     Redis = None  # type: ignore[assignment, misc]
     redis = None  # type: ignore[assignment]
     REDIS_AVAILABLE = False
-
-from py_code_mode.skills.vector_store import ModelInfo, SearchResult
 
 if TYPE_CHECKING:
     from py_code_mode.skills.embeddings import EmbeddingProvider

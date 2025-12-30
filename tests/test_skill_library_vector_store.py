@@ -10,10 +10,7 @@ These tests define the new behavior we want:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from textwrap import dedent
 from typing import Any
-
-import pytest
 
 from py_code_mode.skills import PythonSkill
 from py_code_mode.skills.vector_store import ModelInfo, SearchResult, VectorStore
@@ -81,9 +78,7 @@ class MockVectorStore:
         for skill_id, data in self._store.items():
             # Mock score based on presence of query term in description
             score = 0.8 if query.lower() in data["description"].lower() else 0.5
-            results.append(
-                SearchResult(id=skill_id, score=score, metadata={"mock": True})
-            )
+            results.append(SearchResult(id=skill_id, score=score, metadata={"mock": True}))
 
         # Sort by score descending
         results.sort(key=lambda r: r.score, reverse=True)
@@ -173,7 +168,7 @@ class TestSearchDelegation:
         library.add(skill)
 
         # Search should delegate to vector_store
-        results = library.search("test")
+        library.search("test")
 
         # Verify delegation occurred
         assert len(vector_store.search_calls) == 1
@@ -194,7 +189,9 @@ class TestSearchDelegation:
 
         library = SkillLibrary(embedder=embedder, vector_store=vector_store)
 
-        skill = _make_skill("fetch_url", "Fetch content from a URL", "return requests.get(url).text")
+        skill = _make_skill(
+            "fetch_url", "Fetch content from a URL", "return requests.get(url).text"
+        )
         library.add(skill)
 
         results = library.search("download")
@@ -614,7 +611,10 @@ class TestWarmStartupCaching:
     """Test that vector_store caching works across library instances."""
 
     def test_warm_startup_skips_embedding_for_unchanged_skills(self) -> None:
-        """When SkillLibrary restarts with existing vector_store, unchanged skills should NOT be re-embedded.
+        """Warm startup should skip re-embedding unchanged skills.
+
+        When SkillLibrary restarts with existing vector_store, unchanged skills
+        should NOT be re-embedded.
 
         Scenario: Application restarts, creates new SkillLibrary with same vector_store.
         Expected: Embeddings cached in vector_store are reused, not regenerated.
@@ -628,18 +628,20 @@ class TestWarmStartupCaching:
         store = MemorySkillStore()
 
         # Pre-populate store with a skill
-        skill = _make_skill("fetch_url", "Fetch content from a URL", "return requests.get(url).text")
+        skill = _make_skill(
+            "fetch_url", "Fetch content from a URL", "return requests.get(url).text"
+        )
         store.save(skill)
 
         # First startup: create library, indexes the skill
-        library1 = SkillLibrary(embedder=embedder, vector_store=vector_store, store=store)
+        SkillLibrary(embedder=embedder, vector_store=vector_store, store=store)
 
         # Verify first startup called add() once
         assert len(vector_store.add_calls) == 1, "First startup should embed the skill"
 
         # SIMULATE RESTART: Create NEW SkillLibrary instance with SAME vector_store
         # (This is what happens when app restarts with persistent ChromaDB)
-        library2 = SkillLibrary(embedder=embedder, vector_store=vector_store, store=store)
+        SkillLibrary(embedder=embedder, vector_store=vector_store, store=store)
 
         # BUG: refresh() calls clear() which wipes the cache, so add() is called AGAIN
         # EXPECTED: add() should NOT be called again (content hash matches)

@@ -10,7 +10,6 @@ enabling multiple agents to share skill embeddings across deployments.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import Mock
 
 import pytest
 
@@ -466,14 +465,14 @@ class TestRedisVectorStoreSimilaritySearch:
         store.add(
             id="web_scraper",
             description="Fetch and parse HTML from a webpage",
-            source='requests.get(url).text',
+            source="requests.get(url).text",
             content_hash="hash2",
         )
 
         store.add(
             id="file_reader",
             description="Read file contents from disk",
-            source='Path(file_path).read_text()',
+            source="Path(file_path).read_text()",
             content_hash="hash3",
         )
 
