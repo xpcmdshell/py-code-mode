@@ -31,6 +31,18 @@ try:
 except ImportError:
     ChromaVectorStore = None  # type: ignore[misc, assignment]
 
+# Import RedisVectorStore at module level for test mocking support
+try:
+    from py_code_mode.skills.vector_stores.redis_store import (
+        REDIS_AVAILABLE as REDIS_VECTOR_AVAILABLE,
+    )
+    from py_code_mode.skills.vector_stores.redis_store import (
+        RedisVectorStore,
+    )
+except ImportError:
+    RedisVectorStore = None  # type: ignore[misc, assignment]
+    REDIS_VECTOR_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -315,6 +327,8 @@ class RedisStorage:
         self._skill_library: SkillLibrary | None = None
         self._artifact_store: RedisArtifactStore | None = None
         self._deps_namespace: DepsNamespace | None = None
+        self._vector_store: VectorStore | None = None
+        self._vector_store_initialized: bool = False
 
     @property
     def prefix(self) -> str:
@@ -335,10 +349,39 @@ class RedisStorage:
     def get_vector_store(self) -> VectorStore | None:
         """Return RedisVectorStore if available, else None.
 
-        Note: RedisVectorStore not yet implemented (Phase 6).
-        Returns None until Phase 6 implementation.
+        The vector store is cached after first creation.
+
+        Returns:
+            RedisVectorStore instance if redis-py with RediSearch is available
+            and semantic dependencies are installed, None otherwise.
         """
-        return None
+        if self._vector_store_initialized:
+            return self._vector_store
+
+        # RedisVectorStore is imported at module level (None if unavailable)
+        if RedisVectorStore is None or not REDIS_VECTOR_AVAILABLE:
+            self._vector_store = None
+        else:
+            try:
+                from py_code_mode.skills import Embedder
+
+                embedder = Embedder()
+                self._vector_store = RedisVectorStore(
+                    redis=self._redis,
+                    embedder=embedder,
+                    prefix=f"{self._prefix}:vectors",
+                )
+            except ImportError:
+                self._vector_store = None
+            except Exception as e:
+                # RedisVectorStore requires RediSearch module and proper Redis
+                # connection. If initialization fails (e.g., mock client in tests,
+                # Redis without RediSearch), fall back to None.
+                logger.debug(f"RedisVectorStore initialization failed: {e}")
+                self._vector_store = None
+
+        self._vector_store_initialized = True
+        return self._vector_store
 
     def get_serializable_access(self) -> RedisStorageAccess:
         """Return RedisStorageAccess for cross-process communication."""
@@ -365,8 +408,12 @@ class RedisStorage:
                 redis_url = f"redis://{host}:{port}/{db}"
 
         prefix = self._prefix
-        # vectors_prefix is None until RedisVectorStore is implemented (Phase 6)
-        vectors_prefix = f"{prefix}:vectors" if self.get_vector_store() is not None else None
+        # vectors_prefix is set when RedisVectorStore dependencies are available
+        # (redis-py with RediSearch). We check module availability, not actual
+        # vector store creation, to avoid side effects during serialization.
+        vectors_prefix = (
+            f"{prefix}:vectors" if RedisVectorStore is not None and REDIS_VECTOR_AVAILABLE else None
+        )
         return RedisStorageAccess(
             redis_url=redis_url,
             tools_prefix=f"{prefix}:tools",
@@ -399,8 +446,12 @@ class RedisStorage:
         """Return SkillLibrary for in-process execution."""
         if self._skill_library is None:
             raw_store = RedisSkillStore(self._redis, prefix=f"{self._prefix}:skills")
+            vector_store = self.get_vector_store()
             try:
-                self._skill_library = create_skill_library(store=raw_store)
+                self._skill_library = create_skill_library(
+                    store=raw_store,
+                    vector_store=vector_store,
+                )
             except ImportError:
                 logger.warning(
                     "Semantic search dependencies not available, falling back to MockEmbedder. "
@@ -408,7 +459,11 @@ class RedisStorage:
                 )
                 from py_code_mode.skills import MockEmbedder
 
-                self._skill_library = SkillLibrary(embedder=MockEmbedder(), store=raw_store)
+                self._skill_library = SkillLibrary(
+                    embedder=MockEmbedder(),
+                    store=raw_store,
+                    vector_store=vector_store,
+                )
         return self._skill_library
 
     def get_artifact_store(self) -> ArtifactStoreProtocol:

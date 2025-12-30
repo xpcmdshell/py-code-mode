@@ -473,6 +473,117 @@ skills.create(
             assert result.is_ok
             assert result.value == "from redis"
 
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
+    async def test_redis_container_skill_search(self, redis_url: str) -> None:
+        """Skill search should find created skills by semantic similarity."""
+        client = redis.from_url(redis_url)
+        storage = RedisStorage(redis=client, prefix="search_test")
+        executor = ContainerExecutor(ContainerConfig(timeout=60.0, auth_disabled=True))
+
+        async with Session(storage=storage, executor=executor) as session:
+            # 1. Create a skill with clear description
+            result = await session.run('''
+skills.create(
+    name="port_scanner",
+    description="Scan network ports to find open services",
+    source="def run(host: str) -> list:\\n    return ['port scanning', host]"
+)
+''')
+            assert result.is_ok, f"skills.create() failed: {result.error}"
+
+            # 2. Search for the skill using semantic query
+            result = await session.run('skills.search("network port scanning")')
+            assert result.is_ok, f"skills.search() failed: {result.error}"
+
+            # Should find port_scanner since query matches description
+            found_names = [s["name"] if isinstance(s, dict) else s.name for s in result.value]
+            assert "port_scanner" in found_names, f"Expected port_scanner in results, got: {found_names}"
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
+    async def test_redis_search_skills_facade(self, redis_url: str) -> None:
+        """session.search_skills() facade should find skills with RedisStorage."""
+        client = redis.from_url(redis_url)
+        storage = RedisStorage(redis=client, prefix="facade_test")
+        executor = ContainerExecutor(ContainerConfig(timeout=60.0, auth_disabled=True))
+
+        async with Session(storage=storage, executor=executor) as session:
+            # 1. Create a skill using facade method
+            await session.add_skill(
+                name="web_scraper",
+                source="def run(url: str) -> str:\n    return f'scraped {url}'",
+                description="Scrape web pages and extract content"
+            )
+
+            # 2. Search using facade method (host-side library)
+            results = await session.search_skills("web scraping extract")
+
+            # Should find web_scraper since query matches description
+            found_names = [s["name"] for s in results]
+            assert "web_scraper" in found_names, f"Expected web_scraper in results, got: {found_names}"
+
+
+# =============================================================================
+# Redis Stack (RediSearch) Integration Tests
+# =============================================================================
+
+
+@pytest.mark.xdist_group("docker")
+class TestRedisStackIntegration:
+    """Test RedisStorage with redis-stack (RediSearch enabled).
+
+    This tests the actual RedisVectorStore integration, not the in-memory fallback.
+    """
+
+    @pytest.fixture
+    def redis_stack_container(self):
+        """Redis container with RediSearch support."""
+        pytest.importorskip("testcontainers")
+        from testcontainers.redis import RedisContainer
+
+        # redis-stack includes RediSearch module
+        container = RedisContainer(image="redis/redis-stack:latest")
+        container.start()
+        yield container
+        container.stop()
+
+    @pytest.fixture
+    def redis_stack_url(self, redis_stack_container) -> str:
+        """Get the Redis URL for the redis-stack container."""
+        host = redis_stack_container.get_container_host_ip()
+        port = redis_stack_container.get_exposed_port(6379)
+        return f"redis://{host}:{port}"
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
+    async def test_redis_stack_search_skills_facade(self, redis_stack_url: str) -> None:
+        """session.search_skills() should work with RedisVectorStore (RediSearch)."""
+        import redis as redis_lib
+
+        client = redis_lib.from_url(redis_stack_url)
+        storage = RedisStorage(redis=client, prefix="stack_test")
+
+        # Verify we're using RedisVectorStore (not in-memory fallback)
+        vector_store = storage.get_vector_store()
+        assert vector_store is not None, "Expected RedisVectorStore, got None (in-memory fallback)"
+
+        executor = ContainerExecutor(ContainerConfig(timeout=60.0, auth_disabled=True))
+
+        async with Session(storage=storage, executor=executor) as session:
+            # 1. Create a skill
+            await session.add_skill(
+                name="data_analyzer",
+                source="def run(data: list) -> dict:\n    return {'count': len(data)}",
+                description="Analyze data and return statistics"
+            )
+
+            # 2. Search using facade method - this uses RedisVectorStore
+            results = await session.search_skills("data analysis statistics")
+
+            found_names = [s["name"] for s in results]
+            assert "data_analyzer" in found_names, f"Expected data_analyzer in results, got: {found_names}"
+
 
 # =============================================================================
 # Negative Tests
