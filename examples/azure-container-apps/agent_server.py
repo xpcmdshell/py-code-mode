@@ -25,14 +25,22 @@ class TaskResponse(BaseModel):
 
 
 def get_model_client():
-    """Get Azure AI Foundry model client."""
-    from autogen_ext.models.azure import AzureAIChatCompletionClient
-    from azure.identity import DefaultAzureCredential
+    """Get Azure OpenAI model client."""
+    from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
+    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
-    return AzureAIChatCompletionClient(
-        model="claude-sonnet-4-20250514",
-        endpoint=os.environ["AZURE_AI_ENDPOINT"],
-        credential=DefaultAzureCredential(),
+    # Use managed identity for Azure OpenAI auth
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default",
+    )
+
+    return AzureOpenAIChatCompletionClient(
+        azure_deployment=os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
+        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+        azure_ad_token_provider=token_provider,
+        model=os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
+        api_version="2024-08-01-preview",
     )
 
 

@@ -24,8 +24,11 @@ param redisUrl string
 @description('Session server authentication token')
 param sessionAuthToken string
 
-@description('Azure AI Foundry endpoint for Claude models')
-param azureAiEndpoint string
+@description('Azure OpenAI endpoint URL')
+param azureOpenAiEndpoint string
+
+@description('Azure OpenAI deployment name (e.g., gpt-4o)')
+param azureOpenAiDeployment string = 'gpt-4o'
 
 // Session Server - internal only, provides code execution
 resource sessionApp 'Microsoft.App/containerApps@2023-05-01' = {
@@ -208,8 +211,12 @@ resource agentApp 'Microsoft.App/containerApps@2023-05-01' = {
           value: sessionAuthToken
         }
         {
-          name: 'azure-ai-endpoint'
-          value: azureAiEndpoint
+          name: 'azure-openai-endpoint'
+          value: azureOpenAiEndpoint
+        }
+        {
+          name: 'azure-openai-deployment'
+          value: azureOpenAiDeployment
         }
       ]
     }
@@ -236,8 +243,12 @@ resource agentApp 'Microsoft.App/containerApps@2023-05-01' = {
               secretRef: 'session-auth-token'
             }
             {
-              name: 'AZURE_AI_ENDPOINT'
-              secretRef: 'azure-ai-endpoint'
+              name: 'AZURE_OPENAI_ENDPOINT'
+              secretRef: 'azure-openai-endpoint'
+            }
+            {
+              name: 'AZURE_OPENAI_DEPLOYMENT'
+              secretRef: 'azure-openai-deployment'
             }
             {
               name: 'REDIS_URL'

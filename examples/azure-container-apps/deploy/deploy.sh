@@ -3,33 +3,26 @@
 #
 # This deploys:
 # - Azure Cache for Redis: Stores tools, skills, deps
+# - Azure OpenAI (GPT-4o): LLM for agent
 # - Session server (internal): Code execution with tools
-# - Agent server (external): AutoGen agent with Claude via Azure AI Foundry
+# - Agent server (external): AutoGen agent with GPT-4o
 #
 # Prerequisites:
 # - Azure CLI installed and logged in (az login)
 # - Docker installed (for building images)
 # - jq installed (for JSON parsing)
 # - Python 3.11+ with py-code-mode installed (for bootstrap)
-# - AZURE_AI_ENDPOINT environment variable set (Azure AI Foundry endpoint)
 #
 # Usage:
-#   AZURE_AI_ENDPOINT=https://your-endpoint.azure.com ./deploy.sh [resource-group] [location]
+#   ./deploy.sh [resource-group] [location]
 #
 # Example:
-#   AZURE_AI_ENDPOINT=https://my-ai-foundry.azure.com ./deploy.sh py-code-mode-demo eastus
+#   ./deploy.sh py-code-mode-demo eastus
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-
-# Validate required environment variables
-if [ -z "${AZURE_AI_ENDPOINT:-}" ]; then
-    echo "Error: AZURE_AI_ENDPOINT environment variable is required"
-    echo "Set it before running: AZURE_AI_ENDPOINT=https://your-endpoint.azure.com ./deploy.sh"
-    exit 1
-fi
 
 # Configuration
 RESOURCE_GROUP="${1:-py-code-mode-demo}"
@@ -67,6 +60,8 @@ STORAGE_NAME=$(echo "$INFRA_OUTPUT" | jq -r '.storageAccountName.value')
 REDIS_HOSTNAME=$(echo "$INFRA_OUTPUT" | jq -r '.redisHostname.value')
 REDIS_PRIMARY_KEY=$(echo "$INFRA_OUTPUT" | jq -r '.redisPrimaryKey.value')
 REDIS_CONNECTION_STRING=$(echo "$INFRA_OUTPUT" | jq -r '.redisConnectionString.value')
+AZURE_OPENAI_ENDPOINT=$(echo "$INFRA_OUTPUT" | jq -r '.openAiEndpoint.value')
+AZURE_OPENAI_DEPLOYMENT=$(echo "$INFRA_OUTPUT" | jq -r '.openAiDeployment.value')
 
 echo "   ACR: $ACR_SERVER"
 echo "   Storage: $STORAGE_NAME"
@@ -122,7 +117,8 @@ APP_OUTPUT=$(az deployment group create \
         acrPassword="$ACR_PASSWORD" \
         redisUrl="$REDIS_CONNECTION_STRING" \
         sessionAuthToken="$SESSION_AUTH_TOKEN" \
-        azureAiEndpoint="$AZURE_AI_ENDPOINT" \
+        azureOpenAiEndpoint="$AZURE_OPENAI_ENDPOINT" \
+        azureOpenAiDeployment="$AZURE_OPENAI_DEPLOYMENT" \
     --query 'properties.outputs' \
     --output json)
 

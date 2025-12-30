@@ -1,6 +1,6 @@
 # Azure Container Apps Deployment
 
-Production deployment of py-code-mode on Azure Container Apps with Redis-backed storage and bearer token authentication.
+Production deployment of py-code-mode on Azure Container Apps with Redis-backed storage, Azure OpenAI (GPT-4o), and bearer token authentication.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ Production deployment of py-code-mode on Azure Container Apps with Redis-backed 
 |  | Agent Server      | -----------------------> | Session Server         |              |
 |  | (external ingress)|                          | (internal ingress)     |              |
 |  | - AutoGen agent   |                          | - py-code-mode server  |              |
-|  | - Claude/GPT-4    |                          | - curl, jq, nmap       |              |
+|  | - GPT-4o          |                          | - curl, jq, nmap       |              |
 |  +-------------------+                          +------------------------+              |
 |          ^                                                 |                            |
 |          |                                                 | TLS (port 6380)            |
@@ -40,7 +40,6 @@ Production deployment of py-code-mode on Azure Container Apps with Redis-backed 
 - Docker installed (for building images)
 - `jq` installed (for JSON parsing in deploy script)
 - Python 3.11+ (for running bootstrap script)
-- Azure AI Foundry endpoint with Claude models
 
 ## Quick Start
 
@@ -130,7 +129,8 @@ az deployment group create \
         acrPassword="<acr-password>" \
         redisUrl="$REDIS_URL" \
         sessionAuthToken="$SESSION_AUTH_TOKEN" \
-        azureAiEndpoint="$AZURE_AI_ENDPOINT"
+        azureOpenAiEndpoint="$AZURE_OPENAI_ENDPOINT" \
+        azureOpenAiDeployment="$AZURE_OPENAI_DEPLOYMENT"
 ```
 
 ### 5. Test the Deployment
@@ -304,7 +304,8 @@ previous = artifacts.load("scan_results")
 | `PORT` | No | Server port (default: 8080) |
 | `SESSION_URL` | Yes | Session server URL (e.g., `http://session-server`) |
 | `SESSION_AUTH_TOKEN` | Yes | Bearer token to authenticate with session server |
-| `AZURE_AI_ENDPOINT` | Yes | Azure AI Foundry endpoint for Claude models |
+| `AZURE_OPENAI_ENDPOINT` | Yes | Azure OpenAI endpoint URL |
+| `AZURE_OPENAI_DEPLOYMENT` | No | Azure OpenAI deployment name (default: gpt-4o) |
 
 ## Security Considerations
 
@@ -346,7 +347,8 @@ All secrets are managed via Container Apps secrets (not Key Vault):
 | `acr-password` | Both | Pull images from ACR |
 | `redis-url` | Session | Connect to Redis |
 | `session-auth-token` | Both | API authentication |
-| `azure-ai-endpoint` | Agent | Azure AI Foundry endpoint |
+| `azure-openai-endpoint` | Agent | Azure OpenAI endpoint URL |
+| `azure-openai-deployment` | Agent | Azure OpenAI deployment name |
 
 Container Apps secrets are:
 - Encrypted at rest
@@ -519,7 +521,7 @@ REDIS_URL=redis://localhost:6379 python -m py_code_mode.store bootstrap \
 
 # Run agent
 cd examples/azure-container-apps
-REDIS_URL=redis://localhost:6379 AZURE_AI_ENDPOINT=https://your-endpoint.azure.com uv run python agent.py
+REDIS_URL=redis://localhost:6379 AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com uv run python agent.py
 ```
 
 Or run against the deployed Azure resources:
@@ -531,6 +533,6 @@ az containerapp tunnel --name session-server --resource-group my-rg &
 # Run agent locally pointing to tunnel
 SESSION_URL=http://localhost:8080 \
 SESSION_AUTH_TOKEN=<token> \
-AZURE_AI_ENDPOINT=https://your-endpoint.azure.com \
+AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com \
 uv run python agent.py
 ```

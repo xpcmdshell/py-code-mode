@@ -2,14 +2,14 @@
 
 This example shows:
 - Same agent pattern as the autogen example
-- Deployed to Azure Container Apps with Claude via Azure AI Foundry
+- Deployed to Azure Container Apps with GPT-4o via Azure OpenAI
 - Uses Redis for both skills and artifacts when REDIS_URL is set
 - CLI tools (curl, jq) and MCP tools (fetch, time)
 - Multi-tool skill (analyze_repo.py)
 
-Run locally (with AZURE_AI_ENDPOINT):
+Run locally (with Azure OpenAI):
     cd examples/azure-container-apps
-    AZURE_AI_ENDPOINT=https://your-endpoint.azure.com uv run python agent.py
+    AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com uv run python agent.py
 
 Run with Redis backend:
     # First, provision skills to Redis (one-time or deploy-time)
@@ -45,14 +45,22 @@ SHARED = HERE.parent / "shared"
 
 
 def get_model_client():
-    """Get Azure AI Foundry model client."""
-    from autogen_ext.models.azure import AzureAIChatCompletionClient
-    from azure.identity import DefaultAzureCredential
+    """Get Azure OpenAI model client."""
+    from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
+    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
-    return AzureAIChatCompletionClient(
-        model="claude-sonnet-4-20250514",
-        endpoint=os.environ["AZURE_AI_ENDPOINT"],
-        credential=DefaultAzureCredential(),
+    # Use managed identity for Azure OpenAI auth
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default",
+    )
+
+    return AzureOpenAIChatCompletionClient(
+        azure_deployment=os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
+        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+        azure_ad_token_provider=token_provider,
+        model=os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
+        api_version="2024-08-01-preview",
     )
 
 

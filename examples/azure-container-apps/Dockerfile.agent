@@ -22,7 +22,7 @@ COPY examples/azure-container-apps/agent_server.py ./
 # Install agent dependencies (autogen, azure-identity, etc.)
 RUN uv pip install --system \
     "autogen-agentchat>=0.4" \
-    "autogen-ext[azure]>=0.4" \
+    "autogen-ext[openai]>=0.4" \
     "azure-identity>=1.15.0" \
     "fastapi>=0.115.0" \
     "uvicorn>=0.32.0" \
