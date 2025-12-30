@@ -67,9 +67,9 @@ class VectorStore(Protocol):
     def search(
         self,
         query: str,
-        limit: int = 10,
-        desc_weight: float = 0.7,
-        code_weight: float = 0.3,
+        limit: int,
+        desc_weight: float,
+        code_weight: float,
     ) -> list[SearchResult]:
         """Search for skills by semantic similarity.
 

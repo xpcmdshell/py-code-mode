@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 try:
     import chromadb
@@ -102,7 +105,11 @@ class ChromaVectorStore:
         if stored_dimension is not None:
             # Model mismatch check - dimension is the critical factor
             if stored_dimension != current_info.dimension:
-                # Model changed, clear all vectors
+                logger.warning(
+                    "Embedding model dimension changed "
+                    f"({stored_dimension} -> {current_info.dimension}). "
+                    f"Clearing {self.count()} cached embeddings."
+                )
                 self.clear()
 
         # Update collection metadata with current model info
@@ -249,8 +256,11 @@ class ChromaVectorStore:
             if result["ids"] and result["metadatas"]:
                 metadata = result["metadatas"][0]
                 return metadata.get(_KEY_CONTENT_HASH)
-        except Exception:
-            pass
+        except (KeyError, IndexError):
+            # Malformed result structure - skill doesn't exist
+            return None
+        except Exception as e:
+            logger.debug(f"Failed to get content hash for {id}: {e}")
         return None
 
     def get_model_info(self) -> ModelInfo:

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 # Skill ID validation
 _VALID_SKILL_ID = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
@@ -217,6 +220,11 @@ class RedisVectorStore:
         if not _VALID_SKILL_ID.match(skill_id):
             raise ValueError(f"Invalid skill ID format: {skill_id!r}")
 
+        # Defense-in-depth: explicit check for characters that would break Redis keys
+        redis_unsafe = frozenset(":{}[]")
+        if any(c in skill_id for c in redis_unsafe):
+            raise ValueError(f"Skill ID contains unsafe characters: {skill_id!r}")
+
     def _vector_to_bytes(self, vector: list[float]) -> bytes:
         """Convert vector to bytes for Redis storage.
 
@@ -387,7 +395,14 @@ class RedisVectorStore:
             .dialect(2)
         )
 
-        results = self._redis.ft(self._index_name).search(q, query_params={"vec": query_bytes})
+        try:
+            results = self._redis.ft(self._index_name).search(q, query_params={"vec": query_bytes})
+        except redis.exceptions.ResponseError as e:
+            logger.error(f"RediSearch query failed: {e}")
+            return {}
+        except redis.exceptions.ConnectionError as e:
+            logger.error(f"Redis connection failed during search: {e}")
+            return {}
 
         scores: dict[str, float] = {}
         for doc in results.docs:

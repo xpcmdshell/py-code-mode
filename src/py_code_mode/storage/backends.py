@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
 from urllib.parse import quote
 
 from py_code_mode.artifacts import ArtifactStoreProtocol, FileArtifactStore, RedisArtifactStore
@@ -102,6 +102,8 @@ class StorageBackend(Protocol):
 class FileStorage:
     """File-based storage using directories for tools, skills, and artifacts."""
 
+    _UNINITIALIZED: ClassVar[object] = object()
+
     def __init__(self, base_path: Path | str) -> None:
         """Initialize file storage.
 
@@ -116,8 +118,7 @@ class FileStorage:
         self._skill_library: SkillLibrary | None = None
         self._artifact_store: FileArtifactStore | None = None
         self._deps_namespace: DepsNamespace | None = None
-        self._vector_store: VectorStore | None = None
-        self._vector_store_initialized: bool = False
+        self._vector_store: VectorStore | None | object = FileStorage._UNINITIALIZED
 
     @property
     def root(self) -> Path:
@@ -154,8 +155,8 @@ class FileStorage:
         Returns:
             ChromaVectorStore instance if chromadb is installed, None otherwise.
         """
-        if self._vector_store_initialized:
-            return self._vector_store
+        if self._vector_store is not FileStorage._UNINITIALIZED:
+            return self._vector_store  # type: ignore[return-value]
 
         # ChromaVectorStore is imported at module level (None if chromadb unavailable)
         if ChromaVectorStore is None:
@@ -170,8 +171,7 @@ class FileStorage:
             except ImportError:
                 self._vector_store = None
 
-        self._vector_store_initialized = True
-        return self._vector_store
+        return self._vector_store  # type: ignore[return-value]
 
     def get_serializable_access(self) -> FileStorageAccess:
         """Return FileStorageAccess for cross-process communication."""
@@ -287,6 +287,8 @@ class FileStorage:
 class RedisStorage:
     """Redis-based storage for tools, skills, and artifacts."""
 
+    _UNINITIALIZED: ClassVar[object] = object()
+
     def __init__(
         self,
         url: str | None = None,
@@ -327,8 +329,7 @@ class RedisStorage:
         self._skill_library: SkillLibrary | None = None
         self._artifact_store: RedisArtifactStore | None = None
         self._deps_namespace: DepsNamespace | None = None
-        self._vector_store: VectorStore | None = None
-        self._vector_store_initialized: bool = False
+        self._vector_store: VectorStore | None | object = RedisStorage._UNINITIALIZED
 
     @property
     def prefix(self) -> str:
@@ -355,8 +356,8 @@ class RedisStorage:
             RedisVectorStore instance if redis-py with RediSearch is available
             and semantic dependencies are installed, None otherwise.
         """
-        if self._vector_store_initialized:
-            return self._vector_store
+        if self._vector_store is not RedisStorage._UNINITIALIZED:
+            return self._vector_store  # type: ignore[return-value]
 
         # RedisVectorStore is imported at module level (None if unavailable)
         if RedisVectorStore is None or not REDIS_VECTOR_AVAILABLE:
@@ -380,8 +381,7 @@ class RedisStorage:
                 logger.debug(f"RedisVectorStore initialization failed: {e}")
                 self._vector_store = None
 
-        self._vector_store_initialized = True
-        return self._vector_store
+        return self._vector_store  # type: ignore[return-value]
 
     def get_serializable_access(self) -> RedisStorageAccess:
         """Return RedisStorageAccess for cross-process communication."""

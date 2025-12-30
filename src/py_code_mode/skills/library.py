@@ -194,7 +194,9 @@ class SkillLibrary:
                 desc_weight=self.ranking.description_weight,
                 code_weight=self.ranking.code_weight,
             )
-            # Map SearchResult back to PythonSkill, filtering out stale results
+            # Filter out stale vectors: if a skill was deleted from the store
+            # but its vectors remain in VectorStore (refresh doesn't clear VectorStore),
+            # exclude it from results by checking _skills membership
             return [self._skills[r.id] for r in results if r.id in self._skills]
 
         # Fallback: in-memory cosine similarity
