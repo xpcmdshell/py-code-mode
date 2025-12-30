@@ -47,6 +47,7 @@ SHARED = HERE.parent / "shared"
 def get_model_client():
     """Get Azure OpenAI model client."""
     from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
+    from autogen_core.models import ModelFamily, ModelInfo
     from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
     # Use managed identity for Azure OpenAI auth
@@ -55,12 +56,26 @@ def get_model_client():
         "https://cognitiveservices.azure.com/.default",
     )
 
+    deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+
+    # Model info for models not yet in autogen's registry
+    model_info_map = {
+        "gpt-41": ModelInfo(
+            vision=True,
+            function_calling=True,
+            json_output=True,
+            family=ModelFamily.GPT_4O,
+            context_window=128000,
+        ),
+    }
+
     return AzureOpenAIChatCompletionClient(
-        azure_deployment=os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
+        azure_deployment=deployment,
         azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
         azure_ad_token_provider=token_provider,
-        model=os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
+        model=deployment,
         api_version="2024-08-01-preview",
+        model_info=model_info_map.get(deployment),
     )
 
 
