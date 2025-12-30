@@ -58,7 +58,7 @@ class TestWrapperPropertiesRemoved:
 
         Breaks when: Property still exists (should raise AttributeError).
         """
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         with pytest.raises(AttributeError):
             _ = storage.tools
@@ -68,7 +68,7 @@ class TestWrapperPropertiesRemoved:
 
         Breaks when: Property still exists (should raise AttributeError).
         """
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         with pytest.raises(AttributeError):
             _ = storage.skills
@@ -78,7 +78,7 @@ class TestWrapperPropertiesRemoved:
 
         Breaks when: Property still exists (should raise AttributeError).
         """
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         with pytest.raises(AttributeError):
             _ = storage.artifacts
@@ -135,7 +135,7 @@ class TestGetMethodsReturnDirectTypes:
 
         Breaks when: Returns dict wrapper or wrong type.
         """
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         result = await storage.get_tool_registry()
 
@@ -148,7 +148,7 @@ class TestGetMethodsReturnDirectTypes:
 
         Breaks when: Returns SkillStoreWrapper or wrong type.
         """
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         result = storage.get_skill_library()
 
@@ -161,7 +161,7 @@ class TestGetMethodsReturnDirectTypes:
 
         Breaks when: Returns ArtifactStoreWrapper instead of protocol impl.
         """
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         result = storage.get_artifact_store()
 

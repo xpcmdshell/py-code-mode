@@ -12,8 +12,8 @@ RUN pip install uv
 COPY pyproject.toml README.md ./
 COPY src/ src/
 
-# Install py-code-mode
-RUN uv pip install --system -e ".[container]"
+# Install py-code-mode with redis support
+RUN uv pip install --system -e ".[redis]"
 
 # Copy example dependencies and agent code
 COPY examples/azure-container-apps/pyproject.toml ./example-pyproject.toml

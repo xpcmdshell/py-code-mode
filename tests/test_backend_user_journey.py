@@ -409,7 +409,7 @@ class TestRedisContainerIntegration:
     async def test_redis_container_full_workflow(self, redis_url: str) -> None:
         """Complete workflow with Redis storage and container executor."""
         client = redis.from_url(redis_url)
-        storage = RedisStorage(client, prefix="test")
+        storage = RedisStorage(redis=client, prefix="test")
         executor = ContainerExecutor(ContainerConfig(timeout=60.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
@@ -446,7 +446,7 @@ skills.create(
         client = redis.from_url(redis_url)
 
         # Session 1: Create skill
-        storage1 = RedisStorage(client, prefix="persist_test")
+        storage1 = RedisStorage(redis=client, prefix="persist_test")
         executor1 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage1, executor=executor1) as session:
@@ -460,7 +460,7 @@ skills.create(
             assert result.is_ok
 
         # Session 2: Skill should exist
-        storage2 = RedisStorage(client, prefix="persist_test")
+        storage2 = RedisStorage(redis=client, prefix="persist_test")
         executor2 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage2, executor=executor2) as session:

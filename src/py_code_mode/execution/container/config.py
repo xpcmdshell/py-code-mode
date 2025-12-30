@@ -202,6 +202,9 @@ class ContainerConfig:
     auth_token: str | None = None  # Bearer token for container API authentication
     auth_disabled: bool = False  # Explicit opt-out for local development only
 
+    # Remote mode: connect to existing session server instead of starting Docker
+    remote_url: str | None = None  # e.g., "http://session-server:8080"
+
     def to_docker_config(
         self,
         tools_path: Path | None = None,

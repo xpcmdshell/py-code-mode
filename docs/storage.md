@@ -43,11 +43,9 @@ storage = FileStorage(base_path=Path("./data"))
 Stores data in Redis. Enables skill sharing across multiple agent instances.
 
 ```python
-from redis import Redis
 from py_code_mode import RedisStorage
 
-redis_client = Redis.from_url("redis://localhost:6379")
-storage = RedisStorage(redis=redis_client, prefix="my-agents")
+storage = RedisStorage(url="redis://localhost:6379", prefix="my-agents")
 ```
 
 ### Key Structure
@@ -70,9 +68,14 @@ storage = RedisStorage(redis=redis_client, prefix="my-agents")
 
 ```python
 RedisStorage(
+    url="redis://localhost:6379",  # Redis URL (preferred)
+    prefix="production",           # Key prefix for isolation
+)
+
+# Or with pre-constructed client (advanced use cases)
+RedisStorage(
     redis=redis_client,     # Redis client instance
-    prefix="production",    # Key prefix for isolation
-    skill_ttl=None         # Optional TTL for skills (seconds)
+    prefix="production",
 )
 ```
 
@@ -110,14 +113,14 @@ Use different prefixes to isolate storage for different environments:
 
 ```python
 # Development environment
-dev_storage = RedisStorage(redis=redis_client, prefix="dev")
+dev_storage = RedisStorage(url="redis://localhost:6379", prefix="dev")
 
 # Production environment
-prod_storage = RedisStorage(redis=redis_client, prefix="prod")
+prod_storage = RedisStorage(url="redis://prod-redis:6379", prefix="prod")
 
 # Multi-tenant isolation
-tenant_a_storage = RedisStorage(redis=redis_client, prefix="tenant-a")
-tenant_b_storage = RedisStorage(redis=redis_client, prefix="tenant-b")
+tenant_a_storage = RedisStorage(url="redis://localhost:6379", prefix="tenant-a")
+tenant_b_storage = RedisStorage(url="redis://localhost:6379", prefix="tenant-b")
 ```
 
 ---
@@ -128,9 +131,7 @@ tenant_b_storage = RedisStorage(redis=redis_client, prefix="tenant-b")
 
 ```python
 from pathlib import Path
-from redis import Redis
 from py_code_mode import FileStorage, RedisStorage
-from py_code_mode.skills import PythonSkill
 
 # Load from file storage
 file_storage = FileStorage(base_path=Path("./data"))
@@ -138,8 +139,7 @@ file_skill_store = file_storage.get_skill_store()
 skills = file_skill_store.list_all()
 
 # Save to Redis storage
-redis_client = Redis.from_url("redis://localhost:6379")
-redis_storage = RedisStorage(redis=redis_client, prefix="production")
+redis_storage = RedisStorage(url="redis://localhost:6379", prefix="production")
 redis_skill_store = redis_storage.get_skill_store()
 
 for skill in skills:
@@ -149,8 +149,11 @@ for skill in skills:
 ### Redis to File
 
 ```python
+from pathlib import Path
+from py_code_mode import FileStorage, RedisStorage
+
 # Load from Redis
-redis_storage = RedisStorage(redis=redis_client, prefix="production")
+redis_storage = RedisStorage(url="redis://localhost:6379", prefix="production")
 redis_skill_store = redis_storage.get_skill_store()
 skills = redis_skill_store.list_all()
 
@@ -226,7 +229,7 @@ file_storage = FileStorage(base_path=Path("./skills"))
 # (use CLI tools)
 
 # Promotion: Push vetted skills to production
-redis_storage = RedisStorage(redis=redis_client, prefix="prod")
+redis_storage = RedisStorage(url="redis://prod-redis:6379", prefix="prod")
 # (use CLI tools to bootstrap)
 ```
 
@@ -241,7 +244,7 @@ def create_session(storage_type: str):
     if storage_type == "file":
         storage = FileStorage(base_path=Path("./data"))
     elif storage_type == "redis":
-        storage = RedisStorage(redis=redis_client, prefix="app")
+        storage = RedisStorage(url="redis://localhost:6379", prefix="app")
 
     return Session(storage=storage)
 ```

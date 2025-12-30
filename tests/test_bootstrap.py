@@ -316,7 +316,7 @@ class TestBootstrapNamespaces:
         }
 
         # Mock Redis.from_url to avoid actual connection
-        with patch("redis.from_url", return_value=mock_redis):
+        with patch("redis.Redis.from_url", return_value=mock_redis):
             result = await bootstrap_namespaces(config)
 
         assert isinstance(result, NamespaceBundle)
@@ -339,7 +339,7 @@ class TestBootstrapNamespaces:
             "prefix": "test",
         }
 
-        with patch("redis.from_url", return_value=mock_redis):
+        with patch("redis.Redis.from_url", return_value=mock_redis):
             result = await bootstrap_namespaces(config)
 
         assert isinstance(result.tools, ToolsNamespace)
@@ -362,7 +362,7 @@ class TestBootstrapNamespaces:
             "prefix": "test",
         }
 
-        with patch("redis.from_url", return_value=mock_redis):
+        with patch("redis.Redis.from_url", return_value=mock_redis):
             result = await bootstrap_namespaces(config)
 
         assert isinstance(result.skills, SkillsNamespace)
@@ -385,7 +385,7 @@ class TestBootstrapNamespaces:
             "prefix": "test",
         }
 
-        with patch("redis.from_url", return_value=mock_redis):
+        with patch("redis.Redis.from_url", return_value=mock_redis):
             result = await bootstrap_namespaces(config)
 
         assert isinstance(result.artifacts, ArtifactStoreProtocol)
@@ -408,7 +408,7 @@ class TestBootstrapNamespaces:
             "prefix": "test",
         }
 
-        with patch("redis.from_url", return_value=mock_redis):
+        with patch("redis.Redis.from_url", return_value=mock_redis):
             result = await bootstrap_namespaces(config)
 
         assert isinstance(result.deps, DepsNamespace)
@@ -430,7 +430,7 @@ class TestBootstrapNamespaces:
             "prefix": "test",
         }
 
-        with patch("redis.from_url", return_value=mock_redis):
+        with patch("redis.Redis.from_url", return_value=mock_redis):
             result = await bootstrap_namespaces(config)
 
         # Initial state - no packages
@@ -462,7 +462,7 @@ class TestBootstrapNamespaces:
             "prefix": "custom",
         }
 
-        with patch("redis.from_url", return_value=mock_redis) as mock_from_url:
+        with patch("redis.Redis.from_url", return_value=mock_redis) as mock_from_url:
             await bootstrap_namespaces(config)
 
         mock_from_url.assert_called_once_with("redis://custom-host:16379/5")
@@ -484,7 +484,7 @@ class TestBootstrapNamespaces:
             "prefix": "myapp",
         }
 
-        with patch("redis.from_url", return_value=mock_redis):
+        with patch("redis.Redis.from_url", return_value=mock_redis):
             result = await bootstrap_namespaces(config)
 
         # The artifacts store should use the prefix
@@ -730,7 +730,7 @@ class TestRedisStorageBootstrapConfig:
         """
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         result = storage.to_bootstrap_config()
 
@@ -744,7 +744,7 @@ class TestRedisStorageBootstrapConfig:
         """
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         result = storage.to_bootstrap_config()
 
@@ -758,7 +758,7 @@ class TestRedisStorageBootstrapConfig:
         """
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         result = storage.to_bootstrap_config()
 
@@ -772,7 +772,7 @@ class TestRedisStorageBootstrapConfig:
         """
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         result = storage.to_bootstrap_config()
 
@@ -786,7 +786,7 @@ class TestRedisStorageBootstrapConfig:
         """
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         result = storage.to_bootstrap_config()
 
@@ -801,7 +801,7 @@ class TestRedisStorageBootstrapConfig:
         """
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         result = storage.to_bootstrap_config()
 
@@ -815,7 +815,7 @@ class TestRedisStorageBootstrapConfig:
         """
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         result = storage.to_bootstrap_config()
 
@@ -829,7 +829,7 @@ class TestRedisStorageBootstrapConfig:
         """
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_redis, prefix="myapp")
+        storage = RedisStorage(redis=mock_redis, prefix="myapp")
 
         result = storage.to_bootstrap_config()
 
@@ -848,7 +848,7 @@ class TestRedisStorageBootstrapConfig:
         from py_code_mode.storage import RedisStorage
 
         # Create storage with some content
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
         skill_store = storage.get_skill_store()
         test_skill = PythonSkill.from_source(
             name="greet",
@@ -861,7 +861,7 @@ class TestRedisStorageBootstrapConfig:
         config = storage.to_bootstrap_config()
 
         # Reconstruct (with same mock redis, async for MCP support)
-        with patch("redis.from_url", return_value=mock_redis):
+        with patch("redis.Redis.from_url", return_value=mock_redis):
             bundle = await bootstrap_namespaces(config)
 
         # Verify skills are accessible
@@ -894,7 +894,7 @@ class TestRedisStorageLazyConnection:
         from py_code_mode.storage import RedisStorage
 
         # This should not trigger any Redis operations
-        storage = RedisStorage(mock_client, prefix="test")
+        storage = RedisStorage(redis=mock_client, prefix="test")
 
         # Verify no Redis operations were called
         # Common connection-testing methods:
@@ -921,7 +921,7 @@ class TestRedisStorageLazyConnection:
 
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_client, prefix="test")
+        storage = RedisStorage(redis=mock_client, prefix="test")
 
         # This should not trigger any Redis operations
         config = storage.to_bootstrap_config()
@@ -942,7 +942,7 @@ class TestRedisStorageLazyConnection:
         """
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         # This should create the store (lazy initialization)
         artifact_store = storage.get_artifact_store()
@@ -958,7 +958,7 @@ class TestRedisStorageLazyConnection:
         """
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         # This should create the library (lazy initialization)
         library = storage.get_skill_library()
@@ -975,7 +975,7 @@ class TestRedisStorageLazyConnection:
         """
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         # This should create the registry (lazy initialization)
         registry = await storage.get_tool_registry()
@@ -1090,7 +1090,7 @@ class TestSubprocessExecutorBootstrapIntegration:
 
         from py_code_mode.storage import RedisStorage
 
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
         config = storage.to_bootstrap_config()
 
         # Should not raise
@@ -1179,7 +1179,7 @@ class TestBootstrapUserJourney:
         from py_code_mode.storage import RedisStorage
 
         # Step 1: Create storage with content
-        storage = RedisStorage(mock_redis, prefix="journey")
+        storage = RedisStorage(redis=mock_redis, prefix="journey")
         skill_store = storage.get_skill_store()
         skill = PythonSkill.from_source(
             name="triple",
@@ -1198,7 +1198,7 @@ class TestBootstrapUserJourney:
         restored_config = json.loads(json_config)
 
         # Step 3: Reconstruct (using same mock redis, async for MCP tool support)
-        with patch("redis.from_url", return_value=mock_redis):
+        with patch("redis.Redis.from_url", return_value=mock_redis):
             bundle = await bootstrap_namespaces(restored_config)
 
         # Step 4: Verify namespaces work

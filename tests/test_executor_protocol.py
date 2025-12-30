@@ -329,7 +329,7 @@ class TestContainerExecutorAcceptsStorageBackend:
             "db": 0,
         }
 
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         # Mock get_serializable_access to verify it's called
         expected_access = RedisStorageAccess(

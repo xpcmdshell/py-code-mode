@@ -131,8 +131,6 @@ async def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
         KeyError: If url or prefix is missing.
     """
     # Import lazily to avoid circular imports
-    import redis
-
     from py_code_mode.deps import DepsNamespace, PackageInstaller, RedisDepsStore
     from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
     from py_code_mode.storage import RedisStorage
@@ -142,15 +140,14 @@ async def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
     prefix = config["prefix"]
 
     # Connect to Redis
-    redis_client = redis.from_url(url)
-    storage = RedisStorage(redis_client, prefix=prefix)
+    storage = RedisStorage(url=url, prefix=prefix)
 
     # Create namespaces - get_tool_registry() is async for MCP tool initialization
     tools_ns = ToolsNamespace(await storage.get_tool_registry())
     artifact_store = storage.get_artifact_store()
 
     # Create deps namespace
-    deps_store = RedisDepsStore(redis_client, prefix=f"{prefix}:deps")
+    deps_store = RedisDepsStore(storage.client, prefix=f"{prefix}:deps")
     installer = PackageInstaller()
     deps_ns = DepsNamespace(deps_store, installer)
 

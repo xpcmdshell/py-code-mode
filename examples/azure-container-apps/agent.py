@@ -29,7 +29,6 @@ import asyncio
 import os
 from pathlib import Path
 
-import redis as redis_lib
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.ui import Console
 from dotenv import load_dotenv
@@ -79,11 +78,9 @@ def create_storage():
 
     if redis_url:
         # Redis mode: everything from Redis (provisioned separately)
-        r = redis_lib.from_url(redis_url)
-
         print(f"Using Redis backend: {redis_url}")
 
-        return RedisStorage(redis=r, prefix="agent")
+        return RedisStorage(url=redis_url, prefix="agent")
     else:
         # File mode: load directly from shared/
         print("Using file-based backend (set REDIS_URL for Redis mode)")

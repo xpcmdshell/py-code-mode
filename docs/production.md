@@ -11,13 +11,12 @@ Production deployments typically combine:
 - **Monitoring and observability** - Health checks and logging
 
 ```python
-from redis import Redis
+import os
 from py_code_mode import Session, RedisStorage
 from py_code_mode.execution import ContainerExecutor, ContainerConfig
 
 # Shared skill library
-redis_client = Redis.from_url(os.getenv("REDIS_URL"))
-storage = RedisStorage(redis=redis_client, prefix="production")
+storage = RedisStorage(url=os.getenv("REDIS_URL"), prefix="production")
 
 # Isolated execution with authentication
 config = ContainerConfig(
@@ -107,9 +106,9 @@ else:
 Use separate Redis prefixes for multi-tenant deployments:
 
 ```python
-def get_storage(tenant_id: str) -> RedisStorage:
+def get_storage(tenant_id: str, redis_url: str) -> RedisStorage:
     return RedisStorage(
-        redis=redis_client,
+        url=redis_url,
         prefix=f"tenant-{tenant_id}"
     )
 ```

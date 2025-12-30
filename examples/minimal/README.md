@@ -81,11 +81,9 @@ async with Session(storage=storage) as session:
 Or with Redis:
 
 ```python
-import redis
 from py_code_mode import Session, RedisStorage
 
-r = redis.from_url("redis://localhost:6379")
-storage = RedisStorage(redis=r, prefix="myapp")
+storage = RedisStorage(url="redis://localhost:6379", prefix="myapp")
 
 async with Session(storage=storage) as session:
     result = await session.run('tools.curl(url="...")')

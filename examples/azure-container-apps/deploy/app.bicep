@@ -201,6 +201,10 @@ resource agentApp 'Microsoft.App/containerApps@2023-05-01' = {
           value: acrPassword
         }
         {
+          name: 'redis-url'
+          value: redisUrl
+        }
+        {
           name: 'session-auth-token'
           value: sessionAuthToken
         }
@@ -235,6 +239,14 @@ resource agentApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               name: 'ANTHROPIC_API_KEY'
               secretRef: 'anthropic-api-key'
+            }
+            {
+              name: 'REDIS_URL'
+              secretRef: 'redis-url'
+            }
+            {
+              name: 'REDIS_PREFIX'
+              value: 'pycodemode'
             }
           ]
           probes: [

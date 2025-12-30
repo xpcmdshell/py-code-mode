@@ -356,7 +356,7 @@ class TestRedisStorageErrors:
     @pytest.mark.asyncio
     async def test_connection_error_handling(self, mock_redis: MockRedisClient) -> None:
         """RedisStorage handles connection errors."""
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         # Mock client always works, so this tests basic functionality
         registry = await storage.get_tool_registry()
@@ -366,7 +366,7 @@ class TestRedisStorageErrors:
     @pytest.mark.asyncio
     async def test_deserialization_error_handling(self, mock_redis: MockRedisClient) -> None:
         """RedisStorage handles corrupted data."""
-        storage = RedisStorage(mock_redis, prefix="test")
+        storage = RedisStorage(redis=mock_redis, prefix="test")
 
         # Manually inject corrupted data
         mock_redis.hset("test:tools:__tools__", "bad", b"not valid json {{{")
