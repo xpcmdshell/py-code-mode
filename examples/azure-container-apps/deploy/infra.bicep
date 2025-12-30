@@ -15,6 +15,15 @@ var storageName = '${baseName}${uniqueSuffix}'
 var logWorkspaceName = '${baseName}-logs'
 var openAiName = '${baseName}-openai'
 
+// Redis Cache module
+module redis 'redis.bicep' = {
+  name: 'redis-deployment'
+  params: {
+    location: location
+    baseName: baseName
+  }
+}
+
 // Log Analytics Workspace (required for Container Apps)
 resource logWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   name: logWorkspaceName
@@ -153,3 +162,11 @@ output environmentId string = containerAppEnv.id
 output storageAccountName string = storage.name
 output openAiEndpoint string = openAi.properties.endpoint
 output openAiDeployment string = gpt4oDeployment.name
+
+// Redis outputs
+output redisHostname string = redis.outputs.hostname
+#disable-next-line outputs-should-not-contain-secrets
+output redisPrimaryKey string = redis.outputs.primaryKey
+#disable-next-line outputs-should-not-contain-secrets
+output redisConnectionString string = redis.outputs.connectionString
+output redisName string = redis.outputs.name

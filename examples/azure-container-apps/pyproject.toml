@@ -11,6 +11,8 @@ dependencies = [
     "python-dotenv",
     "tiktoken>=0.12.0",
     "redis>=5.0.0",
+    "fastapi>=0.109.0",
+    "pydantic>=2.0.0",
 ]
 
 [tool.uv]

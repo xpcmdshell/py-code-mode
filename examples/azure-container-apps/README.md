@@ -1,270 +1,540 @@
 # Azure Container Apps Deployment
 
-Production deployment of py-code-mode session server on Azure Container Apps with persistent storage and security isolation.
+Production deployment of py-code-mode on Azure Container Apps with Redis-backed storage and bearer token authentication.
 
 ## Architecture
 
 ```
-Azure Container Apps Environment
-+-------------------------------------------------------------+
-|                                                             |
-|  +------------------+         +------------------------+    |
-|  | Agent Container  |  HTTP   | Session Container      |    |
-|  | (your agent)     | ------> | (py-code-mode server)  |    |
-|  |                  |         | - nmap, curl, dig      |    |
-|  +------------------+         | - persistent state     |    |
-|                               +------------------------+    |
-|                                          |                  |
-|                                          v                  |
-|                               +------------------------+    |
-|                               | Azure Files (artifacts)|    |
-|                               +------------------------+    |
-+-------------------------------------------------------------+
+                                  Azure Container Apps Environment
++-----------------------------------------------------------------------------------------+
+|                                                                                         |
+|  +-------------------+    HTTP + Bearer Auth    +------------------------+              |
+|  | Agent Server      | -----------------------> | Session Server         |              |
+|  | (external ingress)|                          | (internal ingress)     |              |
+|  | - AutoGen agent   |                          | - py-code-mode server  |              |
+|  | - Claude/GPT-4    |                          | - curl, jq, nmap       |              |
+|  +-------------------+                          +------------------------+              |
+|          ^                                                 |                            |
+|          |                                                 | TLS (port 6380)            |
+|          |                                                 v                            |
+|  +-------+-------+                              +------------------------+              |
+|  | User (HTTPS)  |                              | Azure Cache for Redis  |              |
+|  +---------------+                              | - tools, skills        |              |
+|                                                 | - artifacts, deps      |              |
+|                                                 +------------------------+              |
++-----------------------------------------------------------------------------------------+
+                                          |
+                            All secrets via Container Apps secrets
+                            (no Key Vault required)
 ```
 
-## Why Azure Container Apps?
-
-Container Apps provides:
-- Custom container images with any tools pre-installed
-- Volume mounts (Azure Files) for persistent storage
-- Network access for Redis and other services
-- Configurable session persistence
-- Production-grade scaling and monitoring
-
-This example uses the Session API with in-process execution:
-- Session(storage=FileStorage(...)) or Session(storage=RedisStorage(...))
-- Fast in-process execution (no container overhead)
-- File or Redis-backed tools, skills, and artifacts
-- Suitable for trusted LLM output in production
-
-For Docker-based isolation with the Session API, see the container backend documentation.
+**Data Flow:**
+1. User sends request to Agent Server (external HTTPS endpoint)
+2. Agent Server authenticates to Session Server using Bearer token
+3. Session Server executes code with tools from Redis
+4. Artifacts and skills persist to Redis for cross-session access
 
 ## Prerequisites
 
 - Azure CLI installed and logged in (`az login`)
-- Docker installed
-- Container registry (Azure Container Registry or GitHub Container Registry)
-- `ANTHROPIC_API_KEY` environment variable
+- Docker installed (for building images)
+- `jq` installed (for JSON parsing in deploy script)
+- Python 3.11+ (for running bootstrap script)
+- `ANTHROPIC_API_KEY` environment variable (for local development)
 
 ## Quick Start
 
-### 1. Deploy the Session Server
+### 1. Deploy Infrastructure
 
 ```bash
 cd examples/azure-container-apps/deploy
 
-# Deploy (creates resource group, storage, container app)
-./deploy.sh my-resource-group my-environment ghcr.io/myorg
+# Deploy Azure resources (ACR, Redis, Container Apps Environment, Storage)
+./deploy.sh my-resource-group eastus
 
-# This will:
-# - Create Azure resource group and Container Apps environment
-# - Create Azure Files shares for artifacts and configs
-# - Upload tools.yaml and skills to Azure Files
-# - Build and push the Docker image
-# - Deploy the container app
+# This creates:
+# - Azure Container Registry
+# - Azure Cache for Redis (Basic C0)
+# - Container Apps Environment with Log Analytics
+# - Azure Files shares for configs and artifacts
 ```
 
-### 2. Run the Agent Locally (Against Azure Session)
+### 2. Build and Push Docker Images
+
+The deploy script handles this automatically, but if you need to rebuild:
 
 ```bash
-# Get the session URL (internal FQDN)
-az containerapp show --name py-code-mode-session --resource-group my-rg \
-    --query "properties.configuration.ingress.fqdn" -o tsv
+cd /path/to/py-code-mode
 
-# For testing, create a tunnel to the internal endpoint
-az containerapp tunnel --name py-code-mode-session --resource-group my-rg
+# Build session server (includes py-code-mode library + tools)
+docker build --platform linux/amd64 \
+    -f examples/azure-container-apps/Dockerfile \
+    -t <acr>.azurecr.io/py-code-mode-session:latest .
 
-# In another terminal
-export SESSION_URL=http://localhost:8080
-export ANTHROPIC_API_KEY=your-key
-python agent.py
+# Build agent server (AutoGen + session client)
+docker build --platform linux/amd64 \
+    -f examples/azure-container-apps/Dockerfile.agent \
+    -t <acr>.azurecr.io/py-code-mode-agent:latest .
+
+# Push to ACR
+az acr login --name <acr>
+docker push <acr>.azurecr.io/py-code-mode-session:latest
+docker push <acr>.azurecr.io/py-code-mode-agent:latest
 ```
 
-### 3. Deploy Agent Container to Azure
+### 3. Bootstrap Redis with Tools/Skills/Deps
 
-For production, deploy the agent as another container in the same environment:
+Before deploying the apps, populate Redis with tools, skills, and pre-configured dependencies:
 
 ```bash
-# Build agent image
-docker build -t ghcr.io/myorg/my-agent:latest .
-docker push ghcr.io/myorg/my-agent:latest
+# Get Redis connection string from infrastructure output
+REDIS_URL=$(az redis list-keys --name <redis-name> --resource-group my-resource-group \
+    --query primaryKey -o tsv | xargs -I {} echo "rediss://:{}@<redis-name>.redis.cache.windows.net:6380/0")
 
-# Deploy agent container
-az containerapp create \
-    --name my-agent \
-    --resource-group my-rg \
-    --environment my-environment \
-    --image ghcr.io/myorg/my-agent:latest \
-    --env-vars SESSION_URL=http://py-code-mode-session:8080 \
-               ANTHROPIC_API_KEY=secretref:anthropic-key \
-    --secrets anthropic-key=your-api-key
+# Bootstrap tools
+python -m py_code_mode.store bootstrap \
+    --source ./examples/shared/tools \
+    --target "$REDIS_URL" \
+    --prefix agent:tools \
+    --type tools
+
+# Bootstrap skills
+python -m py_code_mode.store bootstrap \
+    --source ./examples/shared/skills \
+    --target "$REDIS_URL" \
+    --prefix agent:skills
+
+# Pre-configure dependencies (optional)
+python -c "
+import redis
+r = redis.from_url('$REDIS_URL')
+# Add packages that should be pre-installed
+r.sadd('agent:deps', 'requests>=2.0', 'beautifulsoup4')
+"
+```
+
+### 4. Deploy Container Apps with Secrets
+
+```bash
+# Generate a secure auth token
+SESSION_AUTH_TOKEN=$(openssl rand -hex 32)
+
+# Deploy apps with secrets
+az deployment group create \
+    --resource-group my-resource-group \
+    --template-file deploy/app.bicep \
+    --parameters \
+        environmentId="<environment-id>" \
+        acrLoginServer="<acr>.azurecr.io" \
+        acrUsername="<acr>" \
+        acrPassword="<acr-password>" \
+        redisUrl="$REDIS_URL" \
+        sessionAuthToken="$SESSION_AUTH_TOKEN" \
+        anthropicApiKey="$ANTHROPIC_API_KEY"
+```
+
+### 5. Test the Deployment
+
+```bash
+# Get agent URL
+AGENT_URL=$(az containerapp show --name agent-server --resource-group my-resource-group \
+    --query "properties.configuration.ingress.fqdn" -o tsv)
+
+# Submit a task
+curl -X POST "https://$AGENT_URL/task" \
+    -H "Content-Type: application/json" \
+    -d '{"task": "List available tools and skills"}'
+
+# Check health
+curl "https://$AGENT_URL/health"
 ```
 
 ## Configuration
 
-### Tools (configs/tools/*.yaml)
+### Storage Architecture
 
-Define CLI tools as individual YAML files:
+All persistent data is stored in Azure Cache for Redis:
+
+| Data Type | Redis Key Pattern | Description |
+|-----------|-------------------|-------------|
+| Tools | `agent:tools:*` | CLI tool definitions (YAML) |
+| Skills | `agent:skills:*` | Reusable Python skills |
+| Artifacts | `agent:artifacts:*` | Persisted data from agent sessions |
+| Dependencies | `agent:deps` | Pre-configured Python packages |
+
+**Why Redis instead of Azure Files for tools/skills?**
+- Faster access (in-memory vs file I/O)
+- Better for distributed deployments (multiple replicas)
+- Atomic operations for skill creation
+- Semantic search support via embeddings
+
+Azure Files is still used for:
+- Large artifacts (file uploads, reports)
+- Config files mounted at startup
+
+### Tool Definitions
+
+Tools are defined as YAML files and bootstrapped to Redis:
 
 ```yaml
-# configs/tools/nmap.yaml
-name: nmap
-type: cli
-description: Network scanner
-args: "{flags} {target}"
-timeout: 300
-tags: [network, recon]
+# examples/shared/tools/curl.yaml
+name: curl
+description: Make HTTP requests
+command: curl
+timeout: 60
+tags: [http]
+
+schema:
+  options:
+    silent:
+      type: boolean
+      short: s
+      description: Silent mode (no progress output)
+    location:
+      type: boolean
+      short: L
+      description: Follow redirects
+    header:
+      type: array
+      short: H
+      description: HTTP headers
+    data:
+      type: string
+      short: d
+      description: POST data
+  positional:
+    - name: url
+      type: string
+      required: true
+      description: Target URL
+
+recipes:
+  get:
+    description: Simple GET request (silent, follow redirects)
+    preset:
+      silent: true
+      location: true
+    params:
+      url: {}
 ```
 
-### Skills (configs/skills/*.py)
+### Skill Definitions
 
-Add reusable code recipes:
+Skills are Python files with a `run()` function:
 
 ```python
-# configs/skills/port_scan.py
-def run(target: str, ports: str = "80,443") -> dict:
-    """Scan ports on target."""
-    raw = tools.nmap(target=target, flags=f"-p {ports}")
-    # Parse and return structured results
-    return {"target": target, "raw": raw}
+# examples/shared/skills/analyze_repo.py
+"""Analyze a GitHub repository - demonstrates multi-tool skill workflow."""
+
+import json
+
+def run(repo: str) -> dict:
+    """Analyze a GitHub repository by combining multiple API calls.
+
+    Args:
+        repo: Repository in "owner/repo" format (e.g., "anthropics/claude-code")
+
+    Returns:
+        Dict with repo analysis including activity metrics
+    """
+    if "/" not in repo:
+        return {"error": "repo must be in 'owner/repo' format"}
+
+    base_url = f"https://api.github.com/repos/{repo}"
+
+    # Fetch repo metadata
+    repo_raw = tools.curl(url=base_url)
+    repo_data = json.loads(repo_raw)
+
+    return {
+        "name": repo_data.get("full_name"),
+        "description": repo_data.get("description"),
+        "stars": repo_data.get("stargazers_count"),
+        "forks": repo_data.get("forks_count"),
+        "language": repo_data.get("language"),
+    }
 ```
 
-Agents can then use: `skills.port_scan(target="10.0.0.1")`
+Agents invoke skills with: `skills.invoke("analyze_repo", repo="anthropics/claude-code")`
+
+### Pre-configured Dependencies
+
+Dependencies are locked at deployment time for security:
+
+```python
+# In deploy script or bootstrap
+deps_store.add("requests>=2.0")
+deps_store.add("beautifulsoup4")
+```
+
+The session server starts with `ALLOW_RUNTIME_DEPS=false`, which:
+- Installs pre-configured packages on startup (`sync_deps_on_start=True`)
+- Blocks `deps.add()` and `deps.remove()` at runtime
+- Allows `deps.list()` and `deps.sync()` (read-only operations)
+
+This prevents agents from installing arbitrary packages in production.
 
 ### Persistent Artifacts
 
-Artifacts are stored on Azure Files and persist across sessions:
+Artifacts persist across sessions via Redis:
 
 ```python
-# Save scan results
-artifacts.save("scan_results.json", data, description="Initial recon")
+# Agent code (runs in session server)
+artifacts.save("scan_results", data, description="Network scan from 2024-01-15")
 
-# Load in a later session
-data = artifacts.load("scan_results.json")
+# Later session
+previous = artifacts.load("scan_results")
 ```
 
-### Redis for Distributed Storage (Recommended)
+## Environment Variables
 
-For production deployments, use Redis-backed storage:
+### Session Server
 
-```bash
-# Create Azure Cache for Redis
-az redis create --name my-redis --resource-group my-rg --location eastus --sku Basic --vm-size c0
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `PORT` | No | Server port (default: 8080) |
+| `REDIS_URL` | Yes | Redis connection string (`rediss://...`) |
+| `CONTAINER_AUTH_TOKEN` | Yes | Bearer token for API authentication |
+| `ALLOW_RUNTIME_DEPS` | No | Allow runtime package installation (default: false) |
 
-# Get connection string
-REDIS_KEY=$(az redis list-keys --name my-redis --resource-group my-rg --query primaryKey -o tsv)
-REDIS_URL="redis://:$REDIS_KEY@my-redis.redis.cache.windows.net:6380?ssl=true"
+### Agent Server
 
-# Bootstrap tools and skills to Redis
-python -m py_code_mode.store bootstrap \
-    --source ./tools \
-    --target "$REDIS_URL" \
-    --prefix myapp:tools \
-    --type tools
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `PORT` | No | Server port (default: 8080) |
+| `SESSION_URL` | Yes | Session server URL (e.g., `http://session-server`) |
+| `SESSION_AUTH_TOKEN` | Yes | Bearer token to authenticate with session server |
+| `ANTHROPIC_API_KEY` | Yes* | Anthropic API key for Claude models |
+| `AZURE_OPENAI_ENDPOINT` | No | Azure OpenAI endpoint (alternative to Anthropic) |
+| `AZURE_OPENAI_DEPLOYMENT` | No | Azure OpenAI deployment name |
 
-python -m py_code_mode.store bootstrap \
-    --source ./skills \
-    --target "$REDIS_URL" \
-    --prefix myapp:skills
-```
-
-Then use in your agent:
-
-```python
-import redis
-from py_code_mode import Session, RedisStorage
-
-r = redis.from_url(os.environ["REDIS_URL"])
-storage = RedisStorage(redis=r, prefix="myapp")
-
-async with Session(storage=storage) as session:
-    result = await session.run('tools.nmap(target="10.0.0.1")')
-```
-
-## Files
-
-```
-azure-container-apps/
-├── agent.py                 # Example agent using SessionClient
-├── pyproject.toml           # Dependencies
-├── configs/
-│   ├── tools.yaml           # CLI tool definitions
-│   └── skills/
-│       └── port_scan.py     # Example skill
-└── deploy/
-    ├── deploy.sh            # Deployment script
-    └── container-app.yaml   # ACA manifest
-```
+*Required if not using Azure OpenAI.
 
 ## Security Considerations
 
-1. **Internal Ingress**: The session server uses internal ingress, accessible only within the Container Apps environment
-2. **No Shell Access**: Agents can only execute Python code with predefined tools, not arbitrary shell commands
-3. **Tool Allowlist**: Only tools defined in `tools.yaml` are available
-4. **Timeout Limits**: All tool executions have configurable timeouts
-5. **Artifact Isolation**: Each deployment has its own Azure Files share
+### Authentication
+
+1. **Bearer Token Authentication**: The session server API requires a Bearer token in the `Authorization` header. This token is shared between agent and session servers via Container Apps secrets.
+
+2. **Defense in Depth**: Even with internal-only ingress, the session server requires authentication. This protects against:
+   - Compromised containers in the same environment
+   - Misconfigured ingress rules
+   - Future network topology changes
+
+3. **Fail-Closed Design**: If `CONTAINER_AUTH_TOKEN` is not set, the session server refuses to start rather than running without auth.
+
+### Network Isolation
+
+1. **Internal Ingress**: The session server uses internal-only ingress, accessible only from within the Container Apps environment.
+
+2. **TLS for Redis**: Azure Cache for Redis requires TLS 1.2+ (`rediss://` scheme). Non-SSL port is disabled.
+
+3. **No Public Endpoints**: Only the agent server has a public endpoint. The session server is completely internal.
+
+### Runtime Safety
+
+1. **Runtime Deps Disabled**: `ALLOW_RUNTIME_DEPS=false` prevents agents from installing packages at runtime. All dependencies must be pre-configured.
+
+2. **Tool Allowlist**: Only tools defined in the bootstrapped configuration are available. Agents cannot execute arbitrary shell commands.
+
+3. **Timeout Limits**: All tool executions have configurable timeouts (default: 60s for most tools, 300s for nmap).
+
+4. **No Shell Access**: The session server executes Python code with injected namespaces, not arbitrary shell commands.
+
+### Secrets Management
+
+All secrets are managed via Container Apps secrets (not Key Vault):
+
+| Secret | Used By | Purpose |
+|--------|---------|---------|
+| `acr-password` | Both | Pull images from ACR |
+| `redis-url` | Session | Connect to Redis |
+| `session-auth-token` | Both | API authentication |
+| `anthropic-api-key` | Agent | Claude API access |
+
+Container Apps secrets are:
+- Encrypted at rest
+- Injected as environment variables at runtime
+- Not visible in logs or container inspection
 
 ## Scaling
 
-The deployment manifest includes auto-scaling based on HTTP concurrency:
+The deployment includes auto-scaling based on HTTP concurrency:
 
 ```yaml
 scale:
   minReplicas: 1
-  maxReplicas: 10
-  rules:
-    - name: http-rule
-      http:
-        metadata:
-          concurrentRequests: "10"
+  maxReplicas: 5  # Session server
+  # maxReplicas: 3  # Agent server
 ```
 
-Adjust based on your workload. Each replica maintains its own executor state, so sticky sessions may be needed for stateful workflows.
+**Considerations:**
+- Session server scales based on code execution load
+- Agent server scales based on concurrent user requests
+- Redis handles concurrent connections from all replicas
+- Artifacts and skills are shared across all replicas via Redis
 
 ## Monitoring
 
-```bash
-# View logs
-az containerapp logs show --name py-code-mode-session --resource-group my-rg --follow
+### View Logs
 
-# View metrics
-az monitor metrics list --resource /subscriptions/.../py-code-mode-session \
+```bash
+# Session server logs
+az containerapp logs show --name session-server --resource-group my-rg --follow
+
+# Agent server logs
+az containerapp logs show --name agent-server --resource-group my-rg --follow
+
+# System logs (startup issues)
+az containerapp logs show --name session-server --resource-group my-rg --type system
+```
+
+### Health Checks
+
+Both servers expose `/health` endpoints:
+
+```bash
+# Agent (external)
+curl https://<agent-fqdn>/health
+
+# Session (requires tunnel for local testing)
+az containerapp tunnel --name session-server --resource-group my-rg
+curl http://localhost:8080/health
+```
+
+### Metrics
+
+```bash
+# Request metrics
+az monitor metrics list --resource /subscriptions/.../session-server \
     --metric Requests --interval PT1M
 
-# Check health
-curl https://<internal-fqdn>/health
+# Redis metrics
+az monitor metrics list --resource /subscriptions/.../redis \
+    --metric usedmemory --interval PT5M
 ```
 
 ## Troubleshooting
 
 ### Container won't start
 
-Check logs for startup errors:
+Check system logs for startup errors:
 ```bash
-az containerapp logs show --name py-code-mode-session --resource-group my-rg --type system
+az containerapp logs show --name session-server --resource-group my-rg --type system
 ```
 
-### Tools not available
+Common issues:
+- Missing `CONTAINER_AUTH_TOKEN` (server refuses to start without auth)
+- Invalid `REDIS_URL` (connection refused)
+- Missing secrets in deployment
 
-Verify tools.yaml was uploaded:
+### Authentication failures
+
+If you see 401 errors between agent and session:
 ```bash
-az storage file list --account-name <storage> --share-name configs-share
+# Verify both servers have the same token
+az containerapp show --name session-server --resource-group my-rg \
+    --query "properties.template.containers[0].env[?name=='CONTAINER_AUTH_TOKEN']"
+
+az containerapp show --name agent-server --resource-group my-rg \
+    --query "properties.template.containers[0].env[?name=='SESSION_AUTH_TOKEN']"
+```
+
+### Tools/Skills not found
+
+Verify data was bootstrapped to Redis:
+```bash
+# Connect to Redis and check keys
+redis-cli -h <redis>.redis.cache.windows.net -p 6380 --tls -a <key>
+> KEYS agent:tools:*
+> KEYS agent:skills:*
 ```
 
 ### Connection refused from agent
 
-Ensure agent is in the same Container Apps environment and using internal hostname:
+Ensure agent is using internal hostname:
 ```bash
-# Should be: http://py-code-mode-session:8080
-# Not: https://<fqdn> (that's for external access)
+# Correct: internal DNS name
+SESSION_URL=http://session-server
+
+# Wrong: external FQDN (won't work for internal service)
+SESSION_URL=https://session-server.<env>.azurecontainerapps.io
+```
+
+### Redis connection issues
+
+Azure Cache for Redis requires TLS:
+```bash
+# Correct: rediss:// (with TLS)
+REDIS_URL=rediss://:key@host.redis.cache.windows.net:6380/0
+
+# Wrong: redis:// (no TLS, will fail)
+REDIS_URL=redis://:key@host.redis.cache.windows.net:6379/0
 ```
 
 ## Cost Estimate
 
 | Resource | SKU | Est. Monthly Cost |
 |----------|-----|-------------------|
-| Container Apps | 1 vCPU, 2GB | ~$30-50 |
-| Azure Files | 1GB | ~$0.10 |
-| Redis (optional) | Basic C0 | ~$16 |
+| Container Apps (session) | 1 vCPU, 2GB | ~$30-50 |
+| Container Apps (agent) | 0.5 vCPU, 1GB | ~$15-25 |
+| Azure Cache for Redis | Basic C0 (250MB) | ~$16 |
+| Azure Files | 5GB | ~$0.50 |
+| Log Analytics | 5GB/month | ~$12 |
+| Container Registry | Basic | ~$5 |
 
-Costs vary by region and usage. Use consumption-based scaling to minimize costs during low usage.
+**Total estimate: ~$80-110/month** (varies by region and usage)
+
+Use consumption-based scaling to minimize costs during low usage. Set `minReplicas: 0` for development environments.
+
+## Files
+
+```
+azure-container-apps/
+├── README.md                    # This file
+├── agent.py                     # Standalone CLI agent using Session (for local testing)
+├── agent_server.py              # FastAPI HTTP server using SessionClient (for Azure deployment)
+├── bootstrap_redis.py           # Script to populate Redis with tools/skills/deps
+├── pyproject.toml               # Dependencies
+├── Dockerfile                   # Session server image
+├── Dockerfile.agent             # Agent server image
+└── deploy/
+    ├── deploy.sh                # One-click deployment script
+    ├── main.bicep               # Main deployment entry point
+    ├── infra.bicep              # Infrastructure (ACR, Redis, Environment)
+    ├── redis.bicep              # Redis module
+    ├── app.bicep                # Container Apps (session + agent)
+    └── container-app.yaml       # Container app configuration
+```
+
+## Local Development
+
+Run the agent locally against a local Redis:
+
+```bash
+# Start Redis
+docker run -d --name redis -p 6379:6379 redis:7-alpine
+
+# Bootstrap tools and skills
+REDIS_URL=redis://localhost:6379 python -m py_code_mode.store bootstrap \
+    --source ../shared/tools --target redis://localhost:6379 --prefix agent:tools --type tools
+REDIS_URL=redis://localhost:6379 python -m py_code_mode.store bootstrap \
+    --source ../shared/skills --target redis://localhost:6379 --prefix agent:skills
+
+# Run agent
+cd examples/azure-container-apps
+REDIS_URL=redis://localhost:6379 ANTHROPIC_API_KEY=your-key uv run python agent.py
+```
+
+Or run against the deployed Azure resources:
+
+```bash
+# Create tunnel to session server
+az containerapp tunnel --name session-server --resource-group my-rg &
+
+# Run agent locally pointing to tunnel
+SESSION_URL=http://localhost:8080 \
+SESSION_AUTH_TOKEN=<token> \
+ANTHROPIC_API_KEY=your-key \
+uv run python agent.py
+```

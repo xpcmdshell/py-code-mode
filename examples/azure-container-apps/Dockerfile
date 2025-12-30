@@ -51,4 +51,4 @@ ENV TOOLS_CONFIG=/workspace/configs/tools.yaml
 EXPOSE 8080
 
 # Entry point - directly run uvicorn
-CMD ["python", "-m", "uvicorn", "py_code_mode.backends.container.server:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "-m", "uvicorn", "py_code_mode.execution.container.server:app", "--host", "0.0.0.0", "--port", "8080"]
