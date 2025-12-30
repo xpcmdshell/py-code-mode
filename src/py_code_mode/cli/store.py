@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 import redis as redis_lib
 import yaml
 
+from py_code_mode.deps import RedisDepsStore
 from py_code_mode.skills import FileSkillStore, PythonSkill, RedisSkillStore
 from py_code_mode.storage import RedisToolStore
 
@@ -80,27 +81,35 @@ def _skill_hash(skill: PythonSkill) -> str:
 
 
 def bootstrap(
-    source: Path,
+    source: Path | None,
     target: str,
     prefix: str,
     store_type: str = "skills",
     clear: bool = False,
+    deps: list[str] | None = None,
 ) -> int:
-    """Push skills or tools from directory to store.
+    """Push skills, tools, or deps to store.
 
     Args:
-        source: Path to directory containing skill/tool files.
+        source: Path to directory containing skill/tool files, or requirements file for deps.
         target: Target store URL.
         prefix: Key prefix for items.
-        store_type: Type of store ("skills" or "tools").
+        store_type: Type of store ("skills", "tools", or "deps").
         clear: If True, remove existing items first.
+        deps: Inline package specs for deps bootstrapping (only used when store_type is "deps").
 
     Returns:
         Number of items added.
     """
     if store_type == "tools":
+        if source is None:
+            raise ValueError("--source is required for tools bootstrapping")
         return _bootstrap_tools(source, target, prefix, clear)
+    elif store_type == "deps":
+        return _bootstrap_deps(source, deps, target, prefix, clear)
     else:
+        if source is None:
+            raise ValueError("--source is required for skills bootstrapping")
         return _bootstrap_skills(source, target, prefix, clear)
 
 
@@ -165,6 +174,74 @@ def _bootstrap_tools(source: Path, target: str, prefix: str, clear: bool) -> int
             added += 1
 
     print(f"\nBootstrapped {added} tools to {target} (prefix: {prefix})")
+    return added
+
+
+def _bootstrap_deps(
+    source: Path | None,
+    deps: list[str] | None,
+    target: str,
+    prefix: str,
+    clear: bool,
+) -> int:
+    """Bootstrap deps to store.
+
+    Args:
+        source: Path to requirements.txt style file (one package spec per line).
+        deps: Inline package specs.
+        target: Target store URL.
+        prefix: Key prefix for deps.
+        clear: If True, remove existing deps first.
+
+    Returns:
+        Number of deps added.
+
+    Raises:
+        ValueError: If neither source nor deps provided, or invalid target scheme.
+    """
+    parsed = urlparse(target)
+
+    if parsed.scheme not in ("redis", "rediss"):
+        raise ValueError(f"Deps store only supports Redis, got: {parsed.scheme}")
+
+    # Collect package specs from both sources
+    package_specs: list[str] = []
+
+    # Read from file if provided
+    if source is not None:
+        if not source.exists():
+            raise ValueError(f"Source file does not exist: {source}")
+        with open(source) as f:
+            for line in f:
+                line = line.strip()
+                # Skip empty lines and comments
+                if line and not line.startswith("#"):
+                    package_specs.append(line)
+
+    # Add inline deps
+    if deps:
+        package_specs.extend(deps)
+
+    if not package_specs:
+        raise ValueError("No deps provided. Use --source or --deps to specify packages.")
+
+    r = redis_lib.from_url(target)
+    store = RedisDepsStore(r, prefix=prefix)
+
+    if clear:
+        store.clear()
+        print("  Cleared existing deps")
+
+    added = 0
+    for dep in package_specs:
+        try:
+            store.add(dep)
+            print(f"  Added: {dep}")
+            added += 1
+        except ValueError as e:
+            logger.warning(f"Invalid dependency '{dep}': {e}")
+
+    print(f"\nBootstrapped {added} deps to {target} (prefix: {prefix})")
     return added
 
 
@@ -251,7 +328,7 @@ def list_items(target: str, prefix: str, store_type: str = "skills") -> int:
     Args:
         target: Target store URL.
         prefix: Key prefix for items.
-        store_type: Type of store ("skills" or "tools").
+        store_type: Type of store ("skills", "tools", or "deps").
 
     Returns:
         Number of items listed.
@@ -271,6 +348,13 @@ def list_items(target: str, prefix: str, store_type: str = "skills") -> int:
             print(f"  {name}: {desc}")
         print(f"\n{len(items)} tools in {target} (prefix: {prefix})")
         return len(items)
+    elif store_type == "deps":
+        store = RedisDepsStore(r, prefix=prefix)
+        deps = store.list()
+        for dep in deps:
+            print(f"  {dep}")
+        print(f"\n{len(deps)} deps in {target} (prefix: {prefix})")
+        return len(deps)
     else:
         store = RedisSkillStore(r, prefix=prefix)
         skills = store.list_all()
@@ -288,7 +372,7 @@ def create_parser() -> argparse.ArgumentParser:
         Configured ArgumentParser.
     """
     parser = argparse.ArgumentParser(
-        description="Skill and tool store lifecycle management",
+        description="Skill, tool, and deps store lifecycle management",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -305,10 +389,30 @@ Examples:
     --prefix agent-tools \\
     --type tools
 
+  # Push deps from requirements file
+  python -m py_code_mode.store bootstrap \\
+    --source requirements.txt \\
+    --target redis://localhost:6379 \\
+    --prefix agent-deps \\
+    --type deps
+
+  # Push deps inline
+  python -m py_code_mode.store bootstrap \\
+    --target redis://localhost:6379 \\
+    --prefix agent-deps \\
+    --type deps \\
+    --deps "requests>=2.31" "pandas>=2.0"
+
   # List skills in Redis
   python -m py_code_mode.store list \\
     --target redis://localhost:6379 \\
     --prefix agent-skills
+
+  # List deps in Redis
+  python -m py_code_mode.store list \\
+    --target redis://localhost:6379 \\
+    --prefix agent-deps \\
+    --type deps
 
   # Pull skills from Redis to local files (review agent-created skills)
   python -m py_code_mode.store pull \\
@@ -328,13 +432,12 @@ Examples:
     # bootstrap
     boot = subparsers.add_parser(
         "bootstrap",
-        help="Push skills or tools from directory to store",
+        help="Push skills, tools, or deps to store",
     )
     boot.add_argument(
         "--source",
         type=Path,
-        required=True,
-        help="Path to directory containing skill/tool files",
+        help="Path to directory (skills/tools) or requirements file (deps)",
     )
     boot.add_argument(
         "--target",
@@ -348,7 +451,7 @@ Examples:
     )
     boot.add_argument(
         "--type",
-        choices=["skills", "tools"],
+        choices=["skills", "tools", "deps"],
         default="skills",
         help="Type of items to bootstrap (default: skills)",
     )
@@ -356,6 +459,11 @@ Examples:
         "--clear",
         action="store_true",
         help="Remove existing items before adding new ones",
+    )
+    boot.add_argument(
+        "--deps",
+        nargs="*",
+        help="Inline package specs for deps bootstrapping (e.g., 'requests>=2.31' 'pandas>=2.0')",
     )
 
     # list
@@ -375,7 +483,7 @@ Examples:
     )
     ls.add_argument(
         "--type",
-        choices=["skills", "tools"],
+        choices=["skills", "tools", "deps"],
         default="skills",
         help="Type of items to list (default: skills)",
     )
@@ -433,7 +541,8 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "bootstrap":
-        bootstrap(args.source, args.target, args.prefix, args.type, args.clear)
+        deps = getattr(args, "deps", None)
+        bootstrap(args.source, args.target, args.prefix, args.type, args.clear, deps)
     elif args.command == "list":
         list_items(args.target, args.prefix, args.type)
     elif args.command == "pull":

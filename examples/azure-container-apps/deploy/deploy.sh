@@ -91,11 +91,31 @@ docker buildx build --platform linux/amd64 --push \
 # Step 4: Bootstrap Redis with tools, skills, and deps
 echo "[4/7] Bootstrapping tools, skills, and deps to Redis..."
 SHARED_DIR="$SCRIPT_DIR/../../shared"
-uv run --project "$SCRIPT_DIR/.." python "$SCRIPT_DIR/../bootstrap_redis.py" \
-    --redis-url "$REDIS_CONNECTION_STRING" \
-    --prefix "pycodemode" \
-    --tools-path "$SHARED_DIR/tools" \
-    --skills-path "$SHARED_DIR/skills" \
+
+# Use built-in CLI for bootstrapping (run from repo root for module resolution)
+cd "$REPO_ROOT"
+
+echo "   Bootstrapping tools..."
+uv run python -m py_code_mode.cli.store bootstrap \
+    --type tools \
+    --source "$SHARED_DIR/tools" \
+    --target "$REDIS_CONNECTION_STRING" \
+    --prefix "pycodemode:tools" \
+    --clear
+
+echo "   Bootstrapping skills..."
+uv run python -m py_code_mode.cli.store bootstrap \
+    --type skills \
+    --source "$SHARED_DIR/skills" \
+    --target "$REDIS_CONNECTION_STRING" \
+    --prefix "pycodemode:skills" \
+    --clear
+
+echo "   Bootstrapping deps..."
+uv run python -m py_code_mode.cli.store bootstrap \
+    --type deps \
+    --target "$REDIS_CONNECTION_STRING" \
+    --prefix "pycodemode:deps" \
     --deps "requests>=2.31" "beautifulsoup4>=4.12" "pandas>=2.0" \
     --clear
 

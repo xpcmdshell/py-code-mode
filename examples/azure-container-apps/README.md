@@ -91,25 +91,25 @@ REDIS_URL=$(az redis list-keys --name <redis-name> --resource-group my-resource-
     --query primaryKey -o tsv | xargs -I {} echo "rediss://:{}@<redis-name>.redis.cache.windows.net:6380/0")
 
 # Bootstrap tools
-python -m py_code_mode.store bootstrap \
+python -m py_code_mode.cli.store bootstrap \
     --source ./examples/shared/tools \
     --target "$REDIS_URL" \
-    --prefix agent:tools \
+    --prefix pycodemode:tools \
     --type tools
 
 # Bootstrap skills
-python -m py_code_mode.store bootstrap \
+python -m py_code_mode.cli.store bootstrap \
     --source ./examples/shared/skills \
     --target "$REDIS_URL" \
-    --prefix agent:skills
+    --prefix pycodemode:skills \
+    --type skills
 
-# Pre-configure dependencies (optional)
-python -c "
-import redis
-r = redis.from_url('$REDIS_URL')
-# Add packages that should be pre-installed
-r.sadd('agent:deps', 'requests>=2.0', 'beautifulsoup4')
-"
+# Bootstrap deps (pre-configure Python packages)
+python -m py_code_mode.cli.store bootstrap \
+    --target "$REDIS_URL" \
+    --prefix pycodemode:deps \
+    --type deps \
+    --deps "requests>=2.0" "beautifulsoup4"
 ```
 
 ### 4. Deploy Container Apps with Secrets
@@ -492,7 +492,6 @@ azure-container-apps/
 ├── README.md                    # This file
 ├── agent.py                     # Standalone CLI agent using Session (for local testing)
 ├── agent_server.py              # FastAPI HTTP server using SessionClient (for Azure deployment)
-├── bootstrap_redis.py           # Script to populate Redis with tools/skills/deps
 ├── pyproject.toml               # Dependencies
 ├── Dockerfile                   # Session server image
 ├── Dockerfile.agent             # Agent server image
