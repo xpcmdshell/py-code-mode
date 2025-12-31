@@ -500,13 +500,25 @@ class TestCreateSkillLibraryFactory:
     """Tests for the create_skill_library factory function."""
 
     def test_creates_with_default_embedder(self) -> None:
-        """Factory creates library with Embedder (BGE-small) by default."""
+        """Factory creates library with a lazy embedder by default.
+
+        The default embedder should defer model loading until first use.
+        This can be either LazyEmbedder or BackgroundEmbedder.
+        """
         pytest.importorskip("sentence_transformers")
-        from py_code_mode.skills import Embedder, create_skill_library
+        from py_code_mode.skills import (
+            EmbeddingProvider,
+            LazyEmbedder,
+            create_skill_library,
+        )
+        from py_code_mode.skills.embeddings import BackgroundEmbedder
 
         library = create_skill_library()
 
-        assert isinstance(library.embedder, Embedder)
+        # Accept either LazyEmbedder or BackgroundEmbedder - both provide lazy loading
+        assert isinstance(library.embedder, (LazyEmbedder, BackgroundEmbedder))
+        # Must implement EmbeddingProvider protocol
+        assert isinstance(library.embedder, EmbeddingProvider)
 
     def test_creates_with_custom_embedder(self) -> None:
         """Factory accepts custom embedder."""

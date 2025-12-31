@@ -61,9 +61,9 @@ _vectors_path = Path({vectors_path_str})
 _vector_store = None
 try:
     from py_code_mode.skills.vector_stores.chroma import ChromaVectorStore
-    from py_code_mode.skills import Embedder
+    from py_code_mode.skills import BackgroundEmbedder
     _vectors_path.mkdir(parents=True, exist_ok=True)
-    _embedder = Embedder()
+    _embedder = BackgroundEmbedder()
     _vector_store = ChromaVectorStore(path=_vectors_path, embedder=_embedder)
 except ImportError:
     _vector_store = None"""
@@ -83,7 +83,7 @@ def _build_vector_store_cleanup_code(has_vectors_path: bool) -> str:
 
     return """del _vectors_path, _vector_store
 try:
-    del ChromaVectorStore, Embedder, _embedder
+    del ChromaVectorStore, BackgroundEmbedder, _embedder
 except NameError:
     pass"""
 

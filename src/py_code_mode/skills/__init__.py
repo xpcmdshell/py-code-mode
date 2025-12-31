@@ -22,8 +22,10 @@ from py_code_mode.skills.vector_store import (
 try:
     from py_code_mode.skills.embeddings import (
         MODEL_ALIASES,
+        BackgroundEmbedder,
         Embedder,
         EmbeddingProvider,
+        LazyEmbedder,
         MockEmbedder,
         cosine_similarity,
         resolve_model_name,
@@ -38,8 +40,10 @@ try:
 except ImportError:
     SEMANTIC_AVAILABLE = False
     MODEL_ALIASES = None  # type: ignore[assignment]
+    BackgroundEmbedder = None  # type: ignore[assignment, misc]
     Embedder = None  # type: ignore[assignment, misc]
     EmbeddingProvider = None  # type: ignore[assignment, misc]
+    LazyEmbedder = None  # type: ignore[assignment, misc]
     MockEmbedder = None  # type: ignore[assignment, misc]
     cosine_similarity = None  # type: ignore[assignment]
     resolve_model_name = None  # type: ignore[assignment]
@@ -65,8 +69,10 @@ __all__ = [
     # Semantic (optional)
     "SEMANTIC_AVAILABLE",
     "MODEL_ALIASES",
+    "BackgroundEmbedder",
     "Embedder",
     "EmbeddingProvider",
+    "LazyEmbedder",
     "MockEmbedder",
     "cosine_similarity",
     "resolve_model_name",

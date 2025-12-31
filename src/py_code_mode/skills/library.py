@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from py_code_mode.skills.embeddings import (
-    Embedder,
+    BackgroundEmbedder,
     EmbeddingProvider,
     cosine_similarity,
 )
@@ -273,5 +273,5 @@ def create_skill_library(
         library = create_skill_library(store=store, vector_store=my_vector_store)
     """
     if embedder is None:
-        embedder = Embedder(model_name=embedding_model)
+        embedder = BackgroundEmbedder(model_name=embedding_model)
     return SkillLibrary(embedder=embedder, store=store, vector_store=vector_store)

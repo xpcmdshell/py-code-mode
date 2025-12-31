@@ -199,3 +199,162 @@ class Embedder:
         text = self.QUERY_INSTRUCTION + query
         embedding = self._model.encode([text], normalize_embeddings=True)[0]
         return embedding.tolist()  # type: ignore[return-value]
+
+
+class LazyEmbedder:
+    """Lazy wrapper for Embedder that defers construction until first use.
+
+    This is useful when VectorStore construction should be instant but the
+    embedding model (~100MB, ~4s load) is only needed when add() or search()
+    is called.
+
+    The dimension property uses MODEL_DIMENSIONS lookup for known models,
+    avoiding model construction just to query dimension.
+    """
+
+    def __init__(self, model_name: str | None = None) -> None:
+        """Initialize lazy embedder.
+
+        Args:
+            model_name: Model alias or full HuggingFace name. Default: bge-small.
+
+        Note: The actual Embedder is not created until embed() or embed_query() is called.
+        """
+        self._model_name = model_name or Embedder.DEFAULT_MODEL
+        self._resolved_model_name = resolve_model_name(self._model_name)
+        self._embedder: Embedder | None = None
+
+    def _ensure_embedder(self) -> Embedder:
+        """Create the Embedder if not already created."""
+        if self._embedder is None:
+            self._embedder = Embedder(model_name=self._model_name)
+        return self._embedder
+
+    @property
+    def dimension(self) -> int:
+        """Embedding vector dimension.
+
+        Returns from lookup table if possible to avoid model construction.
+        Falls back to loading the model for unknown models.
+        """
+        if self._resolved_model_name in MODEL_DIMENSIONS:
+            return MODEL_DIMENSIONS[self._resolved_model_name]
+        # Unknown model - must construct to get dimension
+        return self._ensure_embedder().dimension
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Embed document texts into vectors.
+
+        Args:
+            texts: List of text strings to embed.
+
+        Returns:
+            List of embedding vectors.
+        """
+        return self._ensure_embedder().embed(texts)
+
+    def embed_query(self, query: str) -> list[float]:
+        """Embed query text into vector.
+
+        Args:
+            query: Search query text.
+
+        Returns:
+            Embedding vector.
+        """
+        return self._ensure_embedder().embed_query(query)
+
+
+class BackgroundEmbedder:
+    """Embedder that loads model in a background thread.
+
+    Construction returns immediately, starting model load in background.
+    Methods block until the model is ready. This allows session startup
+    to proceed while the model loads in parallel.
+
+    The dimension property uses MODEL_DIMENSIONS lookup for known models,
+    returning instantly without waiting for the model to load.
+    """
+
+    def __init__(self, model_name: str | None = None) -> None:
+        """Initialize and start background model loading.
+
+        Args:
+            model_name: Model alias or full HuggingFace name. Default: bge-small.
+
+        Note: Construction returns immediately. Model loading happens in a
+        background thread. Methods that require the model will block until
+        loading completes.
+        """
+        import threading
+
+        self._model_name = model_name or Embedder.DEFAULT_MODEL
+        self._resolved_model_name = resolve_model_name(self._model_name)
+        self._embedder: Embedder | None = None
+        self._ready = threading.Event()
+        self._error: Exception | None = None
+
+        # Start loading immediately in background
+        self._thread = threading.Thread(target=self._load, daemon=True)
+        self._thread.start()
+
+    def _load(self) -> None:
+        """Load the embedder in background thread."""
+        try:
+            self._embedder = Embedder(model_name=self._model_name)
+        except Exception as e:
+            self._error = e
+        finally:
+            self._ready.set()
+
+    def _wait_for_ready(self) -> Embedder:
+        """Wait for model to be ready and return it.
+
+        Returns:
+            The loaded Embedder instance.
+
+        Raises:
+            Exception: If model loading failed, re-raises the original error.
+        """
+        self._ready.wait()
+        if self._error is not None:
+            raise self._error
+        assert self._embedder is not None
+        return self._embedder
+
+    @property
+    def dimension(self) -> int:
+        """Embedding vector dimension.
+
+        Returns instantly for known models using the lookup table.
+        Falls back to waiting for the model for unknown models.
+        """
+        if self._resolved_model_name in MODEL_DIMENSIONS:
+            return MODEL_DIMENSIONS[self._resolved_model_name]
+        return self._wait_for_ready().dimension
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Embed document texts into vectors.
+
+        Waits for the model to be ready if still loading.
+
+        Args:
+            texts: List of text strings to embed.
+
+        Returns:
+            List of embedding vectors.
+        """
+        return self._wait_for_ready().embed(texts)
+
+    def embed_query(self, query: str) -> list[float]:
+        """Embed query text into vector.
+
+        Waits for the model to be ready if still loading.
+
+        Args:
+            query: Search query text.
+
+        Returns:
+            Embedding vector.
+        """
+        return self._wait_for_ready().embed_query(query)
