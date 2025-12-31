@@ -163,10 +163,10 @@ class FileStorage:
             self._vector_store = None
         else:
             try:
-                from py_code_mode.skills import Embedder
+                from py_code_mode.skills import BackgroundEmbedder
 
                 vectors_path = self._get_vectors_path()
-                embedder = Embedder()
+                embedder = BackgroundEmbedder()
                 self._vector_store = ChromaVectorStore(path=vectors_path, embedder=embedder)
             except ImportError:
                 self._vector_store = None
@@ -364,9 +364,9 @@ class RedisStorage:
             self._vector_store = None
         else:
             try:
-                from py_code_mode.skills import Embedder
+                from py_code_mode.skills import BackgroundEmbedder
 
-                embedder = Embedder()
+                embedder = BackgroundEmbedder()
                 self._vector_store = RedisVectorStore(
                     redis=self._redis,
                     embedder=embedder,
