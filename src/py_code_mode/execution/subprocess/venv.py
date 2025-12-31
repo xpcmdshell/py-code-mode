@@ -95,11 +95,14 @@ class VenvManager:
         # Generate unique kernel spec name
         kernel_spec_name = f"py-code-mode-{uuid.uuid4().hex[:8]}"
 
-        # Create venv with uv
-        await self._run_uv(
-            ["venv", "--python", self._config.python_version, str(venv_path)],
-            error_context="uv venv failed",
-        )
+        # Reuse existing venv if valid, otherwise create new one
+        if python_path.exists():
+            pass  # Reuse existing venv
+        else:
+            await self._run_uv(
+                ["venv", "--python", self._config.python_version, str(venv_path)],
+                error_context="uv venv failed",
+            )
 
         # Validate extra_deps before processing
         if extra_deps:

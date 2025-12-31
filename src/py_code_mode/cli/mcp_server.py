@@ -300,11 +300,8 @@ async def create_session(args: argparse.Namespace) -> Session:
     session = Session(storage=storage, executor=executor, sync_deps_on_start=sync_deps)
     await session.start()
 
-    # Pre-load tool registry to establish MCP connections in main task context.
-    # MCP client connections use anyio TaskGroups with cancel scopes that must
-    # be exited by the same task that entered them. Loading here (before
-    # FastMCP spawns handler tasks) ensures cleanup works correctly.
-    await storage.get_tool_registry()
+    # Tools are loaded in the executor (subprocess), not the host process.
+    # Session facade methods delegate to the executor for tool listing/search.
 
     return session
 

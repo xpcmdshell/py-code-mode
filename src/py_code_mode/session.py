@@ -210,16 +210,11 @@ class Session:
         Returns:
             List of tool info dicts with 'name', 'description', 'tags' keys.
         """
-        registry = await self._storage.get_tool_registry()
-        tools = registry.list_tools()
-        return [
-            {
-                "name": tool.name,
-                "description": tool.description or "",
-                "tags": list(tool.tags),
-            }
-            for tool in tools
-        ]
+        # Delegate to executor - tools are loaded there, not in host
+        result = await self.run("tools.list()")
+        if result.error:
+            return []
+        return result.value if result.value else []
 
     async def search_tools(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search tools by name/description/semantic similarity.
@@ -231,16 +226,13 @@ class Session:
         Returns:
             List of matching tool info dicts.
         """
-        registry = await self._storage.get_tool_registry()
-        tools = registry.search(query, limit=limit)
-        return [
-            {
-                "name": tool.name,
-                "description": tool.description or "",
-                "tags": list(tool.tags),
-            }
-            for tool in tools
-        ]
+        # Delegate to executor - tools are loaded there, not in host
+        # Escape query for safe code execution
+        escaped_query = query.replace("\\", "\\\\").replace("'", "\\'")
+        result = await self.run(f"tools.search('{escaped_query}', limit={limit})")
+        if result.error:
+            return []
+        return result.value if result.value else []
 
     # -------------------------------------------------------------------------
     # Skills facade methods
