@@ -71,10 +71,13 @@ def partial_dir_artifacts_only(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def populated_dir(tmp_path: Path) -> Path:
+def populated_dir(tmp_path: Path) -> tuple[Path, Path]:
     """All directories exist with sample content.
 
     This matches the current test fixtures - included for comparison.
+
+    Returns:
+        Tuple of (base_path, tools_path) for storage and executor config.
     """
     tools_dir = tmp_path / "tools"
     skills_dir = tmp_path / "skills"
@@ -100,7 +103,7 @@ def run(n: int) -> int:
     return n * 2
 ''')
 
-    return tmp_path
+    return tmp_path, tools_dir
 
 
 # =============================================================================
@@ -113,11 +116,12 @@ def _docker_available() -> bool:
     return shutil.which("docker") is not None
 
 
-def _create_in_process_executor():
-    """Create InProcessExecutor."""
-    from py_code_mode.execution.in_process import InProcessExecutor
+def _create_in_process_executor(tools_path: Path | None = None):
+    """Create InProcessExecutor with optional tools path."""
+    from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
 
-    return InProcessExecutor()
+    config = InProcessConfig(tools_path=tools_path)
+    return InProcessExecutor(config=config)
 
 
 def _create_container_executor():
@@ -662,58 +666,67 @@ class TestCompleteFeatureMatrix:
     And (if Docker available):
     - InProcessExecutor
     - ContainerExecutor
+
+    Note: Tools are now owned by executors (via config.tools_path), not storage.
+    The storage_and_executor fixture returns both, with tools_path configured
+    for populated directories.
     """
 
     @pytest.fixture(params=["file_empty", "file_populated"])
-    def storage(self, request, empty_base_dir: Path, populated_dir: Path):
-        """Parametrize over storage conditions."""
+    def storage_and_executor(
+        self, request, empty_base_dir: Path, populated_dir: tuple[Path, Path]
+    ):
+        """Parametrize over storage conditions, returns (storage, executor)."""
         if request.param == "file_empty":
-            return FileStorage(empty_base_dir)
+            storage = FileStorage(empty_base_dir)
+            executor = _create_in_process_executor()  # No tools
+            return storage, executor
         elif request.param == "file_populated":
-            return FileStorage(populated_dir)
-
-    @pytest.fixture(params=["in-process"])  # Add "container" when ready
-    def executor(self, request):
-        """Parametrize over executor types."""
-        if request.param == "in-process":
-            return _create_in_process_executor()
-        # Container executor can be added when tests are stable
+            base_path, tools_path = populated_dir
+            storage = FileStorage(base_path)
+            executor = _create_in_process_executor(tools_path=tools_path)
+            return storage, executor
 
     @pytest.mark.asyncio
-    async def test_tools_list_feature(self, storage, executor) -> None:
+    async def test_tools_list_feature(self, storage_and_executor) -> None:
         """tools.list() works across all combinations."""
+        storage, executor = storage_and_executor
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("tools.list()")
             assert result.is_ok, f"tools.list() failed: {result.error}"
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_tools_search_feature(self, storage, executor) -> None:
+    async def test_tools_search_feature(self, storage_and_executor) -> None:
         """tools.search() works across all combinations."""
+        storage, executor = storage_and_executor
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run('tools.search("test")')
             assert result.is_ok, f"tools.search() failed: {result.error}"
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_skills_list_feature(self, storage, executor) -> None:
+    async def test_skills_list_feature(self, storage_and_executor) -> None:
         """skills.list() works across all combinations."""
+        storage, executor = storage_and_executor
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("skills.list()")
             assert result.is_ok, f"skills.list() failed: {result.error}"
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_skills_search_feature(self, storage, executor) -> None:
+    async def test_skills_search_feature(self, storage_and_executor) -> None:
         """skills.search() works across all combinations."""
+        storage, executor = storage_and_executor
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run('skills.search("test")')
             assert result.is_ok, f"skills.search() failed: {result.error}"
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_skills_create_feature(self, storage, executor) -> None:
+    async def test_skills_create_feature(self, storage_and_executor) -> None:
         """skills.create() works across all combinations."""
+        storage, executor = storage_and_executor
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("""
 skills.create(
@@ -730,16 +743,18 @@ skills.create(
             assert result.value == "matrix"
 
     @pytest.mark.asyncio
-    async def test_artifacts_list_feature(self, storage, executor) -> None:
+    async def test_artifacts_list_feature(self, storage_and_executor) -> None:
         """artifacts.list() works across all combinations."""
+        storage, executor = storage_and_executor
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("list(artifacts.list())")
             assert result.is_ok, f"artifacts.list() failed: {result.error}"
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_artifacts_save_load_feature(self, storage, executor) -> None:
+    async def test_artifacts_save_load_feature(self, storage_and_executor) -> None:
         """artifacts.save() and load() work across all combinations."""
+        storage, executor = storage_and_executor
         async with Session(storage=storage, executor=executor) as session:
             # Save
             result = await session.run(
@@ -753,8 +768,9 @@ skills.create(
             assert result.value == {"test": 123}
 
     @pytest.mark.asyncio
-    async def test_artifacts_delete_feature(self, storage, executor) -> None:
+    async def test_artifacts_delete_feature(self, storage_and_executor) -> None:
         """artifacts.delete() works across all combinations."""
+        storage, executor = storage_and_executor
         async with Session(storage=storage, executor=executor) as session:
             # Save first
             await session.run('artifacts.save("to_delete.json", {}, "Delete test")')

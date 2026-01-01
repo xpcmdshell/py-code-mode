@@ -1,5 +1,6 @@
 """py_code_mode.tools - Tool registry and namespace."""
 
+from py_code_mode.tools.loader import load_tools_from_path
 from py_code_mode.tools.namespace import (
     CallableProxy,
     ToolProxy,
@@ -24,4 +25,5 @@ __all__ = [
     "CallableProxy",
     "ToolProxy",
     "ToolsNamespace",
+    "load_tools_from_path",
 ]

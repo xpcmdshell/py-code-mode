@@ -70,10 +70,13 @@ def empty_storage(tmp_path: Path) -> FileStorage:
 @pytest.fixture
 async def executor_with_storage(tmp_path: Path, storage_with_echo_tool: FileStorage):
     """Provide a started SubprocessExecutor with storage access."""
+    # Tools are owned by executor via config.tools_path (not storage)
+    tools_path = storage_with_echo_tool._base_path / "tools"
     config = SubprocessConfig(
         venv_path=tmp_path / "venv",
         # Include py-code-mode as a base dep for full namespace functionality
         base_deps=("ipykernel", "py-code-mode"),
+        tools_path=tools_path,  # Tools owned by executor
     )
     executor = SubprocessExecutor(config=config)
     await executor.start(storage=storage_with_echo_tool)
@@ -191,7 +194,7 @@ class TestToolsNamespaceContract:
 
     @pytest.mark.asyncio
     async def test_tools_list_returns_tool_objects(self, executor_with_storage) -> None:
-        """tools.list() returns list of Tool objects with name, description.
+        """tools.list() returns list of dicts with name, description.
 
         Breaks when: Returns raw YAML file names or empty list.
         """
@@ -202,9 +205,9 @@ class TestToolsNamespaceContract:
         check_result = await executor_with_storage.run("isinstance(tools.list(), list)")
         assert check_result.value in (True, "True")
 
-        # Verify tools have expected attributes (not just file names)
+        # Verify tools have expected keys (returned as dicts, not objects)
         result = await executor_with_storage.run(
-            "[t.name for t in tools.list() if hasattr(t, 'name')]"
+            "[t['name'] for t in tools.list()]"
         )
         assert result.error is None
         assert "echo" in str(result.value)
@@ -453,7 +456,7 @@ class TestStorageAccessIntegration:
 
     @pytest.mark.asyncio
     async def test_namespaces_use_storage_paths(self, tmp_path: Path, echo_tool_yaml: str) -> None:
-        """Namespaces use paths from FileStorage.
+        """Namespaces use paths from FileStorage (tools via executor config).
 
         Breaks when: Paths not passed through, wrong directories used.
         """
@@ -466,17 +469,19 @@ class TestStorageAccessIntegration:
 
         storage = FileStorage(base_path=base_path)
 
+        # Tools are owned by executor via config.tools_path (not storage)
         config = SubprocessConfig(
             venv_path=tmp_path / "venv",
             base_deps=("ipykernel", "py-code-mode"),
+            tools_path=tools_path,  # Tools owned by executor
         )
 
         executor = SubprocessExecutor(config=config)
         try:
             await executor.start(storage=storage)
 
-            # Tools should be loaded from tools_path
-            result = await executor.run("'echo' in [t.name for t in tools.list()]")
+            # Tools should be loaded from tools_path (dicts, not objects)
+            result = await executor.run("'echo' in [t['name'] for t in tools.list()]")
             assert result.error is None
             assert result.value in (True, "True")
         finally:
@@ -700,12 +705,11 @@ class TestRedisNamespaceSetup:
         from py_code_mode.execution.protocol import RedisStorageAccess
         from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
 
+        # NOTE: tools_prefix and deps_prefix removed - tools/deps now owned by executors
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Expected non-empty code for RedisStorageAccess"
@@ -720,12 +724,11 @@ class TestRedisNamespaceSetup:
         from py_code_mode.execution.protocol import RedisStorageAccess
         from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
 
+        # NOTE: tools_prefix and deps_prefix removed - tools/deps now owned by executors
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379/0",
-            tools_prefix="myapp:tools",
             skills_prefix="myapp:skills",
             artifacts_prefix="myapp:artifacts",
-            deps_prefix="myapp:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -745,12 +748,11 @@ class TestRedisNamespaceSetup:
         from py_code_mode.execution.protocol import RedisStorageAccess
         from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
 
+        # NOTE: tools_prefix and deps_prefix removed - tools/deps now owned by executors
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -768,13 +770,12 @@ class TestRedisNamespaceSetup:
         from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
 
         # Use a distinctive URL that's easy to find
+        # NOTE: tools_prefix and deps_prefix removed - tools/deps now owned by executors
         test_url = "redis://testhost:12345/7"
         storage_access = RedisStorageAccess(
             redis_url=test_url,
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -784,28 +785,26 @@ class TestRedisNamespaceSetup:
         """Generated code should use the exact prefixes provided.
 
         Breaks when: Code hardcodes prefixes or doesn't properly inject
-        the provided prefix values for tools, skills, and artifacts.
+        the provided prefix values for skills and artifacts.
+
+        NOTE: tools_prefix removed - tools now owned by executors.
         """
         from py_code_mode.execution.protocol import RedisStorageAccess
         from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
 
         # Use distinctive prefixes that are easy to find
-        tools_prefix = "unique_app_v1:tools"
+        # NOTE: tools_prefix removed - tools now owned by executors
         skills_prefix = "unique_app_v1:skills"
         artifacts_prefix = "unique_app_v1:artifacts"
 
-        deps_prefix = "unique_app_v1:deps"
-
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix=tools_prefix,
             skills_prefix=skills_prefix,
             artifacts_prefix=artifacts_prefix,
-            deps_prefix=deps_prefix,
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
-        assert tools_prefix in code, f"Generated code should contain tools_prefix: {tools_prefix}"
+        # NOTE: tools_prefix assertion removed - tools now owned by executors
         assert skills_prefix in code, (
             f"Generated code should contain skills_prefix: {skills_prefix}"
         )
@@ -814,27 +813,27 @@ class TestRedisNamespaceSetup:
         )
 
     def test_redis_storage_code_sets_up_tools(self) -> None:
-        """Generated code should set up tools namespace with RedisToolStore.
+        """Generated code should set up tools namespace with empty registry.
 
-        Breaks when: Tools namespace not created, or uses wrong store type
-        (FileToolStore instead of RedisToolStore).
+        NOTE: Tools are now owned by executors (via config.tools_path), not storage.
+        The generated code creates an empty ToolRegistry as a placeholder.
+        Tool loading is handled separately by the executor if tools_path is configured.
         """
         from py_code_mode.execution.protocol import RedisStorageAccess
         from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
         assert "tools = " in code or "tools=" in code, (
             "Generated code should assign tools namespace"
         )
-        assert "RedisToolStore" in code, "Generated code should use RedisToolStore for tools"
+        # Tools are now owned by executor, not storage - empty registry is created
+        assert "ToolRegistry()" in code, "Generated code should create empty ToolRegistry"
 
     def test_redis_storage_code_sets_up_skills(self) -> None:
         """Generated code should set up skills namespace with RedisSkillStore.
@@ -847,10 +846,8 @@ class TestRedisNamespaceSetup:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -870,10 +867,8 @@ class TestRedisNamespaceSetup:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -935,10 +930,8 @@ class TestRedisCodeGenerationDetails:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -957,10 +950,8 @@ class TestRedisCodeGenerationDetails:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -978,10 +969,8 @@ class TestRedisCodeGenerationDetails:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -997,10 +986,8 @@ class TestRedisCodeGenerationDetails:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
@@ -1019,10 +1006,8 @@ class TestRedisCodeGenerationDetails:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"

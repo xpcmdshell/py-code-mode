@@ -23,13 +23,17 @@ from mcp.client.stdio import StdioServerParameters
 
 
 @pytest.fixture
-def mcp_storage_dir(tmp_path: Path) -> Path:
-    """Create storage directory structure for MCP server."""
+def mcp_storage_dir(tmp_path: Path) -> tuple[Path, Path]:
+    """Create storage directory structure for MCP server.
+
+    Returns:
+        Tuple of (storage_path, tools_path).
+    """
     storage = tmp_path / "storage"
     storage.mkdir()
 
-    # Create subdirectories
-    tools_dir = storage / "tools"
+    # Tools in separate directory (executor-owned)
+    tools_dir = tmp_path / "tools"
     tools_dir.mkdir()
 
     skills_dir = storage / "skills"
@@ -99,7 +103,7 @@ def run(url: str) -> str:
     return match.group(1) if match else "No title found"
 ''')
 
-    return storage
+    return storage, tools_dir
 
 
 # =============================================================================
@@ -113,15 +117,16 @@ class TestMCPServerE2E:
     @pytest.mark.asyncio
     async def test_mcp_server_starts_via_stdio(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Server spawns and responds to initialize."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -143,15 +148,16 @@ class TestMCPServerE2E:
     @pytest.mark.asyncio
     async def test_mcp_server_list_tools(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: list_tools returns configured CLI tools."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -167,15 +173,16 @@ class TestMCPServerE2E:
     @pytest.mark.asyncio
     async def test_mcp_server_list_skills(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: list_skills returns seeded Python skills."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -191,15 +198,16 @@ class TestMCPServerE2E:
     @pytest.mark.asyncio
     async def test_mcp_server_search_tools(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: search_tools finds tools by intent."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -215,15 +223,16 @@ class TestMCPServerE2E:
     @pytest.mark.asyncio
     async def test_mcp_server_search_skills(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: search_skills finds skills by intent."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -245,15 +254,16 @@ class TestMCPServerE2E:
     @pytest.mark.asyncio
     async def test_mcp_server_skill_create_and_invoke(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Create skill at runtime, then invoke it."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -282,15 +292,16 @@ def run(a: int, b: int) -> int:
     @pytest.mark.asyncio
     async def test_mcp_server_skill_persists_across_calls(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Skill created in call 1 is available in call 2."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -327,15 +338,16 @@ skills.create(
     @pytest.mark.asyncio
     async def test_mcp_server_skill_delete(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Delete skill via skills.delete()."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -377,15 +389,16 @@ skills.create(
     @pytest.mark.asyncio
     async def test_mcp_server_artifact_save_and_load(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Save artifact, then load it back."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -411,15 +424,16 @@ loaded["count"]
     @pytest.mark.asyncio
     async def test_mcp_server_artifact_persists_across_calls(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Artifact saved in call 1 loads in call 2."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -450,15 +464,16 @@ data["topic"]
     @pytest.mark.asyncio
     async def test_mcp_server_artifact_list(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: List all artifacts."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -491,15 +506,16 @@ len(artifact_list)
     @pytest.mark.asyncio
     async def test_mcp_server_artifact_delete(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Delete artifact."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -559,15 +575,16 @@ result is None
     @pytest.mark.asyncio
     async def test_mcp_server_skill_calls_tool(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Create skill that uses tools namespace, then invoke it."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -599,15 +616,16 @@ def run(message: str) -> str:
     @pytest.mark.asyncio
     async def test_mcp_server_seeded_skill_calls_tool(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Invoke seeded skill (fetch_title) that calls curl tool."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -626,15 +644,16 @@ def run(message: str) -> str:
     @pytest.mark.asyncio
     async def test_mcp_server_skill_calls_another_skill(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Skill that calls skills.invoke()."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -671,15 +690,16 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_mcp_server_variable_persists(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Variable assigned in call 1 is available in call 2."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -695,15 +715,16 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_mcp_server_import_persists(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Import in call 1 is available in call 2."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -725,15 +746,16 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_mcp_server_tool_recipe_invocation(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Tool recipe invocation - tools.curl.get(url=...)."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -748,15 +770,16 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_mcp_server_tool_raw_invocation(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Tool raw invocation (escape hatch) - tools.echo(text=..., ...)."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -775,15 +798,16 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_mcp_server_list_artifacts(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: list_artifacts MCP tool shows saved artifacts."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -811,15 +835,16 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_mcp_server_create_skill(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: create_skill MCP tool creates a skill directly."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -851,15 +876,16 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_mcp_server_create_skill_persists(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Skill created via create_skill MCP tool persists and is searchable."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -892,15 +918,16 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_mcp_server_delete_skill(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: delete_skill MCP tool removes a skill."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -940,15 +967,16 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_mcp_server_delete_skill_nonexistent(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: delete_skill returns False for nonexistent skill."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -969,15 +997,16 @@ def run(n: int) -> int:
     @pytest.mark.asyncio
     async def test_mcp_server_full_workflow(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Complete agent workflow - fetch, parse, save skill, invoke, store artifact."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1103,15 +1132,16 @@ class TestMCPServerNegative:
     @pytest.mark.asyncio
     async def test_mcp_server_run_code_syntax_error(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Syntax error returns error, doesn't crash server."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1133,15 +1163,16 @@ class TestMCPServerNegative:
     @pytest.mark.asyncio
     async def test_mcp_server_run_code_runtime_error(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Runtime error returns traceback, doesn't crash server."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1161,15 +1192,16 @@ class TestMCPServerNegative:
     @pytest.mark.asyncio
     async def test_mcp_server_invoke_nonexistent_skill(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Invoking nonexistent skill returns error."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1187,15 +1219,16 @@ class TestMCPServerNegative:
     @pytest.mark.asyncio
     async def test_mcp_server_load_nonexistent_artifact(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Loading nonexistent artifact returns None or error."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1236,7 +1269,7 @@ class TestMCPServerDepsTools:
     @pytest.mark.asyncio
     async def test_deps_tools_registered(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Deps tools are registered and available.
 
@@ -1246,9 +1279,10 @@ class TestMCPServerDepsTools:
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1269,7 +1303,7 @@ class TestMCPServerDepsTools:
     @pytest.mark.asyncio
     async def test_list_deps_returns_list(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: list_deps returns a JSON list.
 
@@ -1279,9 +1313,10 @@ class TestMCPServerDepsTools:
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1295,7 +1330,7 @@ class TestMCPServerDepsTools:
     @pytest.mark.asyncio
     async def test_remove_dep_returns_dict(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: remove_dep returns a dict with removal results.
 
@@ -1305,9 +1340,10 @@ class TestMCPServerDepsTools:
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1323,7 +1359,7 @@ class TestMCPServerDepsTools:
     @pytest.mark.asyncio
     async def test_add_dep_returns_dict(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: add_dep returns a dict with result info.
 
@@ -1333,9 +1369,10 @@ class TestMCPServerDepsTools:
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1361,7 +1398,7 @@ class TestMCPServerDepsTools:
     @pytest.mark.asyncio
     async def test_add_dep_makes_package_listable(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: After add_dep, package appears in list_deps.
 
@@ -1371,9 +1408,10 @@ class TestMCPServerDepsTools:
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1392,7 +1430,7 @@ class TestMCPServerDepsTools:
     @pytest.mark.asyncio
     async def test_add_then_remove_dep_workflow(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: Complete add -> verify -> remove -> verify workflow.
 
@@ -1402,9 +1440,10 @@ class TestMCPServerDepsTools:
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1431,7 +1470,7 @@ class TestMCPServerDepsTools:
     @pytest.mark.asyncio
     async def test_add_dep_with_version_specifier(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: add_dep accepts version specifiers.
 
@@ -1440,9 +1479,10 @@ class TestMCPServerDepsTools:
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1505,7 +1545,7 @@ class TestMCPServerDepsTools:
     @pytest.mark.asyncio
     async def test_remove_dep_nonexistent_returns_false_in_config(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: remove_dep returns removed_from_config=False for non-existent package.
 
@@ -1514,9 +1554,10 @@ class TestMCPServerDepsTools:
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -1532,7 +1573,7 @@ class TestMCPServerDepsTools:
     @pytest.mark.asyncio
     async def test_add_dep_empty_string_returns_error(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: add_dep('') returns error response.
 
@@ -1541,24 +1582,26 @@ class TestMCPServerDepsTools:
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
                 result = await session.call_tool("add_dep", {"package": ""})
-                text = result.content[0].text.lower()
+                text = result.content[0].text
 
-                # Should indicate an error
-                assert "error" in text or "invalid" in text or "empty" in text
+                # Should indicate a failure - either "error" in text or package in "failed" list
+                result_data = json.loads(text)
+                assert "error" in result_data or "" in result_data.get("failed", [])
 
     @pytest.mark.asyncio
     async def test_add_dep_with_shell_metacharacters_returns_error(
         self,
-        mcp_storage_dir: Path,
+        mcp_storage_dir: tuple[Path, Path],
     ) -> None:
         """E2E: add_dep rejects dangerous shell metacharacters.
 
@@ -1567,20 +1610,23 @@ class TestMCPServerDepsTools:
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
+        storage_path, tools_path = mcp_storage_dir
         server_params = StdioServerParameters(
             command="py-code-mode-mcp",
-            args=["--storage", str(mcp_storage_dir)],
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
                 # Try command injection
-                result = await session.call_tool("add_dep", {"package": "pandas; rm -rf /"})
-                text = result.content[0].text.lower()
+                malicious_pkg = "pandas; rm -rf /"
+                result = await session.call_tool("add_dep", {"package": malicious_pkg})
+                text = result.content[0].text
 
-                # Should indicate an error (invalid package name)
-                assert "error" in text or "invalid" in text
+                # Should indicate a failure - either "error" in response or package in "failed" list
+                result_data = json.loads(text)
+                assert "error" in result_data or malicious_pkg in result_data.get("failed", [])
 
 
 class TestMCPServerDepsToolsSessionNotInitialized:

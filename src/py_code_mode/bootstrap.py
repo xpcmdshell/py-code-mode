@@ -5,10 +5,13 @@ storage backends and their associated namespaces without knowing about specific
 storage implementations. The pattern is:
 
 1. Storage classes implement `to_bootstrap_config()` returning a JSON-serializable dict
-2. This dict is passed to the subprocess
+2. This dict is passed to the subprocess along with executor config (tools_path, etc.)
 3. `bootstrap_namespaces(config)` reconstructs the storage and creates namespaces
 
 This keeps the executor decoupled from storage implementations.
+
+Architecture note: Tools are owned by executors (via config.tools_path), not storage.
+The bootstrap config can optionally include tools_path for the subprocess to load tools.
 """
 
 from __future__ import annotations
@@ -44,13 +47,15 @@ class NamespaceBundle:
 async def bootstrap_namespaces(config: dict[str, Any]) -> NamespaceBundle:
     """Reconstruct storage and namespaces from serialized config.
 
-    This function is async because get_tool_registry() requires async
-    initialization for MCP tools.
+    This function is async because tool registry initialization may require
+    async operations (e.g., MCP server connections).
 
     Args:
         config: Dict with "type" key ("file" or "redis") and type-specific fields.
-                - For "file": {"type": "file", "base_path": str}
-                - For "redis": {"type": "redis", "url": str, "prefix": str}
+                - For "file": {"type": "file", "base_path": str, "tools_path": str|None}
+                - For "redis": {"type": "redis", "url": str, "prefix": str,
+                  "tools_path": str|None}
+                - tools_path is optional; if provided, tools load from that directory
 
     Returns:
         NamespaceBundle with tools, skills, artifacts namespaces.
@@ -73,7 +78,7 @@ async def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
     """Bootstrap namespaces from FileStorage config.
 
     Args:
-        config: Dict with base_path key.
+        config: Dict with base_path key and optional tools_path.
 
     Returns:
         NamespaceBundle with file-based storage.
@@ -85,13 +90,22 @@ async def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
     from py_code_mode.deps import DepsNamespace, FileDepsStore, PackageInstaller
     from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
     from py_code_mode.storage import FileStorage
-    from py_code_mode.tools import ToolsNamespace
+    from py_code_mode.tools import ToolRegistry, ToolsNamespace
 
     base_path = Path(config["base_path"])
     storage = FileStorage(base_path)
 
-    # Create namespaces - get_tool_registry() is async for MCP tool initialization
-    tools_ns = ToolsNamespace(await storage.get_tool_registry())
+    # Tools are owned by executor, loaded from config if provided
+    tools_path_str = config.get("tools_path")
+    if tools_path_str:
+        tools_path = Path(tools_path_str)
+        registry = ToolRegistry()
+        await registry.load_from_directory(tools_path)
+        tools_ns = ToolsNamespace(registry)
+    else:
+        # Empty registry when no tools_path provided
+        tools_ns = ToolsNamespace(ToolRegistry())
+
     artifact_store = storage.get_artifact_store()
 
     # Create deps namespace
@@ -122,7 +136,7 @@ async def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
     """Bootstrap namespaces from RedisStorage config.
 
     Args:
-        config: Dict with url and prefix keys.
+        config: Dict with url, prefix, and optional tools_path keys.
 
     Returns:
         NamespaceBundle with Redis-based storage.
@@ -134,7 +148,7 @@ async def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
     from py_code_mode.deps import DepsNamespace, PackageInstaller, RedisDepsStore
     from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
     from py_code_mode.storage import RedisStorage
-    from py_code_mode.tools import ToolsNamespace
+    from py_code_mode.tools import ToolRegistry, ToolsNamespace
 
     url = config["url"]
     prefix = config["prefix"]
@@ -142,8 +156,17 @@ async def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
     # Connect to Redis
     storage = RedisStorage(url=url, prefix=prefix)
 
-    # Create namespaces - get_tool_registry() is async for MCP tool initialization
-    tools_ns = ToolsNamespace(await storage.get_tool_registry())
+    # Tools are owned by executor, loaded from config if provided
+    tools_path_str = config.get("tools_path")
+    if tools_path_str:
+        tools_path = Path(tools_path_str)
+        registry = ToolRegistry()
+        await registry.load_from_directory(tools_path)
+        tools_ns = ToolsNamespace(registry)
+    else:
+        # Empty registry when no tools_path provided
+        tools_ns = ToolsNamespace(ToolRegistry())
+
     artifact_store = storage.get_artifact_store()
 
     # Create deps namespace

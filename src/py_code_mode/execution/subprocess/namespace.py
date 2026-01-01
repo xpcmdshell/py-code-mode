@@ -92,8 +92,12 @@ def _build_file_storage_setup_code(
     storage_access: FileStorageAccess,
     allow_runtime_deps: bool,
 ) -> str:
-    """Generate namespace setup code for FileStorageAccess."""
-    tools_path_str = repr(str(storage_access.tools_path)) if storage_access.tools_path else "None"
+    """Generate namespace setup code for FileStorageAccess.
+
+    Note: Tools are owned by executors (via config.tools_path), not storage.
+    The generated code creates an empty ToolRegistry since tools loading is
+    handled separately by the executor.
+    """
     skills_path_str = (
         repr(str(storage_access.skills_path)) if storage_access.skills_path else "None"
     )
@@ -123,20 +127,14 @@ nest_asyncio.apply()
 # =============================================================================
 # Tools Namespace (with sync wrapper for subprocess context)
 # =============================================================================
+# NOTE: Tools are owned by executors (via config.tools_path), not storage.
+# The subprocess executor handles tool loading separately if tools_path is configured.
+# Here we create an empty registry as a placeholder.
 
 from py_code_mode.tools import ToolRegistry, ToolsNamespace
 from py_code_mode.tools.adapters import CLIAdapter
 
-_tools_path = Path({tools_path_str}) if {tools_path_str} else None
-
-# ToolRegistry.from_dir() is async because MCP tools require async initialization.
-# Since nest_asyncio is applied, asyncio.run() works in the Jupyter kernel context.
-async def _async_setup_tools():
-    if _tools_path is not None and _tools_path.exists():
-        return await ToolRegistry.from_dir(str(_tools_path))
-    return ToolRegistry()
-
-_registry = asyncio.run(_async_setup_tools())
+_registry = ToolRegistry()
 
 # Create the base namespace
 _base_tools = ToolsNamespace(_registry)
@@ -381,7 +379,7 @@ _skills_ns_dict["deps"] = deps
 # Cleanup temporary variables (keep wrapper classes for runtime use)
 # =============================================================================
 
-del _tools_path, _registry, _base_tools, _async_setup_tools
+del _registry, _base_tools
 del _skills_path, _store, _library, _skills_ns_dict
 {vector_store_cleanup}
 del _artifacts_path, _base_artifacts
@@ -404,9 +402,13 @@ def _build_redis_storage_setup_code(
     storage_access: RedisStorageAccess,
     allow_runtime_deps: bool,
 ) -> str:
-    """Generate namespace setup code for RedisStorageAccess."""
+    """Generate namespace setup code for RedisStorageAccess.
+
+    Note: Tools are owned by executors (via config.tools_path), not storage.
+    The generated code creates an empty ToolRegistry since tools loading is
+    handled separately by the executor.
+    """
     redis_url_str = repr(storage_access.redis_url)
-    tools_prefix_str = repr(storage_access.tools_prefix)
     skills_prefix_str = repr(storage_access.skills_prefix)
     artifacts_prefix_str = repr(storage_access.artifacts_prefix)
     # Deps prefix follows the pattern: {base_prefix}:deps
@@ -431,20 +433,14 @@ _redis_client = Redis.from_url({redis_url_str}, decode_responses=False)
 # =============================================================================
 # Tools Namespace (with sync wrapper for subprocess context)
 # =============================================================================
+# NOTE: Tools are owned by executors (via config.tools_path), not storage.
+# The subprocess executor handles tool loading separately if tools_path is configured.
+# Here we create an empty registry as a placeholder.
 
 from py_code_mode.tools import ToolRegistry, ToolsNamespace
 from py_code_mode.tools.adapters import CLIAdapter
-from py_code_mode.storage.redis_tools import RedisToolStore, registry_from_redis
 
-_tools_prefix = {tools_prefix_str}
-_tool_store = RedisToolStore(_redis_client, prefix=_tools_prefix)
-
-# registry_from_redis() is async because MCP tools require async initialization.
-# Since nest_asyncio is applied, asyncio.run() works in the Jupyter kernel context.
-async def _async_setup_tools():
-    return await registry_from_redis(_tool_store)
-
-_registry = asyncio.run(_async_setup_tools())
+_registry = ToolRegistry()
 
 # Create the base namespace
 _base_tools = ToolsNamespace(_registry)
@@ -675,11 +671,11 @@ _skills_ns_dict["deps"] = deps
 # Cleanup temporary variables (keep wrapper classes for runtime use)
 # =============================================================================
 
-del _tools_prefix, _tool_store, _registry, _base_tools, _async_setup_tools
+del _registry, _base_tools
 del _skills_prefix, _store, _library, _skills_ns_dict
 del _artifacts_prefix, _base_artifacts
 del _deps_prefix, _deps_store, _installer, _base_deps, _allow_runtime_deps
-del ToolRegistry, ToolsNamespace, CLIAdapter, RedisToolStore, registry_from_redis
+del ToolRegistry, ToolsNamespace, CLIAdapter
 del RedisSkillStore, create_skill_library, SkillsNamespace
 del RedisArtifactStore
 del DepsNamespace, RedisDepsStore, PackageInstaller

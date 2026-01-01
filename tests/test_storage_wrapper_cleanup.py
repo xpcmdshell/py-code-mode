@@ -14,7 +14,6 @@ import pytest
 from py_code_mode.artifacts import ArtifactStoreProtocol
 from py_code_mode.skills import SkillLibrary
 from py_code_mode.storage import FileStorage, RedisStorage
-from py_code_mode.tools import ToolRegistry
 
 if TYPE_CHECKING:
     from tests.conftest import MockRedisClient
@@ -87,19 +86,8 @@ class TestWrapperPropertiesRemoved:
 class TestGetMethodsReturnDirectTypes:
     """Verify get_X() methods return direct types, not wrappers."""
 
-    @pytest.mark.asyncio
-    async def test_file_storage_get_tool_registry_returns_tool_registry(
-        self, tmp_path: Path
-    ) -> None:
-        """get_tool_registry() returns ToolRegistry directly.
-
-        Breaks when: Returns dict wrapper or wrong type.
-        """
-        storage = FileStorage(tmp_path)
-
-        result = await storage.get_tool_registry()
-
-        assert isinstance(result, ToolRegistry)
+    # NOTE: test_file_storage_get_tool_registry_returns_tool_registry removed
+    # tools are now owned by executors, not storage
 
     def test_file_storage_get_skill_library_returns_skill_library(self, tmp_path: Path) -> None:
         """get_skill_library() returns SkillLibrary directly.
@@ -127,19 +115,8 @@ class TestGetMethodsReturnDirectTypes:
         # Should NOT be ArtifactStoreWrapper - check type name
         assert type(result).__name__ != "ArtifactStoreWrapper"
 
-    @pytest.mark.asyncio
-    async def test_redis_storage_get_tool_registry_returns_tool_registry(
-        self, mock_redis: MockRedisClient
-    ) -> None:
-        """get_tool_registry() returns ToolRegistry directly.
-
-        Breaks when: Returns dict wrapper or wrong type.
-        """
-        storage = RedisStorage(redis=mock_redis, prefix="test")
-
-        result = await storage.get_tool_registry()
-
-        assert isinstance(result, ToolRegistry)
+    # NOTE: test_redis_storage_get_tool_registry_returns_tool_registry removed
+    # tools are now owned by executors, not storage
 
     def test_redis_storage_get_skill_library_returns_skill_library(
         self, mock_redis: MockRedisClient
@@ -274,15 +251,8 @@ class TestArtifactStoreProtocolOptionalDescription:
 class TestStorageBackendProtocolSimplified:
     """Verify StorageBackend protocol has only the required methods."""
 
-    def test_storage_backend_has_get_tool_registry(self) -> None:
-        """StorageBackend protocol must have get_tool_registry method.
-
-        Breaks when: Method is missing from protocol.
-        """
-        from py_code_mode.storage.backends import StorageBackend
-
-        # Check method exists in protocol
-        assert hasattr(StorageBackend, "get_tool_registry")
+    # NOTE: test_storage_backend_has_get_tool_registry removed
+    # tools are now owned by executors, not storage
 
     def test_storage_backend_has_get_skill_library(self) -> None:
         """StorageBackend protocol must have get_skill_library method.

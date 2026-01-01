@@ -120,13 +120,15 @@ class TestInProcessExecutorAcceptsStorageBackend:
         )
 
     @pytest.mark.asyncio
-    async def test_uses_storage_tools_via_get_tool_registry(self, tmp_path: Path) -> None:
-        """InProcessExecutor uses storage.get_tool_registry() for tools."""
-        from py_code_mode.execution.in_process import InProcessExecutor
+    async def test_uses_executor_config_for_tools(self, tmp_path: Path) -> None:
+        """InProcessExecutor uses config.tools_path for tools.
+
+        NOTE: Tools are now owned by executors (via config.tools_path), not storage.
+        """
+        from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
         from py_code_mode.storage.backends import FileStorage
 
-        # Create storage with a tool
-        storage = FileStorage(tmp_path)
+        # Create tools directory
         tools_dir = tmp_path / "tools"
         tools_dir.mkdir()
         (tools_dir / "test_tool.yaml").write_text("""
@@ -144,7 +146,12 @@ recipes:
       message: {}
 """)
 
-        executor = InProcessExecutor()
+        # Create storage (for skills/artifacts only)
+        storage = FileStorage(tmp_path)
+
+        # Configure executor with tools_path
+        config = InProcessConfig(tools_path=tools_dir)
+        executor = InProcessExecutor(config=config)
         await executor.start(storage=storage)
 
         # Should have tools namespace
@@ -211,15 +218,16 @@ class TestInProcessExecutorRejectsOldTypes:
 
     @pytest.mark.asyncio
     async def test_rejects_file_storage_access(self, tmp_path: Path) -> None:
-        """InProcessExecutor.start() should reject FileStorageAccess."""
+        """InProcessExecutor.start() should reject FileStorageAccess.
+
+        NOTE: tools_path and deps_path removed - tools/deps now owned by executors.
+        """
         from py_code_mode.execution.in_process import InProcessExecutor
         from py_code_mode.execution.protocol import FileStorageAccess
 
         storage_access = FileStorageAccess(
-            tools_path=tmp_path / "tools",
             skills_path=tmp_path / "skills",
             artifacts_path=tmp_path / "artifacts",
-            deps_path=tmp_path / "deps",
         )
 
         executor = InProcessExecutor()
@@ -230,16 +238,17 @@ class TestInProcessExecutorRejectsOldTypes:
 
     @pytest.mark.asyncio
     async def test_rejects_redis_storage_access(self) -> None:
-        """InProcessExecutor.start() should reject RedisStorageAccess."""
+        """InProcessExecutor.start() should reject RedisStorageAccess.
+
+        NOTE: tools_prefix and deps_prefix removed - tools/deps now owned by executors.
+        """
         from py_code_mode.execution.in_process import InProcessExecutor
         from py_code_mode.execution.protocol import RedisStorageAccess
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
 
         executor = InProcessExecutor()
@@ -332,12 +341,11 @@ class TestContainerExecutorAcceptsStorageBackend:
         storage = RedisStorage(redis=mock_redis, prefix="test")
 
         # Mock get_serializable_access to verify it's called
+        # NOTE: tools_prefix and deps_prefix removed - tools/deps now owned by executors
         expected_access = RedisStorageAccess(
             redis_url="redis://localhost:6379/0",
-            tools_prefix="test:tools",
             skills_prefix="test:skills",
             artifacts_prefix="test:artifacts",
-            deps_prefix="test:deps",
         )
         storage.get_serializable_access = MagicMock(return_value=expected_access)
 
@@ -371,16 +379,17 @@ class TestContainerExecutorRejectsOldTypes:
 
     @pytest.mark.asyncio
     async def test_rejects_file_storage_access(self, tmp_path: Path) -> None:
-        """ContainerExecutor.start() should reject FileStorageAccess."""
+        """ContainerExecutor.start() should reject FileStorageAccess.
+
+        NOTE: tools_path and deps_path removed - tools/deps now owned by executors.
+        """
         from py_code_mode.execution.container import ContainerExecutor
         from py_code_mode.execution.container.config import ContainerConfig
         from py_code_mode.execution.protocol import FileStorageAccess
 
         storage_access = FileStorageAccess(
-            tools_path=tmp_path / "tools",
             skills_path=tmp_path / "skills",
             artifacts_path=tmp_path / "artifacts",
-            deps_path=tmp_path / "deps",
         )
 
         config = ContainerConfig(image="py-code-mode:test", auth_disabled=True)
@@ -416,11 +425,15 @@ class TestSubprocessExecutorAcceptsStorageBackend:
         )
 
     @pytest.mark.asyncio
-    @pytest.mark.slow
     async def test_calls_get_serializable_access(self, tmp_path: Path) -> None:
-        """SubprocessExecutor calls storage.get_serializable_access()."""
+        """SubprocessExecutor calls storage.get_serializable_access().
+
+        This is a unit test that verifies the early part of start() without
+        actually creating venvs or starting kernels.
+        """
         from py_code_mode.execution.subprocess import SubprocessExecutor
         from py_code_mode.execution.subprocess.config import SubprocessConfig
+        from py_code_mode.execution.subprocess.venv import KernelVenv
         from py_code_mode.storage.backends import FileStorage
 
         storage = FileStorage(tmp_path)
@@ -435,16 +448,39 @@ class TestSubprocessExecutorAcceptsStorageBackend:
         )
         executor = SubprocessExecutor(config=config)
 
-        # Mock venv/kernel startup and namespace setup to isolate the test
-        # We just want to verify get_serializable_access is called
-        with patch.object(executor, "_setup_namespaces", new_callable=AsyncMock):
-            try:
-                await executor.start(storage=storage)
+        # Create a mock venv
+        mock_venv = KernelVenv(
+            path=tmp_path / "venv",
+            python_path=tmp_path / "venv" / "bin" / "python",
+            kernel_spec_name="mock-kernel",
+        )
 
-                # Verify get_serializable_access was called
-                storage.get_serializable_access.assert_called_once()
-            finally:
-                await executor.close()
+        # Mock VenvManager to avoid creating actual venv
+        with patch(
+            "py_code_mode.execution.subprocess.executor.VenvManager"
+        ) as mock_venv_manager_class:
+            mock_manager = AsyncMock()
+            mock_manager.create = AsyncMock(return_value=mock_venv)
+            mock_venv_manager_class.return_value = mock_manager
+
+            # Mock KernelHost to avoid starting actual kernel
+            with patch(
+                "py_code_mode.execution.subprocess.executor.KernelHost"
+            ) as mock_host_class:
+                mock_host = AsyncMock()
+                mock_host.start = AsyncMock()
+                mock_host.execute = AsyncMock()
+                mock_host_class.return_value = mock_host
+
+                try:
+                    # start() should call get_serializable_access early
+                    await executor.start(storage=storage)
+
+                    # Verify get_serializable_access was called
+                    storage.get_serializable_access.assert_called_once()
+                finally:
+                    # Cleanup - executor may not have fully started
+                    executor._host = None  # Reset to allow close without error
 
 
 class TestSubprocessExecutorRejectsOldTypes:
@@ -452,16 +488,17 @@ class TestSubprocessExecutorRejectsOldTypes:
 
     @pytest.mark.asyncio
     async def test_rejects_file_storage_access(self, tmp_path: Path) -> None:
-        """SubprocessExecutor.start() should reject FileStorageAccess."""
+        """SubprocessExecutor.start() should reject FileStorageAccess.
+
+        NOTE: tools_path and deps_path removed - tools/deps now owned by executors.
+        """
         from py_code_mode.execution.protocol import FileStorageAccess
         from py_code_mode.execution.subprocess import SubprocessExecutor
         from py_code_mode.execution.subprocess.config import SubprocessConfig
 
         storage_access = FileStorageAccess(
-            tools_path=tmp_path / "tools",
             skills_path=tmp_path / "skills",
             artifacts_path=tmp_path / "artifacts",
-            deps_path=tmp_path / "deps",
         )
 
         config = SubprocessConfig(

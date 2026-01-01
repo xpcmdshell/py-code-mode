@@ -17,13 +17,18 @@ import traceback
 from contextlib import redirect_stdout
 from typing import TYPE_CHECKING, Any
 
-from py_code_mode.deps import ControlledDepsNamespace, DepsNamespace
+from py_code_mode.deps import (
+    ControlledDepsNamespace,
+    DepsNamespace,
+    FileDepsStore,
+    PackageInstaller,
+)
 from py_code_mode.execution.in_process.config import InProcessConfig
 from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
 from py_code_mode.execution.protocol import Capability, validate_storage_not_access
 from py_code_mode.execution.registry import register_backend
 from py_code_mode.skills import SkillLibrary
-from py_code_mode.tools import ToolRegistry, ToolsNamespace
+from py_code_mode.tools import ToolRegistry, ToolsNamespace, load_tools_from_path
 from py_code_mode.types import ExecutionResult
 
 if TYPE_CHECKING:
@@ -113,6 +118,26 @@ class InProcessExecutor:
     def supported_capabilities(self) -> set[str]:
         """Return set of all capabilities this backend supports."""
         return set(self._CAPABILITIES)
+
+    def get_configured_deps(self) -> list[str]:
+        """Return list of pre-configured dependencies from executor config.
+
+        These are deps specified via config.deps list and config.deps_file.
+        Used by Session._sync_deps() to install deps on start.
+
+        Returns:
+            List of package specifications.
+        """
+        deps: list[str] = []
+        if self._config.deps:
+            deps.extend(self._config.deps)
+        if self._config.deps_file and self._config.deps_file.exists():
+            file_deps = self._config.deps_file.read_text().strip().splitlines()
+            for line in file_deps:
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    deps.append(stripped)
+        return deps
 
     async def run(self, code: str, timeout: float | None = None) -> ExecutionResult:
         """Run code and return result.
@@ -231,34 +256,64 @@ class InProcessExecutor:
         self,
         storage: StorageBackend | None = None,
     ) -> None:
-        """Start executor and configure from storage backend.
+        """Start executor and configure from config and storage backend.
+
+        Tools and deps are loaded from executor config (tools_path, deps, deps_file).
+        Skills and artifacts come from storage backend.
 
         Args:
             storage: Optional StorageBackend instance.
-                    If provided, uses storage protocol methods to build namespaces.
+                    If provided, uses storage for skills and artifacts.
                     If None, uses whatever was passed to __init__.
 
         Raises:
             TypeError: If passed old StorageAccess types instead of StorageBackend.
         """
-        if storage is None:
-            return  # Use __init__ configuration
-
         # Reject old StorageAccess types - no backward compatibility
         validate_storage_not_access(storage, "InProcessExecutor")
 
-        # Use public protocol methods to build namespaces
-        # get_tool_registry() is async because MCP tools require async initialization
-        self._registry = await storage.get_tool_registry()
-        self._namespace["tools"] = ToolsNamespace(self._registry)
+        # Tools from executor config (NOT storage)
+        if self._config.tools_path is not None:
+            self._registry = await load_tools_from_path(self._config.tools_path)
+            self._namespace["tools"] = ToolsNamespace(self._registry)
+        elif self._registry is not None:
+            # Use registry from __init__ if provided
+            self._namespace["tools"] = ToolsNamespace(self._registry)
+        else:
+            # Always create tools namespace (empty if no tools configured)
+            self._registry = ToolRegistry()
+            self._namespace["tools"] = ToolsNamespace(self._registry)
 
-        self._skill_library = storage.get_skill_library()
-        self._namespace["skills"] = SkillsNamespace(self._skill_library, self._namespace)
+        # Deps from executor config (NOT storage)
+        # Collect deps from config.deps list and config.deps_file
+        initial_deps: list[str] = []
+        if self._config.deps:
+            initial_deps.extend(self._config.deps)
+        if self._config.deps_file and self._config.deps_file.exists():
+            file_deps = self._config.deps_file.read_text().strip().splitlines()
+            for line in file_deps:
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    initial_deps.append(stripped)
 
-        self._artifact_store = storage.get_artifact_store()
-        self._namespace["artifacts"] = self._artifact_store
+        # Create deps namespace with initial deps from config
+        if self._deps_namespace is None:
+            installer = PackageInstaller()
+            # Use a file-backed store if deps_file is configured, otherwise in-memory
+            if self._config.deps_file:
+                deps_store = FileDepsStore(self._config.deps_file.parent)
+                # Pre-populate store with config deps
+                for dep in initial_deps:
+                    if not deps_store.exists(dep):
+                        deps_store.add(dep)
+            else:
+                # In-memory store for deps when no file configured
+                from py_code_mode.deps.store import MemoryDepsStore
+                deps_store = MemoryDepsStore()
+                for dep in initial_deps:
+                    deps_store.add(dep)
+            self._deps_namespace = DepsNamespace(store=deps_store, installer=installer)
 
-        self._deps_namespace = storage.get_deps_namespace()
         # Wrap deps namespace if runtime deps disabled
         if not self._config.allow_runtime_deps:
             self._namespace["deps"] = ControlledDepsNamespace(
@@ -266,6 +321,21 @@ class InProcessExecutor:
             )
         else:
             self._namespace["deps"] = self._deps_namespace
+
+        # Skills and artifacts from storage (if provided)
+        if storage is not None:
+            self._skill_library = storage.get_skill_library()
+            self._namespace["skills"] = SkillsNamespace(self._skill_library, self._namespace)
+
+            self._artifact_store = storage.get_artifact_store()
+            self._namespace["artifacts"] = self._artifact_store
+        elif self._skill_library is not None:
+            # Use skill_library from __init__ if provided
+            self._namespace["skills"] = SkillsNamespace(self._skill_library, self._namespace)
+
+        if storage is None and self._artifact_store is not None:
+            # Use artifact_store from __init__ if provided
+            self._namespace["artifacts"] = self._artifact_store
 
     async def install_deps(self, packages: list[str]) -> dict[str, Any]:
         """Install packages in the in-process environment.

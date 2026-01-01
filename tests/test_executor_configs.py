@@ -166,15 +166,15 @@ class TestSubprocessConfig:
         Contract: SubprocessConfig().deps is None
         Breaks when: Default changed or field missing.
 
-        Note: base_deps is for kernel deps (ipykernel, py-code-mode).
+        Note: base_deps is for kernel deps (ipykernel).
         deps is for user-configured deps (pandas, numpy, etc.).
         """
         from py_code_mode.execution import SubprocessConfig
 
         config = SubprocessConfig()
         assert config.deps is None
-        # base_deps still has its default
-        assert config.base_deps == ("ipykernel", "py-code-mode")
+        # base_deps still has its default (ipykernel for RPC-based namespace access)
+        assert config.base_deps == ("ipykernel",)
 
     def test_deps_accepts_tuple(self) -> None:
         """deps accepts a tuple of package specs.

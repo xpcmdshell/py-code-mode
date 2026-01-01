@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from py_code_mode.storage.backends import StorageBackend
 
+from py_code_mode.deps import DepsStore, FileDepsStore, MemoryDepsStore
 from py_code_mode.execution.protocol import (
     Capability,
     StorageAccess,
@@ -28,6 +29,7 @@ from py_code_mode.execution.registry import register_backend
 from py_code_mode.execution.subprocess.config import SubprocessConfig
 from py_code_mode.execution.subprocess.host import KernelHost
 from py_code_mode.execution.subprocess.venv import KernelVenv, VenvManager
+from py_code_mode.tools import ToolRegistry, load_tools_from_path
 from py_code_mode.types import ExecutionResult
 
 logger = logging.getLogger(__name__)
@@ -61,12 +63,15 @@ class StorageResourceProvider:
     """ResourceProvider that bridges RPC to storage backend.
 
     This class implements the ResourceProvider protocol by delegating
-    to the storage backend's tools, skills, artifacts, and deps.
+    to the storage backend for skills and artifacts, and using
+    executor-provided tool registry and deps store.
     """
 
     def __init__(
         self,
         storage: StorageBackend,
+        tool_registry: ToolRegistry | None = None,
+        deps_store: DepsStore | None = None,
         allow_runtime_deps: bool = True,
         venv_manager: VenvManager | None = None,
         venv: KernelVenv | None = None,
@@ -74,23 +79,24 @@ class StorageResourceProvider:
         """Initialize provider.
 
         Args:
-            storage: Storage backend for all resources.
+            storage: Storage backend for skills and artifacts.
+            tool_registry: Tool registry loaded from executor config.
+            deps_store: Deps store for dependency management.
             allow_runtime_deps: Whether to allow deps.add() and deps.remove().
             venv_manager: VenvManager for package installation.
             venv: KernelVenv for the current subprocess.
         """
         self._storage = storage
+        self._tool_registry = tool_registry
+        self._deps_store = deps_store
         self._allow_runtime_deps = allow_runtime_deps
         self._venv_manager = venv_manager
         self._venv = venv
-        # Cached resources (lazy initialized)
-        self._tool_registry = None
+        # Cached skill library (lazy initialized)
         self._skill_library = None
 
-    async def _get_tool_registry(self):
-        """Get tool registry, caching the result."""
-        if self._tool_registry is None:
-            self._tool_registry = await self._storage.get_tool_registry()
+    def _get_tool_registry(self) -> ToolRegistry | None:
+        """Get tool registry. Already loaded at construction time."""
         return self._tool_registry
 
     def _get_skill_library(self):
@@ -110,7 +116,9 @@ class StorageResourceProvider:
         - Direct tool invocation: name="curl", args={...}
         - Recipe invocation: name="curl.get", args={...}
         """
-        registry = await self._get_tool_registry()
+        registry = self._get_tool_registry()
+        if registry is None:
+            raise ValueError("No tools configured")
 
         # Parse name for recipe syntax (e.g., "curl.get")
         if "." in name:
@@ -129,7 +137,9 @@ class StorageResourceProvider:
 
     async def list_tools(self) -> list[dict[str, Any]]:
         """List all available tools."""
-        registry = await self._get_tool_registry()
+        registry = self._get_tool_registry()
+        if registry is None:
+            return []
         tools = registry.list_tools()
         return [
             {
@@ -142,7 +152,9 @@ class StorageResourceProvider:
 
     async def search_tools(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Search tools by query."""
-        registry = await self._get_tool_registry()
+        registry = self._get_tool_registry()
+        if registry is None:
+            return []
         tools = registry.search(query, limit=limit)
         return [
             {
@@ -155,7 +167,9 @@ class StorageResourceProvider:
 
     async def list_tool_recipes(self, name: str) -> list[dict[str, Any]]:
         """List recipes for a specific tool."""
-        registry = await self._get_tool_registry()
+        registry = self._get_tool_registry()
+        if registry is None:
+            raise ValueError("No tools configured")
         all_tools = registry.get_all_tools()
         tool = next((t for t in all_tools if t.name == name), None)
         if tool is None:
@@ -190,22 +204,28 @@ class StorageResourceProvider:
             raise ValueError(f"Skill not found: {name}")
 
         # Execute skill in host with access to namespaces
+        from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
         from py_code_mode.tools import ToolsNamespace
 
-        registry = await self._get_tool_registry()
-        tools_ns = ToolsNamespace(registry)
+        registry = self._get_tool_registry()
+        tools_ns = ToolsNamespace(registry) if registry else None
         artifact_store = self._storage.get_artifact_store()
 
         # Get the current event loop for thread-safe tool calls
         loop = asyncio.get_running_loop()
-        tools_ns.set_loop(loop)
+        if tools_ns:
+            tools_ns.set_loop(loop)
 
-        # Create execution namespace
+        # Create execution namespace dict first
         skill_namespace: dict[str, Any] = {
             "tools": tools_ns,
-            "skills": library,
             "artifacts": artifact_store,
         }
+
+        # Create SkillsNamespace that wraps the library and provides invoke()
+        # Pass the namespace dict so skills can access tools/artifacts
+        skills_ns = SkillsNamespace(library, skill_namespace)
+        skill_namespace["skills"] = skills_ns
 
         def run_skill_sync() -> Any:
             """Run skill synchronously in a thread."""
@@ -364,9 +384,9 @@ class StorageResourceProvider:
                 "Dependencies must be pre-configured before session start."
             )
 
-        # Add to storage
-        deps_store = self._storage.get_deps_store()
-        deps_store.add(package)
+        # Add to deps store if configured
+        if self._deps_store is not None:
+            self._deps_store.add(package)
 
         # Install via venv manager if available
         if self._venv_manager is not None and self._venv is not None:
@@ -391,13 +411,15 @@ class StorageResourceProvider:
                 "Dependencies must be pre-configured before session start."
             )
 
-        deps_store = self._storage.get_deps_store()
-        return deps_store.remove(package)
+        if self._deps_store is None:
+            return False
+        return self._deps_store.remove(package)
 
     async def list_deps(self) -> list[str]:
         """List configured packages."""
-        deps_store = self._storage.get_deps_store()
-        return deps_store.list()
+        if self._deps_store is None:
+            return []
+        return self._deps_store.list()
 
     async def sync_deps(self) -> dict[str, Any]:
         """Install all configured packages.
@@ -405,8 +427,10 @@ class StorageResourceProvider:
         This is always allowed, even when allow_runtime_deps=False,
         because it only installs pre-configured packages.
         """
-        deps_store = self._storage.get_deps_store()
-        packages = deps_store.list()
+        if self._deps_store is None:
+            return {"installed": [], "already_present": [], "failed": []}
+
+        packages = self._deps_store.list()
 
         if not packages:
             return {"installed": [], "already_present": [], "failed": []}
@@ -472,6 +496,8 @@ class SubprocessExecutor:
         self._closed = False
         self._storage: StorageBackend | None = None
         self._storage_access: StorageAccess | None = None
+        self._tool_registry: ToolRegistry | None = None
+        self._deps_store: DepsStore | None = None
 
     def supports(self, capability: str) -> bool:
         """Check if this backend supports a capability."""
@@ -481,11 +507,34 @@ class SubprocessExecutor:
         """Return set of all capabilities this backend supports."""
         return set(self._CAPABILITIES)
 
+    def get_configured_deps(self) -> list[str]:
+        """Return list of pre-configured dependencies from executor config.
+
+        These are deps specified via config.deps tuple and config.deps_file.
+        Used by Session._sync_deps() to install deps on start.
+
+        Returns:
+            List of package specifications.
+        """
+        deps: list[str] = []
+        if self._config.deps:
+            deps.extend(self._config.deps)
+        if self._config.deps_file and self._config.deps_file.exists():
+            file_deps = self._config.deps_file.read_text().strip().splitlines()
+            for line in file_deps:
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    deps.append(stripped)
+        return deps
+
     async def start(self, storage: StorageBackend | None = None) -> None:
         """Start kernel: create venv, start kernel, initialize RPC.
 
+        Tools and deps are loaded from executor config (tools_path, deps, deps_file).
+        Skills and artifacts come from storage backend.
+
         Args:
-            storage: Optional StorageBackend for namespace injection.
+            storage: Optional StorageBackend for skills and artifacts.
 
         Raises:
             RuntimeError: If already started or storage access fails.
@@ -506,18 +555,46 @@ class SubprocessExecutor:
             except Exception as e:
                 raise RuntimeError(f"Failed to get serializable access from storage: {e}") from e
 
-        # 1. Create venv with VenvManager
+        # 1. Load tools from executor config (NOT storage)
+        if self._config.tools_path is not None:
+            self._tool_registry = await load_tools_from_path(self._config.tools_path)
+
+        # 2. Create deps store from executor config (NOT storage)
+        initial_deps: list[str] = []
+        if self._config.deps:
+            initial_deps.extend(self._config.deps)
+        if self._config.deps_file and self._config.deps_file.exists():
+            file_deps = self._config.deps_file.read_text().strip().splitlines()
+            for line in file_deps:
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    initial_deps.append(stripped)
+
+        # Create deps store with initial deps from config
+        if self._config.deps_file:
+            self._deps_store = FileDepsStore(self._config.deps_file.parent)
+            for dep in initial_deps:
+                if not self._deps_store.exists(dep):
+                    self._deps_store.add(dep)
+        else:
+            self._deps_store = MemoryDepsStore()
+            for dep in initial_deps:
+                self._deps_store.add(dep)
+
+        # 3. Create venv with VenvManager
         # Use minimal base_deps since we don't need py-code-mode in venv
         # The RPC approach only needs ipykernel and pyzmq
         self._venv_manager = VenvManager(self._config)
         self._venv = await self._venv_manager.create()
 
-        # 2. Create KernelHost and ResourceProvider
+        # 4. Create KernelHost and ResourceProvider
         self._host = KernelHost()
 
         if storage is not None:
             self._provider = StorageResourceProvider(
                 storage=storage,
+                tool_registry=self._tool_registry,
+                deps_store=self._deps_store,
                 allow_runtime_deps=self._config.allow_runtime_deps,
                 venv_manager=self._venv_manager,
                 venv=self._venv,
@@ -526,7 +603,7 @@ class SubprocessExecutor:
             # Create a minimal provider for basic execution
             self._provider = None
 
-        # 3. Start kernel with RPC
+        # 5. Start kernel with RPC
         await self._host.start(
             provider=self._provider,  # type: ignore[arg-type]
             kernel_name=self._venv.kernel_spec_name,

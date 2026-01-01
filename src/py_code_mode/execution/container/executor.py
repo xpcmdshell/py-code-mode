@@ -170,6 +170,26 @@ class ContainerExecutor:
         """Return set of all capabilities this backend supports."""
         return set(self._CAPABILITIES)
 
+    def get_configured_deps(self) -> list[str]:
+        """Return list of pre-configured dependencies from executor config.
+
+        These are deps specified via config.deps tuple and config.deps_file.
+        Used by Session._sync_deps() to install deps on start.
+
+        Returns:
+            List of package specifications.
+        """
+        deps: list[str] = []
+        if self._config.deps:
+            deps.extend(self._config.deps)
+        if self._config.deps_file and self._config.deps_file.exists():
+            file_deps = self._config.deps_file.read_text().strip().splitlines()
+            for line in file_deps:
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    deps.append(stripped)
+        return deps
+
     async def __aenter__(self) -> ContainerExecutor:
         """Start container and connect."""
         await self.start()
@@ -366,10 +386,11 @@ class ContainerExecutor:
             access = storage.get_serializable_access()
 
             if isinstance(access, FileStorageAccess):
-                tools_path = access.tools_path
+                # Tools and deps come from executor config, not storage
+                tools_path = self.config.tools_path
                 skills_path = access.skills_path
                 artifacts_path = access.artifacts_path
-                deps_path = access.deps_path
+                deps_path = None  # Deps owned by executor, not storage
                 # Create directories on host before mounting
                 # Skills need to exist for volume mount
                 if skills_path:
@@ -377,17 +398,17 @@ class ContainerExecutor:
                 # Artifacts need to exist for volume mount
                 if artifacts_path:
                     artifacts_path.mkdir(parents=True, exist_ok=True)
-                # Deps directory created in get_serializable_access()
             elif isinstance(access, RedisStorageAccess):
                 redis_url = access.redis_url
                 # Transform localhost URLs for Docker container access
                 # Inside container, localhost refers to container itself, not host
                 if redis_url:
                     redis_url = _transform_localhost_for_docker(redis_url)
-                tools_prefix = access.tools_prefix
+                # Tools and deps prefixes come from executor config, not storage
+                tools_prefix = None  # Tools owned by executor
                 skills_prefix = access.skills_prefix
                 artifacts_prefix = access.artifacts_prefix
-                deps_prefix = access.deps_prefix
+                deps_prefix = None  # Deps owned by executor
             else:
                 raise TypeError(
                     f"Unexpected storage access type: {type(access).__name__}. "

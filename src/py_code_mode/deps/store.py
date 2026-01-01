@@ -8,6 +8,7 @@ from __future__ import annotations
 __all__ = [
     "DepsStore",
     "FileDepsStore",
+    "MemoryDepsStore",
     "RedisDepsStore",
 ]
 
@@ -165,6 +166,97 @@ class DepsStore(Protocol):
         ...
 
 
+class MemoryDepsStore:
+    """In-memory dependency store. Does not persist across restarts.
+
+    Used when deps_file is not configured in executor config. Packages
+    are stored in memory only and will be lost when the executor closes.
+    """
+
+    def __init__(self) -> None:
+        """Initialize in-memory store."""
+        self._packages: set[str] = set()
+
+    def list(self) -> list[str]:
+        """Return list of all packages."""
+        return list(self._packages)
+
+    def add(self, package: str) -> None:
+        """Add a package to the store."""
+        _validate_package_name(package)
+        normalized = _normalize_package_name(package)
+
+        # Check for duplicates with different formatting
+        base_name = re.split(r"[\[<>=!~]", normalized)[0]
+
+        # Remove existing entries with same base name
+        to_remove = []
+        for existing in self._packages:
+            existing_base = re.split(r"[\[<>=!~]", existing)[0]
+            if existing_base == base_name:
+                to_remove.append(existing)
+
+        for pkg in to_remove:
+            self._packages.discard(pkg)
+
+        self._packages.add(normalized)
+
+    def remove(self, package: str) -> bool:
+        """Remove a package from the store.
+
+        Matches by base package name, so remove("requests") will remove
+        "requests>=2.0" if present.
+        """
+        if not package or not package.strip():
+            return False
+
+        normalized = _normalize_package_name(package)
+        base_name = re.split(r"[\[<>=!~]", normalized)[0]
+
+        # Find and remove any package with matching base name
+        to_remove = []
+        for existing in self._packages:
+            existing_base = re.split(r"[\[<>=!~]", existing)[0]
+            if existing_base == base_name:
+                to_remove.append(existing)
+
+        if not to_remove:
+            return False
+
+        for pkg in to_remove:
+            self._packages.discard(pkg)
+        return True
+
+    def clear(self) -> None:
+        """Remove all packages from the store."""
+        self._packages.clear()
+
+    def hash(self) -> str:
+        """Compute hash of current package list."""
+        return _compute_hash(list(self._packages))
+
+    def exists(self, package: str) -> bool:
+        """Check if a package is in the store.
+
+        Args:
+            package: Package specification to check.
+
+        Returns:
+            True if package (by base name) exists, False otherwise.
+        """
+        if not package or not package.strip():
+            return False
+
+        normalized = _normalize_package_name(package)
+        base_name = re.split(r"[\[<>=!~]", normalized)[0]
+
+        for existing in self._packages:
+            existing_base = re.split(r"[\[<>=!~]", existing)[0]
+            if existing_base == base_name:
+                return True
+        return False
+
+
 class FileDepsStore:
     """File-based dependency store. Stores packages in requirements.txt format."""
 
@@ -261,6 +353,27 @@ class FileDepsStore:
     def hash(self) -> str:
         """Compute hash of current package list."""
         return _compute_hash(list(self._packages))
+
+    def exists(self, package: str) -> bool:
+        """Check if a package is in the store.
+
+        Args:
+            package: Package specification to check.
+
+        Returns:
+            True if package (by base name) exists, False otherwise.
+        """
+        if not package or not package.strip():
+            return False
+
+        normalized = _normalize_package_name(package)
+        base_name = re.split(r"[\[<>=!~]", normalized)[0]
+
+        for existing in self._packages:
+            existing_base = re.split(r"[\[<>=!~]", existing)[0]
+            if existing_base == base_name:
+                return True
+        return False
 
 
 class RedisDepsStore:

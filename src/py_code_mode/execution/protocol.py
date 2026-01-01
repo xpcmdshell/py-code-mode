@@ -26,13 +26,12 @@ class FileStorageAccess:
     """Access descriptor for file-based storage.
 
     Session derives this from FileStorage and passes to executor.start()
-    so the executor knows where to find tools, skills, and artifacts.
+    so the executor knows where to find skills and artifacts.
+    Tools and deps are owned by executors (via config), not storage.
     """
 
-    tools_path: Path | None
     skills_path: Path | None
     artifacts_path: Path
-    deps_path: Path | None
     vectors_path: Path | None = None
 
 
@@ -41,14 +40,13 @@ class RedisStorageAccess:
     """Access descriptor for Redis storage.
 
     Session derives this from RedisStorage and passes to executor.start()
-    so the executor knows the Redis connection and key prefixes.
+    so the executor knows the Redis connection and key prefixes for skills
+    and artifacts. Tools and deps are owned by executors (via config).
     """
 
     redis_url: str
-    tools_prefix: str
     skills_prefix: str
     artifacts_prefix: str
-    deps_prefix: str
     vectors_prefix: str | None = None
 
 
@@ -161,6 +159,17 @@ class Executor(Protocol):
 
     def supported_capabilities(self) -> set[str]:
         """Return set of all capabilities this backend supports."""
+        ...
+
+    def get_configured_deps(self) -> list[str]:
+        """Return list of pre-configured dependencies from executor config.
+
+        These are deps specified via config.deps list and config.deps_file.
+        Used by Session._sync_deps() to install deps on start.
+
+        Returns:
+            List of package specifications.
+        """
         ...
 
     async def reset(self) -> None:

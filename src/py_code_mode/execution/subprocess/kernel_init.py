@@ -267,37 +267,23 @@ class ToolsProxy:
 
         return _ToolProxy(name, validated=True)
 
-    def list(self) -> list[Tool]:
+    def list(self) -> list[dict[str, Any]]:
         """List all available tools.
 
         Returns:
-            List of Tool objects with name, description, and tags attributes.
+            List of dicts with name, description, and tags keys.
         """
-        result = _rpc_call("list_tools")
-        return [
-            Tool(
-                name=t["name"],
-                description=t.get("description", ""),
-                tags=tuple(t.get("tags", [])),
-            )
-            for t in result
-        ]
+        # Return raw dicts (not NamedTuples) so they serialize cleanly through IPython
+        return _rpc_call("list_tools")
 
-    def search(self, query: str, limit: int = 10) -> list[Tool]:
+    def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search tools by query.
 
         Returns:
-            List of Tool objects matching the query.
+            List of dicts matching the query.
         """
-        result = _rpc_call("search_tools", query=query, limit=limit)
-        return [
-            Tool(
-                name=t["name"],
-                description=t.get("description", ""),
-                tags=tuple(t.get("tags", [])),
-            )
-            for t in result
-        ]
+        # Return raw dicts (not NamedTuples) so they serialize cleanly through IPython
+        return _rpc_call("search_tools", query=query, limit=limit)
 
 
 class SkillsProxy:
