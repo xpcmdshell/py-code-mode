@@ -7,7 +7,7 @@ This guide walks through installing py-code-mode and running your first agent se
 ### As a Python Library
 
 ```bash
-uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.7.0
+uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.8.0
 ```
 
 ### For Claude Code (MCP Server)
@@ -16,7 +16,7 @@ uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.7.0
 
 ```bash
 claude mcp add -s user py-code-mode \
-  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.7.0 \
+  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.8.0 \
   py-code-mode-mcp --storage ~/.code-mode
 ```
 
@@ -24,7 +24,7 @@ claude mcp add -s user py-code-mode \
 
 ```bash
 claude mcp add -s project py-code-mode \
-  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.7.0 \
+  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.8.0 \
   py-code-mode-mcp --storage ./.code-mode
 ```
 
