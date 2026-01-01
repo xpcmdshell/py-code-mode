@@ -1,17 +1,17 @@
 """MCP server exposing py-code-mode executor to MCP clients.
 
 Usage:
-    # File storage (skills/artifacts only)
-    py-code-mode-mcp --storage ./data
+    # Base directory (auto-discovers tools/, skills/, artifacts/ subdirs)
+    py-code-mode-mcp --base ~/.code-mode
 
-    # With tools directory (executor-owned)
+    # Explicit storage + tools
     py-code-mode-mcp --storage ./data --tools ./project/tools
 
     # Redis storage
     py-code-mode-mcp --redis redis://localhost:6379 --prefix my-agent
 
     # With Claude Code
-    claude mcp add py-code-mode -- py-code-mode-mcp --storage ~/.code-mode --tools ./tools
+    claude mcp add py-code-mode -- py-code-mode-mcp --base ~/.code-mode
 
 Note on execution:
     Code runs in an isolated subprocess with its own virtual environment and
@@ -21,7 +21,7 @@ Note on execution:
 Note on architecture:
     Storage (--storage or --redis) holds skills and artifacts.
     Tools are owned by the executor and loaded from --tools directory.
-    This separation allows different tool configurations per execution context.
+    The --base flag is a convenience that sets both: storage=base, tools=base/tools.
 """
 
 from __future__ import annotations
@@ -332,18 +332,24 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # File storage (skills/artifacts only)
-  py-code-mode-mcp --storage ./data
+  # Base directory (auto-discovers tools/, skills/, artifacts/)
+  py-code-mode-mcp --base ~/.code-mode
 
-  # With tools directory
+  # Explicit storage + tools
   py-code-mode-mcp --storage ./data --tools ./project/tools
 
   # Redis storage
   py-code-mode-mcp --redis redis://localhost:6379 --prefix my-agent
 
   # Add to Claude Code
-  claude mcp add py-code-mode -- py-code-mode-mcp --storage ~/.code-mode --tools ./tools
+  claude mcp add py-code-mode -- py-code-mode-mcp --base ~/.code-mode
         """,
+    )
+
+    # Base directory (convenience: auto-discovers tools/, skills/, artifacts/)
+    parser.add_argument(
+        "--base",
+        help="Base directory with tools/, skills/, artifacts/ subdirs (convenience shorthand)",
     )
 
     # File storage option
@@ -386,9 +392,19 @@ Examples:
 
     args = parser.parse_args()
 
-    # Validate: need either --storage or --redis
+    # Handle --base convenience flag
+    if args.base:
+        base_path = Path(args.base)
+        # --base sets storage to base dir, tools to base/tools if it exists
+        if not args.storage:
+            args.storage = str(base_path)
+        tools_subdir = base_path / "tools"
+        if not args.tools and tools_subdir.is_dir():
+            args.tools = str(tools_subdir)
+
+    # Validate: need either --storage, --base, or --redis
     if not args.storage and not args.redis:
-        parser.error("Either --storage or --redis is required")
+        parser.error("Either --base, --storage, or --redis is required")
 
     # Conditionally register add_dep tool based on --no-runtime-deps flag
     no_runtime_deps = getattr(args, "no_runtime_deps", False)
