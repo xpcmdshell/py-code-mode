@@ -437,6 +437,138 @@ class InProcessExecutor:
             "failed": failed,
         }
 
+    def _sync_result_to_dict(self, result: Any) -> dict[str, Any]:
+        """Convert SyncResult to dict format.
+
+        Args:
+            result: A SyncResult object or similar with installed/already_present/failed attrs.
+
+        Returns:
+            Dict with installed, already_present, and failed lists.
+        """
+        if hasattr(result, "installed"):
+            return {
+                "installed": list(getattr(result, "installed", [])),
+                "already_present": list(getattr(result, "already_present", [])),
+                "failed": list(getattr(result, "failed", [])),
+            }
+        return {"installed": [], "already_present": [], "failed": []}
+
+    async def add_dep(self, package: str) -> dict[str, Any]:
+        """Add and install a single package.
+
+        Args:
+            package: Package specification (e.g., "pandas>=2.0").
+
+        Returns:
+            Dict with installed, already_present, and failed lists.
+
+        Raises:
+            RuntimeDepsDisabledError: If runtime deps are disabled.
+        """
+        if self._deps_namespace is None:
+            return {"installed": [], "already_present": [], "failed": [package]}
+
+        # Check runtime deps permission
+        if not self._config.allow_runtime_deps:
+            from py_code_mode.deps import RuntimeDepsDisabledError
+
+            raise RuntimeDepsDisabledError(
+                "Runtime dependency installation is disabled. "
+                "Dependencies must be pre-configured before session start."
+            )
+
+        result = self._deps_namespace.add(package)
+        return self._sync_result_to_dict(result)
+
+    async def remove_dep(self, package: str) -> dict[str, Any]:
+        """Remove a package from configuration and uninstall it.
+
+        Args:
+            package: Package name to remove.
+
+        Returns:
+            Dict with removed, not_found, failed lists and removed_from_config flag.
+
+        Raises:
+            RuntimeDepsDisabledError: If runtime deps are disabled.
+        """
+        if self._deps_namespace is None:
+            return {
+                "removed": [],
+                "not_found": [package],
+                "failed": [],
+                "removed_from_config": False,
+            }
+
+        # Check runtime deps permission
+        if not self._config.allow_runtime_deps:
+            from py_code_mode.deps import RuntimeDepsDisabledError
+
+            raise RuntimeDepsDisabledError(
+                "Runtime dependency modification is disabled. "
+                "Dependencies must be pre-configured before session start."
+            )
+
+        removed = self._deps_namespace.remove(package)
+        return {
+            "removed": [package] if removed else [],
+            "not_found": [] if removed else [package],
+            "failed": [],
+            "removed_from_config": removed,
+        }
+
+    async def list_deps(self) -> list[str]:
+        """List all configured dependencies.
+
+        Returns:
+            List of package specifications.
+        """
+        if self._deps_namespace is None:
+            return []
+        return self._deps_namespace.list()
+
+    async def sync_deps(self) -> dict[str, Any]:
+        """Sync all configured dependencies.
+
+        Returns:
+            Dict with installed, already_present, and failed lists.
+        """
+        if self._deps_namespace is None:
+            return {"installed": [], "already_present": [], "failed": []}
+        result = self._deps_namespace.sync()
+        return self._sync_result_to_dict(result)
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        """List all available tools.
+
+        Returns:
+            List of dicts with name, description, and tags for each tool.
+        """
+        if self._registry is None:
+            return []
+        return [
+            {"name": t.name, "description": t.description or "", "tags": list(t.tags)}
+            for t in self._registry.list_tools()
+        ]
+
+    async def search_tools(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Search tools by name/description.
+
+        Args:
+            query: Search query string.
+            limit: Maximum number of results to return.
+
+        Returns:
+            List of dicts with name, description, and tags for matching tools.
+        """
+        if self._registry is None:
+            return []
+        return [
+            {"name": t.name, "description": t.description or "", "tags": list(t.tags)}
+            for t in self._registry.search(query, limit=limit)
+        ]
+
     async def __aenter__(self) -> InProcessExecutor:
         return self
 

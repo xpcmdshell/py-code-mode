@@ -295,21 +295,12 @@ async def create_session(args: argparse.Namespace) -> Session:
     # Tools path from CLI arg (executor-owned, not storage)
     tools_path = Path(args.tools) if args.tools else None
 
-    # Use persistent venv alongside storage for faster restarts
-    # For file storage: ./data/.venv/
-    # For redis: ~/.cache/py-code-mode/<prefix>/.venv/
-    if args.redis:
-        prefix = args.prefix or "py-code-mode"
-        venv_path = Path.home() / ".cache" / "py-code-mode" / prefix / ".venv"
-    else:
-        venv_path = storage_path / ".venv"
-
+    # Venv goes in ~/.cache/py-code-mode/venv-{version} by default (cache_venv=True)
+    # Storage is for skills/artifacts only, not executor concerns like venvs
     config = SubprocessConfig(
         allow_runtime_deps=not no_runtime_deps,
         default_timeout=timeout,
-        venv_path=venv_path,
-        cleanup_venv_on_close=False,  # Persist for faster restarts
-        tools_path=tools_path,  # Tools from CLI arg
+        tools_path=tools_path,
     )
     executor = SubprocessExecutor(config=config)
 

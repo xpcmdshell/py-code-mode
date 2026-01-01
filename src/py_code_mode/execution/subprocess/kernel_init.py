@@ -417,6 +417,9 @@ class SkillsProxy:
     def invoke(self, skill_name: str, **kwargs) -> Any:
         """Invoke a skill by name.
 
+        Gets skill source from host and executes it locally in the kernel.
+        This ensures skills can import packages installed at runtime.
+
         Args:
             skill_name: Name of the skill to invoke.
             **kwargs: Arguments to pass to the skill's run() function.
@@ -424,7 +427,31 @@ class SkillsProxy:
         Note: Uses skill_name (not name) to avoid collision with skills
         that have a 'name' parameter.
         """
-        return _rpc_call("skills.invoke", name=skill_name, args=kwargs)
+        # Get skill source from host (storage access)
+        skill = _rpc_call("skills.get", name=skill_name)
+        if skill is None:
+            raise ValueError(f"Skill not found: {{skill_name}}")
+
+        source = skill.get("source")
+        if not source:
+            raise ValueError(f"Skill has no source: {{skill_name}}")
+
+        # Execute skill locally in kernel with access to namespaces
+        skill_namespace = {{
+            "tools": tools,
+            "skills": skills,
+            "artifacts": artifacts,
+            "deps": deps,
+        }}
+        code = compile(source, f"<skill:{{skill_name}}>", "exec")
+        exec(code, skill_namespace)
+
+        # Call the run function
+        run_func = skill_namespace.get("run")
+        if not callable(run_func):
+            raise ValueError(f"Skill {{skill_name}} has no run() function")
+
+        return run_func(**kwargs)
 
     def search(self, query: str, limit: int = 5) -> list[Skill]:
         """Search for skills matching query.

@@ -730,6 +730,89 @@ class SubprocessExecutor:
 
         return {"removed": removed, "not_found": [], "failed": failed}
 
+    async def add_dep(self, package: str) -> dict[str, Any]:
+        """Add and install a single package.
+
+        Delegates to the provider which handles deps store and venv installation.
+        After installation, invalidates the kernel's import cache so the new
+        package is immediately importable.
+        """
+        if self._provider is None:
+            return {"installed": [], "already_present": [], "failed": [package]}
+
+        result = await self._provider.add_dep(package)
+
+        # Invalidate import caches in the kernel so newly installed packages
+        # are immediately importable without restarting the kernel
+        if result.get("installed") and self._host is not None:
+            await self._host.execute(
+                "import importlib; importlib.invalidate_caches()",
+                allow_stdin=False,
+                timeout=5.0,
+            )
+
+        return result
+
+    async def remove_dep(self, package: str) -> dict[str, Any]:
+        """Remove a package from configuration.
+
+        Delegates to the provider which handles deps store removal.
+        """
+        if self._provider is None:
+            return {
+                "removed": [],
+                "not_found": [package],
+                "failed": [],
+                "removed_from_config": False,
+            }
+        removed = await self._provider.remove_dep(package)
+        return {
+            "removed": [package] if removed else [],
+            "not_found": [] if removed else [package],
+            "failed": [],
+            "removed_from_config": removed,
+        }
+
+    async def list_deps(self) -> list[str]:
+        """List all configured dependencies."""
+        if self._provider is None:
+            return []
+        return await self._provider.list_deps()
+
+    async def sync_deps(self) -> dict[str, Any]:
+        """Sync all configured dependencies.
+
+        After installation, invalidates the kernel's import cache so newly
+        installed packages are immediately importable.
+        """
+        if self._provider is None:
+            return {"installed": [], "already_present": [], "failed": []}
+
+        result = await self._provider.sync_deps()
+
+        # Invalidate import caches in the kernel so newly installed packages
+        # are immediately importable without restarting the kernel
+        if result.get("installed") and self._host is not None:
+            await self._host.execute(
+                "import importlib; importlib.invalidate_caches()",
+                allow_stdin=False,
+                timeout=5.0,
+            )
+
+        return result
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        """List all available tools."""
+        if self._provider is None:
+            return []
+        return await self._provider.list_tools()
+
+    async def search_tools(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Search tools by name/description."""
+        if self._provider is None:
+            return []
+        return await self._provider.search_tools(query, limit)
+
     async def close(self) -> None:
         """Shutdown kernel and cleanup venv."""
         self._closed = True

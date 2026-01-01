@@ -219,12 +219,9 @@ class Session:
         """
         if not self._started:
             await self.start()
-
-        # Delegate to executor - tools are executor-owned
-        result = await self.run("tools.list()")
-        if result.error:
-            return []
-        return result.value if result.value else []
+        if self._executor is None:
+            raise RuntimeError("Session not started")
+        return await self._executor.list_tools()
 
     async def search_tools(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search tools by name/description/semantic similarity.
@@ -240,12 +237,9 @@ class Session:
         """
         if not self._started:
             await self.start()
-
-        # Delegate to executor - tools are executor-owned
-        result = await self.run(f"tools.search({query!r}, limit={limit})")
-        if result.error:
-            return []
-        return result.value if result.value else []
+        if self._executor is None:
+            raise RuntimeError("Session not started")
+        return await self._executor.search_tools(query, limit)
 
     # -------------------------------------------------------------------------
     # Skills facade methods
@@ -439,12 +433,9 @@ class Session:
         """
         if not self._started:
             await self.start()
-
-        # Delegate to executor - deps are executor-owned
-        result = await self.run("deps.list()")
-        if result.error:
-            return []
-        return result.value if result.value else []
+        if self._executor is None:
+            raise RuntimeError("Session not started")
+        return await self._executor.list_deps()
 
     async def add_dep(self, package: str) -> dict[str, Any]:
         """Add and install a dependency.
@@ -464,17 +455,9 @@ class Session:
         """
         if not self._started:
             await self.start()
-
         if self._executor is None:
             raise RuntimeError("Session not started")
-
-        # Delegate to executor - deps are executor-owned
-        result = await self.run(f"deps.add({package!r})")
-        if result.error:
-            return {"installed": [], "already_present": [], "failed": [package]}
-        if result.value:
-            return self._sync_result_to_dict(result.value)
-        return {"installed": [package], "already_present": [], "failed": []}
+        return await self._executor.add_dep(package)
 
     async def remove_dep(self, package: str) -> dict[str, Any]:
         """Remove a dependency.
@@ -493,27 +476,9 @@ class Session:
         """
         if not self._started:
             await self.start()
-
         if self._executor is None:
             raise RuntimeError("Session not started")
-
-        # Delegate to executor - deps are executor-owned
-        result = await self.run(f"deps.remove({package!r})")
-        if result.error:
-            return {
-                "removed": [],
-                "not_found": [],
-                "failed": [package],
-                "removed_from_config": False,
-            }
-
-        removed = result.value if result.value else False
-        return {
-            "removed": [package] if removed else [],
-            "not_found": [] if removed else [package],
-            "failed": [],
-            "removed_from_config": removed,
-        }
+        return await self._executor.remove_dep(package)
 
     async def sync_deps(self) -> dict[str, Any]:
         """Sync all configured dependencies.
@@ -528,42 +493,9 @@ class Session:
         """
         if not self._started:
             await self.start()
-
         if self._executor is None:
             raise RuntimeError("Session not started")
-
-        # Delegate to executor - deps are executor-owned
-        result = await self.run("deps.sync()")
-        if result.error:
-            return {"installed": [], "already_present": [], "failed": []}
-        if result.value:
-            return self._sync_result_to_dict(result.value)
-        return {"installed": [], "already_present": [], "failed": []}
-
-    def _sync_result_to_dict(self, value: Any) -> dict[str, Any]:
-        """Convert SyncResult or similar object to dict format.
-
-        SyncResult has installed, already_present, failed as sets.
-        This converts them to lists for JSON serialization.
-        """
-        # Handle dict-like objects
-        if isinstance(value, dict):
-            return {
-                "installed": list(value.get("installed", [])),
-                "already_present": list(value.get("already_present", [])),
-                "failed": list(value.get("failed", [])),
-            }
-
-        # Handle SyncResult-like objects with attributes
-        if hasattr(value, "installed"):
-            return {
-                "installed": list(getattr(value, "installed", [])),
-                "already_present": list(getattr(value, "already_present", [])),
-                "failed": list(getattr(value, "failed", [])),
-            }
-
-        # Fallback - return as-is if already dict-like
-        return {"installed": [], "already_present": [], "failed": []}
+        return await self._executor.sync_deps()
 
     # -------------------------------------------------------------------------
     # Context manager

@@ -365,6 +365,52 @@ skills.create(
         assert result.error is None, f"Attribute invocation failed: {result.error}"
         assert result.value in (12, "12"), f"Wrong result: {result.value}"
 
+    @pytest.mark.asyncio
+    async def test_skills_invoke_uses_runtime_installed_dep(self, executor_empty_storage) -> None:
+        """skills.invoke() can use packages installed at runtime via deps.add().
+
+        User story: Agent creates a skill that needs a package, installs it via
+        deps.add(), then invokes the skill - all in the same session.
+
+        Breaks when: Skill execution happens in host process instead of kernel,
+        or import caches not invalidated after package install.
+        """
+        # 1. Create a skill that uses a package we'll install at runtime
+        # Using 'art' package - small, pure Python, unlikely to be pre-installed
+        create_code = """
+skills.create(
+    name="ascii_art_test",
+    source='''
+def run(text: str) -> str:
+    import art
+    return art.text2art(text, font="block")
+''',
+    description="Generate ASCII art from text"
+)
+"""
+        result = await executor_empty_storage.run(create_code)
+        assert result.error is None, f"Skill creation failed: {result.error}"
+
+        # 2. Skill invoke should FAIL before installing the dep
+        result = await executor_empty_storage.run('skills.invoke("ascii_art_test", text="hi")')
+        assert result.error is not None, "Expected ModuleNotFoundError before install"
+        assert "ModuleNotFoundError" in result.error or "No module named" in result.error
+
+        # 3. Install the package at runtime
+        result = await executor_empty_storage.run('deps.add("art")')
+        assert result.error is None, f"deps.add failed: {result.error}"
+
+        # 4. Skill invoke should SUCCEED after installing the dep
+        result = await executor_empty_storage.run('skills.invoke("ascii_art_test", text="hi")')
+        assert result.error is None, (
+            f"Skill invoke failed after deps.add: {result.error}. "
+            "This indicates skills are executing in host process instead of kernel, "
+            "or import caches not invalidated after package install."
+        )
+        # art.text2art returns multi-line ASCII art
+        assert result.value is not None
+        assert len(str(result.value)) > 10  # Should have substantial output
+
 
 # =============================================================================
 # Contract Tests - Artifacts Namespace
