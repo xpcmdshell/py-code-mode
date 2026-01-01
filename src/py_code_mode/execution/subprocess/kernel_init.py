@@ -39,6 +39,15 @@ _ip = get_ipython()
 if _ip is not None:
     _ip.colors = "NoColor"
 
+    # Register custom exception handler for namespace errors
+    # These errors originate host-side, so kernel traceback is just RPC plumbing
+    def _namespace_error_handler(self, etype, value, tb, tb_offset=None):
+        # Just print the exception type and message, no traceback
+        print(f"{{etype.__name__}}: {{value}}", file=__import__("sys").stderr)
+        return None  # Returning None tells IPython we handled it
+
+    # Will be registered after NamespaceError is defined (see below)
+
 # Threading lock to prevent concurrent RPC corruption
 _rpc_lock = threading.Lock()
 
@@ -65,6 +74,9 @@ class NamespaceError(RPCError):
 
     Provides structured context about which namespace, operation, and
     original exception type caused the failure.
+
+    Traceback is suppressed because the error originated on the host side -
+    the kernel-side call stack is just RPC plumbing and not useful to agents.
     """
     def __init__(
         self,
@@ -77,6 +89,7 @@ class NamespaceError(RPCError):
         self.operation = operation
         self.original_type = original_type
         super().__init__(f"{{namespace}}.{{operation}}: [{{original_type}}] {{message}}")
+        self.__traceback__ = None  # Suppress traceback - error is from host, not kernel
 
 
 class SkillError(NamespaceError):
@@ -109,6 +122,11 @@ class DepsError(NamespaceError):
         self, operation: str, message: str, original_type: str = "RuntimeError"
     ) -> None:
         super().__init__("deps", operation, message, original_type)
+
+
+# Register custom exception handler for namespace errors (now that classes exist)
+if _ip is not None:
+    _ip.set_custom_exc((NamespaceError,), _namespace_error_handler)
 
 
 # =============================================================================
@@ -261,17 +279,18 @@ def _rpc_call(method: str, **params) -> Any:
                 message = err["message"]
                 error_type = err["type"]
 
-                # Map namespace to error class
+                # Map namespace to error class, suppress traceback (from None)
+                # The error originated host-side, kernel traceback is just RPC plumbing
                 if namespace == "skills":
-                    raise SkillError(operation, message, error_type)
+                    raise SkillError(operation, message, error_type) from None
                 elif namespace == "tools":
-                    raise ToolError(operation, message, error_type)
+                    raise ToolError(operation, message, error_type) from None
                 elif namespace == "artifacts":
-                    raise ArtifactError(operation, message, error_type)
+                    raise ArtifactError(operation, message, error_type) from None
                 elif namespace == "deps":
-                    raise DepsError(operation, message, error_type)
+                    raise DepsError(operation, message, error_type) from None
                 else:
-                    raise RPCError(f"{{namespace}}.{{operation}}: [{{error_type}}] {{message}}")
+                    raise RPCError(f"{{namespace}}.{{operation}}: [{{error_type}}] {{message}}") from None
             else:
                 # Non-dict error is a protocol violation
                 raise RPCTransportError(f"Host sent non-dict error (protocol violation): {{err!r}}")
