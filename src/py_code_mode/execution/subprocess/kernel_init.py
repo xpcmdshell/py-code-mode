@@ -290,7 +290,8 @@ def _rpc_call(method: str, **params) -> Any:
                 elif namespace == "deps":
                     raise DepsError(operation, message, error_type) from None
                 else:
-                    raise RPCError(f"{{namespace}}.{{operation}}: [{{error_type}}] {{message}}") from None
+                    msg = f"{{namespace}}.{{operation}}: [{{error_type}}] {{message}}"
+                    raise RPCError(msg) from None
             else:
                 # Non-dict error is a protocol violation
                 raise RPCTransportError(f"Host sent non-dict error (protocol violation): {{err!r}}")
