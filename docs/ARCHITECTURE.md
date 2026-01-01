@@ -10,6 +10,7 @@ This document explains how tools, skills, and artifacts interact across differen
 | **Skills** | Reusable Python code recipes | `.py` files with `run()` function |
 | **Artifacts** | Persistent data storage | Binary data with metadata |
 | **Deps** | Python package dependencies | `requirements.txt` (file) or Redis keys |
+| **VectorStore** | Cached skill embeddings for fast search | ChromaDB or Redis keys |
 
 ## Agent-Facing Namespaces
 
@@ -99,6 +100,10 @@ class StorageBackend(Protocol):
 
     def get_artifact_store(self) -> ArtifactStoreProtocol:
         """Return artifact store for in-process execution."""
+        ...
+
+    def get_vector_store(self) -> VectorStore | None:
+        """Return VectorStore for embedding caching if available."""
         ...
 ```
 

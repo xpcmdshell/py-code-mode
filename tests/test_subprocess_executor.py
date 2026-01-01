@@ -50,9 +50,16 @@ class TestSubprocessConfig:
         assert config.allow_runtime_deps is True
 
     def test_default_cleanup_venv_on_close(self) -> None:
-        """Default cleanup_venv_on_close is True."""
+        """Default cleanup_venv_on_close is None (auto mode).
+
+        When None, cleanup is determined by cache_venv:
+        - cache_venv=True (default) -> don't cleanup (preserve cache)
+        - cache_venv=False -> cleanup (temp venv)
+        """
         config = SubprocessConfig(python_version="3.12")
-        assert config.cleanup_venv_on_close is True
+        assert config.cleanup_venv_on_close is None
+        # With default cache_venv=True, resolved cleanup should be False
+        assert config.get_resolved_cleanup() is False
 
     # =========================================================================
     # Custom Values
@@ -338,10 +345,11 @@ class TestVenvManagerCreate:
 
     @pytest.mark.asyncio
     async def test_creates_temp_venv_when_path_is_none(self) -> None:
-        """Creates venv in temp directory when venv_path is None."""
+        """Creates venv in temp directory when venv_path is None and cache_venv=False."""
         config = SubprocessConfig(
             python_version="3.12",
             venv_path=None,
+            cache_venv=False,  # Disable caching to get temp venv behavior
             base_deps=("ipykernel",),
         )
         manager = VenvManager(config)

@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
-import uuid
 from dataclasses import dataclass
 from importlib.metadata import distribution
 from pathlib import Path
+
+import filelock
 
 import py_code_mode
 from py_code_mode.execution.subprocess.config import SubprocessConfig
@@ -56,16 +59,116 @@ class KernelVenv:
 class VenvManager:
     """Manages uv-based virtual environments with ipykernel installed."""
 
-    def __init__(self, config: SubprocessConfig) -> None:
-        """Initialize VenvManager with configuration.
+    def __init__(
+        self,
+        config: SubprocessConfig | None = None,
+        *,
+        venv_path: Path | None = None,
+        python_version: str | None = None,
+    ) -> None:
+        """Initialize VenvManager with configuration or direct parameters.
 
         Args:
-            config: Configuration for venv creation.
+            config: Configuration for venv creation. If provided, other args ignored.
+            venv_path: Direct venv path (used if config is None).
+            python_version: Python version string (used if config is None).
         """
-        self._config = config
+        if config is not None:
+            self._config = config
+        else:
+            # Build config from direct parameters
+            self._config = SubprocessConfig(
+                venv_path=venv_path,
+                python_version=python_version,
+            )
+
+    @staticmethod
+    def _get_kernel_spec_name(venv_path: Path) -> str:
+        """Deterministic kernel spec name from venv path.
+
+        Args:
+            venv_path: Path to the venv directory.
+
+        Returns:
+            Kernel spec name in format: py-code-mode-{sha256(str(venv_path))[:12]}
+        """
+        path_hash = hashlib.sha256(str(venv_path).encode()).hexdigest()[:12]
+        return f"py-code-mode-{path_hash}"
+
+    def _get_python_path(self, venv_path: Path) -> Path:
+        """Get platform-appropriate python executable path.
+
+        Args:
+            venv_path: Path to the venv directory.
+
+        Returns:
+            Path to the python executable within the venv.
+        """
+        if sys.platform == "win32":
+            return venv_path / "Scripts" / "python.exe"
+        return venv_path / "bin" / "python"
+
+    def _is_venv_valid(self, venv_path: Path) -> bool:
+        """Check if venv at path is valid and can be reused.
+
+        Checks:
+        1. Directory exists
+        2. Python executable exists at bin/python (or Scripts/python.exe)
+        3. Python executable is runnable
+
+        Args:
+            venv_path: Path to check for valid venv.
+
+        Returns:
+            True if venv is valid and reusable, False otherwise.
+            Never raises - returns False on any error.
+        """
+        try:
+            # Check directory exists
+            if not venv_path.exists() or not venv_path.is_dir():
+                return False
+
+            # Check python executable exists
+            python_path = self._get_python_path(venv_path)
+            if not python_path.exists():
+                return False
+
+            # Check python is runnable
+            result = subprocess.run(
+                [str(python_path), "--version"],
+                capture_output=True,
+                timeout=10,
+            )
+            return result.returncode == 0
+
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    def _get_effective_venv_path(self) -> Path | None:
+        """Determine effective venv path based on config.
+
+        Returns:
+            Path for persistent venv (explicit or cached), or None for temp venv.
+        """
+        # Explicit path takes precedence
+        if self._config.venv_path is not None:
+            return self._config.venv_path
+
+        # Use cached path if caching enabled
+        if self._config.cache_venv:
+            # python_version is guaranteed to be str after __post_init__
+            python_version = self._config.python_version
+            assert python_version is not None  # For type checker
+            return SubprocessConfig.get_canonical_venv_path(python_version)
+
+        # No path - will use temp
+        return None
 
     async def create(self, extra_deps: list[str] | None = None) -> KernelVenv:
         """Create a virtual environment with ipykernel and optional extra deps.
+
+        Uses file locking for persistent venv paths to prevent concurrent creation.
+        Reuses existing valid venvs when possible.
 
         Args:
             extra_deps: Additional packages to install beyond base_deps.
@@ -80,59 +183,40 @@ class VenvManager:
         if shutil.which("uv") is None:
             raise RuntimeError("uv is required but not found in PATH")
 
-        # Determine venv path
-        if self._config.venv_path is not None:
-            venv_path = self._config.venv_path
+        venv_path = self._get_effective_venv_path()
+
+        if venv_path is not None:
+            # Persistent path - use file lock for concurrent safety
+            lock_path = venv_path.parent / f".{venv_path.name}.lock"
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+            lock = filelock.FileLock(lock_path, timeout=120)
+            with lock:
+                if self._is_venv_valid(venv_path):
+                    # Reuse existing venv (kernel spec installed while holding lock)
+                    return await self._make_kernel_venv(venv_path)
+                # Create new venv under lock
+                return await self._create_venv(venv_path, extra_deps)
         else:
+            # Temp path - no lock needed
             venv_path = Path(tempfile.mkdtemp(prefix="py-code-mode-venv-"))
+            return await self._create_venv(venv_path, extra_deps)
 
-        # Determine python path
-        if sys.platform == "win32":
-            python_path = venv_path / "Scripts" / "python.exe"
-        else:
-            python_path = venv_path / "bin" / "python"
+    async def _make_kernel_venv(self, venv_path: Path) -> KernelVenv:
+        """Create KernelVenv from an existing venv path.
 
-        # Generate unique kernel spec name
-        kernel_spec_name = f"py-code-mode-{uuid.uuid4().hex[:8]}"
+        Ensures kernel spec is installed (idempotent operation).
 
-        # Create venv with uv
-        await self._run_uv(
-            ["venv", "--python", self._config.python_version, str(venv_path)],
-            error_context="uv venv failed",
-        )
+        Args:
+            venv_path: Path to existing valid venv.
 
-        # Validate extra_deps before processing
-        if extra_deps:
-            for dep in extra_deps:
-                _validate_package_spec(dep)
+        Returns:
+            KernelVenv with path, python_path, and deterministic kernel_spec_name.
+        """
+        python_path = self._get_python_path(venv_path)
+        kernel_spec_name = self._get_kernel_spec_name(venv_path)
 
-        # Collect all dependencies, separating py-code-mode for special handling
-        deps = list(self._config.base_deps)
-        if extra_deps:
-            deps.extend(extra_deps)
-
-        # Check if py-code-mode is requested - needs special handling
-        install_py_code_mode = "py-code-mode" in deps
-        other_deps = [d for d in deps if d != "py-code-mode"]
-
-        # Install regular dependencies with uv
-        if other_deps:
-            await self._run_uv(
-                ["pip", "install", "--python", str(python_path), *other_deps],
-                error_context="uv pip install failed",
-            )
-
-        # Install py-code-mode from local package if requested
-        if install_py_code_mode:
-            await self._install_py_code_mode(python_path)
-
-            # Also install nest_asyncio for sync tool calls in Jupyter kernel
-            await self._run_uv(
-                ["pip", "install", "--python", str(python_path), "nest_asyncio"],
-                error_context="uv pip install nest_asyncio failed",
-            )
-
-        # Install kernel spec
+        # Always install kernel spec - idempotent, handles missing spec case
         await self._run_python(
             python_path,
             ["-m", "ipykernel", "install", "--user", "--name", kernel_spec_name],
@@ -144,6 +228,87 @@ class VenvManager:
             python_path=python_path,
             kernel_spec_name=kernel_spec_name,
         )
+
+    async def _create_venv(
+        self, venv_path: Path, extra_deps: list[str] | None = None
+    ) -> KernelVenv:
+        """Create a new venv at the given path.
+
+        Args:
+            venv_path: Path where venv should be created.
+            extra_deps: Additional packages to install beyond base_deps.
+
+        Returns:
+            KernelVenv with path, python_path, and kernel_spec_name.
+
+        Raises:
+            RuntimeError: If venv creation fails.
+        """
+        python_path = self._get_python_path(venv_path)
+        kernel_spec_name = self._get_kernel_spec_name(venv_path)
+
+        # Remove any existing invalid venv directory
+        shutil.rmtree(venv_path, ignore_errors=True)
+
+        try:
+            # Create venv with uv
+            # python_version is guaranteed to be str after __post_init__
+            python_version = self._config.python_version
+            assert python_version is not None  # For type checker
+            await self._run_uv(
+                ["venv", "--python", python_version, str(venv_path)],
+                error_context="uv venv failed",
+            )
+
+            # Validate extra_deps before processing
+            if extra_deps:
+                for dep in extra_deps:
+                    _validate_package_spec(dep)
+
+            # Collect all dependencies, separating py-code-mode for special handling
+            deps = list(self._config.base_deps)
+            if extra_deps:
+                deps.extend(extra_deps)
+
+            # Check if py-code-mode is requested - needs special handling
+            install_py_code_mode = "py-code-mode" in deps
+            other_deps = [d for d in deps if d != "py-code-mode"]
+
+            # Install regular dependencies with uv
+            if other_deps:
+                await self._run_uv(
+                    ["pip", "install", "--python", str(python_path), *other_deps],
+                    error_context="uv pip install failed",
+                )
+
+            # Install py-code-mode from local package if requested
+            if install_py_code_mode:
+                await self._install_py_code_mode(python_path)
+
+                # Also install nest_asyncio for sync tool calls in Jupyter kernel
+                await self._run_uv(
+                    ["pip", "install", "--python", str(python_path), "nest_asyncio"],
+                    error_context="uv pip install nest_asyncio failed",
+                )
+
+            # Install kernel spec
+            await self._run_python(
+                python_path,
+                ["-m", "ipykernel", "install", "--user", "--name", kernel_spec_name],
+                error_context="ipykernel install failed",
+            )
+
+            return KernelVenv(
+                path=venv_path,
+                python_path=python_path,
+                kernel_spec_name=kernel_spec_name,
+            )
+
+        except Exception:
+            # Clean up partial venv on failure
+            if venv_path.exists():
+                shutil.rmtree(venv_path, ignore_errors=True)
+            raise
 
     async def _install_py_code_mode(self, python_path: Path) -> None:
         """Install py-code-mode into the subprocess venv.
