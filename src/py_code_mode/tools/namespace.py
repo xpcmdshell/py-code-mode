@@ -125,7 +125,15 @@ class ToolProxy:
 
         This delegates to the adapter's call_tool method, bypassing recipes.
         Returns coroutine in async context, executes sync otherwise.
+
+        When set_loop() has been called, always uses sync execution to support
+        calling tools from within synchronously-executed skills.
         """
+        # If we have an explicit loop reference, always use sync path
+        # This supports calling tools from sync skill code within async context
+        if self._loop is not None:
+            return self.call_sync(**kwargs)
+
         # Check if we're in async context (has running loop)
         try:
             asyncio.get_running_loop()
@@ -201,7 +209,15 @@ class CallableProxy:
 
         Returns a coroutine if called from async context, executes sync otherwise.
         This allows both `await tools.x.y()` and `tools.x.y()` to work.
+
+        When set_loop() has been called on the parent namespace, always uses
+        sync execution to support calling tools from within synchronously-executed skills.
         """
+        # If we have an explicit loop reference, always use sync path
+        # This supports calling tools from sync skill code within async context
+        if self._loop is not None:
+            return self.call_sync(**kwargs)
+
         # Check if we're in async context (has running loop)
         try:
             asyncio.get_running_loop()

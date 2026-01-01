@@ -145,6 +145,59 @@ if FASTAPI_AVAILABLE:
         not_found: list[str] = []
         failed: list[str] = []
 
+    # ==========================================================================
+    # API Endpoint Request/Response Models
+    # ==========================================================================
+
+    class CreateSkillRequest(BaseModel):  # type: ignore
+        """Request to create a new skill."""
+
+        name: str
+        source: str
+        description: str
+
+    class SkillResponse(BaseModel):  # type: ignore
+        """Response for skill information."""
+
+        name: str
+        description: str
+        parameters: list[dict[str, Any]]
+        source: str
+
+    class SaveArtifactRequest(BaseModel):  # type: ignore
+        """Request to save an artifact."""
+
+        name: str
+        data: Any
+        description: str = ""
+        metadata: dict[str, Any] | None = None
+
+    class ArtifactResponse(BaseModel):  # type: ignore
+        """Response for artifact information."""
+
+        name: str
+        path: str
+        description: str
+        metadata: dict[str, Any]
+        created_at: str
+
+    class AddDepRequest(BaseModel):  # type: ignore
+        """Request to add a dependency."""
+
+        package: str
+
+    class RemoveDepRequest(BaseModel):  # type: ignore
+        """Request to remove a dependency."""
+
+        package: str
+
+    class DepsSyncResult(BaseModel):  # type: ignore
+        """Response from deps sync operation."""
+
+        installed: list[str] = []
+        already_present: list[str] = []
+        failed: list[str] = []
+
 
 @dataclass
 class Session:
@@ -694,6 +747,314 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
                 failed.append(pkg)
 
         return DepsResponseModel(removed=removed, failed=failed)
+
+    # ==========================================================================
+    # Tools API Endpoints
+    # ==========================================================================
+
+    @app.get("/api/tools", dependencies=[Depends(require_auth)])
+    async def api_list_tools() -> list[dict[str, Any]]:
+        """Return all registered tools."""
+        if _state.registry is None:
+            return []
+
+        tools = _state.registry.get_all_tools()
+        return [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "tags": list(tool.tags) if tool.tags else [],
+            }
+            for tool in tools
+        ]
+
+    @app.get("/api/tools/search", dependencies=[Depends(require_auth)])
+    async def api_search_tools(query: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Search tools by query."""
+        if _state.registry is None:
+            return []
+
+        from py_code_mode.tools.registry import substring_search
+
+        tools = substring_search(
+            query=query,
+            items=_state.registry.get_all_tools(),
+            get_name=lambda t: t.name,
+            get_description=lambda t: t.description,
+            limit=limit,
+        )
+        return [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "tags": list(tool.tags) if tool.tags else [],
+            }
+            for tool in tools
+        ]
+
+    # ==========================================================================
+    # Skills API Endpoints
+    # ==========================================================================
+
+    @app.get("/api/skills", dependencies=[Depends(require_auth)])
+    async def api_list_skills() -> list[dict[str, Any]]:
+        """Return all skills."""
+        if _state.skill_library is None:
+            return []
+
+        skills = _state.skill_library.list()
+        return [
+            {
+                "name": skill.name,
+                "description": skill.description,
+                "parameters": [
+                    {
+                        "name": p.name,
+                        "type": p.type,
+                        "description": p.description,
+                        "required": p.required,
+                        "default": p.default,
+                    }
+                    for p in skill.parameters
+                ],
+            }
+            for skill in skills
+        ]
+
+    @app.get("/api/skills/search", dependencies=[Depends(require_auth)])
+    async def api_search_skills(query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Search skills semantically."""
+        if _state.skill_library is None:
+            return []
+
+        skills = _state.skill_library.search(query, limit=limit)
+        return [
+            {
+                "name": skill.name,
+                "description": skill.description,
+                "parameters": [
+                    {
+                        "name": p.name,
+                        "type": p.type,
+                        "description": p.description,
+                        "required": p.required,
+                        "default": p.default,
+                    }
+                    for p in skill.parameters
+                ],
+            }
+            for skill in skills
+        ]
+
+    @app.get("/api/skills/{name}", dependencies=[Depends(require_auth)])
+    async def api_get_skill(name: str) -> dict[str, Any] | None:
+        """Get skill by name with full source."""
+        if _state.skill_library is None:
+            return None
+
+        skill = _state.skill_library.get(name)
+        if skill is None:
+            return None
+
+        return {
+            "name": skill.name,
+            "description": skill.description,
+            "parameters": [
+                {
+                    "name": p.name,
+                    "type": p.type,
+                    "description": p.description,
+                    "required": p.required,
+                    "default": p.default,
+                }
+                for p in skill.parameters
+            ],
+            "source": skill.source,
+        }
+
+    @app.post("/api/skills", dependencies=[Depends(require_auth)])
+    async def api_create_skill(body: CreateSkillRequest) -> dict[str, Any]:
+        """Create a new skill."""
+        if _state.skill_library is None:
+            raise HTTPException(status_code=503, detail="Skill library not initialized")
+
+        from py_code_mode.skills import PythonSkill
+
+        try:
+            skill = PythonSkill.from_source(
+                name=body.name,
+                source=body.source,
+                description=body.description,
+            )
+            _state.skill_library.add(skill)
+            return {
+                "name": skill.name,
+                "description": skill.description,
+                "parameters": [
+                    {
+                        "name": p.name,
+                        "type": p.type,
+                        "description": p.description,
+                        "required": p.required,
+                        "default": p.default,
+                    }
+                    for p in skill.parameters
+                ],
+                "source": skill.source,
+            }
+        except (ValueError, SyntaxError) as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    @app.delete("/api/skills/{name}", dependencies=[Depends(require_auth)])
+    async def api_delete_skill(name: str) -> bool:
+        """Delete a skill."""
+        if _state.skill_library is None:
+            return False
+
+        return _state.skill_library.remove(name)
+
+    # ==========================================================================
+    # Artifacts API Endpoints
+    # ==========================================================================
+
+    @app.get("/api/artifacts", dependencies=[Depends(require_auth)])
+    async def api_list_artifacts() -> list[dict[str, Any]]:
+        """List all artifacts with metadata."""
+        if _state.artifact_store is None:
+            return []
+
+        artifacts = _state.artifact_store.list()
+        return [
+            {
+                "name": artifact.name,
+                "path": artifact.path,
+                "description": artifact.description,
+                "metadata": artifact.metadata,
+                "created_at": artifact.created_at.isoformat(),
+            }
+            for artifact in artifacts
+        ]
+
+    @app.get("/api/artifacts/{name}", dependencies=[Depends(require_auth)])
+    async def api_load_artifact(name: str) -> Any:
+        """Load artifact data."""
+        if _state.artifact_store is None:
+            raise HTTPException(status_code=503, detail="Artifact store not initialized")
+
+        if not _state.artifact_store.exists(name):
+            raise HTTPException(status_code=404, detail=f"Artifact '{name}' not found")
+
+        return _state.artifact_store.load(name)
+
+    @app.post("/api/artifacts", dependencies=[Depends(require_auth)])
+    async def api_save_artifact(body: SaveArtifactRequest) -> dict[str, Any]:
+        """Save artifact."""
+        if _state.artifact_store is None:
+            raise HTTPException(status_code=503, detail="Artifact store not initialized")
+
+        artifact = _state.artifact_store.save(
+            name=body.name,
+            data=body.data,
+            description=body.description,
+            metadata=body.metadata,
+        )
+        return {
+            "name": artifact.name,
+            "path": artifact.path,
+            "description": artifact.description,
+            "metadata": artifact.metadata,
+            "created_at": artifact.created_at.isoformat(),
+        }
+
+    @app.delete("/api/artifacts/{name}", dependencies=[Depends(require_auth)])
+    async def api_delete_artifact(name: str) -> None:
+        """Delete artifact."""
+        if _state.artifact_store is None:
+            raise HTTPException(status_code=503, detail="Artifact store not initialized")
+
+        if not _state.artifact_store.exists(name):
+            raise HTTPException(status_code=404, detail=f"Artifact '{name}' not found")
+
+        _state.artifact_store.delete(name)
+
+    # ==========================================================================
+    # Deps API Endpoints
+    # ==========================================================================
+
+    @app.get("/api/deps", dependencies=[Depends(require_auth)])
+    async def api_list_deps() -> list[str]:
+        """List configured packages."""
+        if _state.deps_store is None:
+            return []
+
+        return _state.deps_store.list()
+
+    @app.post("/api/deps/add", dependencies=[Depends(require_auth)])
+    async def api_add_dep(body: AddDepRequest) -> dict[str, Any]:
+        """Add and install a package.
+
+        This endpoint respects allow_runtime_deps configuration.
+        """
+        if _state.config is None:
+            raise HTTPException(status_code=503, detail="Server not initialized")
+
+        if _state.deps_store is None or _state.deps_installer is None:
+            raise HTTPException(status_code=503, detail="Deps store not initialized")
+
+        if not _state.config.allow_runtime_deps:
+            raise HTTPException(
+                status_code=403,
+                detail="Runtime dependency installation is disabled",
+            )
+
+        try:
+            _state.deps_store.add(body.package)
+            result = _state.deps_installer.sync(_state.deps_store)
+            return {
+                "installed": list(result.installed),
+                "already_present": list(result.already_present),
+                "failed": list(result.failed),
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    @app.post("/api/deps/remove", dependencies=[Depends(require_auth)])
+    async def api_remove_dep(body: RemoveDepRequest) -> dict[str, Any]:
+        """Remove a package from configuration.
+
+        This endpoint respects allow_runtime_deps configuration.
+        """
+        if _state.config is None:
+            raise HTTPException(status_code=503, detail="Server not initialized")
+
+        if _state.deps_store is None:
+            raise HTTPException(status_code=503, detail="Deps store not initialized")
+
+        if not _state.config.allow_runtime_deps:
+            raise HTTPException(
+                status_code=403,
+                detail="Runtime dependency modification is disabled",
+            )
+
+        removed = _state.deps_store.remove(body.package)
+        return {"removed": removed}
+
+    @app.post("/api/deps/sync", dependencies=[Depends(require_auth)])
+    async def api_sync_deps() -> dict[str, Any]:
+        """Install all configured packages.
+
+        This endpoint is always allowed, even when allow_runtime_deps=False,
+        because it only installs pre-configured packages.
+        """
+        if _state.deps_store is None or _state.deps_installer is None:
+            raise HTTPException(status_code=503, detail="Deps store not initialized")
+
+        result = _state.deps_installer.sync(_state.deps_store)
+        return {
+            "installed": list(result.installed),
+            "already_present": list(result.already_present),
+            "failed": list(result.failed),
+        }
 
     return app
 

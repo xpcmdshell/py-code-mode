@@ -30,9 +30,9 @@ class TestSubprocessConfig:
         assert config.venv_path is None
 
     def test_default_base_deps(self) -> None:
-        """Default base_deps includes ipykernel and py-code-mode."""
+        """Default base_deps includes ipykernel (pyzmq included as dependency)."""
         config = SubprocessConfig(python_version="3.12")
-        assert config.base_deps == ("ipykernel", "py-code-mode")
+        assert config.base_deps == ("ipykernel",)
 
     def test_default_startup_timeout(self) -> None:
         """Default startup_timeout is 30.0 seconds."""
