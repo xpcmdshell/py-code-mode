@@ -21,7 +21,7 @@ class RPCRequest:
     and sends back an RPCResponse.
 
     Attributes:
-        method: The RPC method name (e.g., "call_tool", "invoke_skill").
+        method: The RPC method name (e.g., "tools.call", "skills.invoke").
         params: Method parameters as a dict.
         id: Unique request ID for correlation with response.
     """
