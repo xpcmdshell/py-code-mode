@@ -16,6 +16,9 @@ import redis
 
 from py_code_mode import JsonSchema, ToolDefinition
 
+# Disable accelerate to avoid meta tensor issues with safetensors in parallel tests
+os.environ["ACCELERATE_DISABLE"] = "1"
+
 # Configure DOCKER_HOST for Docker Desktop on macOS/Windows
 # This fixes socket path issues for both testcontainers and our ContainerExecutor
 if not os.environ.get("DOCKER_HOST"):
