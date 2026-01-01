@@ -464,9 +464,7 @@ class TestSubprocessExecutorAcceptsStorageBackend:
             mock_venv_manager_class.return_value = mock_manager
 
             # Mock KernelHost to avoid starting actual kernel
-            with patch(
-                "py_code_mode.execution.subprocess.executor.KernelHost"
-            ) as mock_host_class:
+            with patch("py_code_mode.execution.subprocess.executor.KernelHost") as mock_host_class:
                 mock_host = AsyncMock()
                 mock_host.start = AsyncMock()
                 mock_host.execute = AsyncMock()

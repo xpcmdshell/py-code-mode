@@ -966,6 +966,7 @@ class TestRedisStorageLazyConnection:
         # Library should be usable
         assert library is not None
 
+
 # =============================================================================
 # FileStorage Lazy Initialization Tests
 # =============================================================================

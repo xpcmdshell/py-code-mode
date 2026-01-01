@@ -12,7 +12,6 @@ Feature areas covered:
 5. Auth enforcement on all /api/* endpoints
 """
 
-
 import pytest
 
 # =============================================================================

@@ -673,9 +673,7 @@ class TestCompleteFeatureMatrix:
     """
 
     @pytest.fixture(params=["file_empty", "file_populated"])
-    def storage_and_executor(
-        self, request, empty_base_dir: Path, populated_dir: tuple[Path, Path]
-    ):
+    def storage_and_executor(self, request, empty_base_dir: Path, populated_dir: tuple[Path, Path]):
         """Parametrize over storage conditions, returns (storage, executor)."""
         if request.param == "file_empty":
             storage = FileStorage(empty_base_dir)

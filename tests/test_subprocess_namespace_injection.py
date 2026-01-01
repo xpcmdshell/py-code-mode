@@ -206,9 +206,7 @@ class TestToolsNamespaceContract:
         assert check_result.value in (True, "True")
 
         # Verify tools have expected keys (returned as dicts, not objects)
-        result = await executor_with_storage.run(
-            "[t['name'] for t in tools.list()]"
-        )
+        result = await executor_with_storage.run("[t['name'] for t in tools.list()]")
         assert result.error is None
         assert "echo" in str(result.value)
 

@@ -220,9 +220,7 @@ class TestContainerToolsInvocation:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_tools_list_in_container(
-        self, tools_storage: Path, tools_dir: Path
-    ) -> None:
+    async def test_tools_list_in_container(self, tools_storage: Path, tools_dir: Path) -> None:
         """tools.list() returns configured tools inside container."""
         storage = FileStorage(tools_storage)
         executor = ContainerExecutor(
@@ -238,9 +236,7 @@ class TestContainerToolsInvocation:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_tools_call_in_container(
-        self, tools_storage: Path, tools_dir: Path
-    ) -> None:
+    async def test_tools_call_in_container(self, tools_storage: Path, tools_dir: Path) -> None:
         """tools.<name>() works inside container."""
         storage = FileStorage(tools_storage)
         executor = ContainerExecutor(
@@ -254,9 +250,7 @@ class TestContainerToolsInvocation:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_tools_search_in_container(
-        self, tools_storage: Path, tools_dir: Path
-    ) -> None:
+    async def test_tools_search_in_container(self, tools_storage: Path, tools_dir: Path) -> None:
         """tools.search() works inside container."""
         storage = FileStorage(tools_storage)
         executor = ContainerExecutor(

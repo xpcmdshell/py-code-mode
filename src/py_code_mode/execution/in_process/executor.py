@@ -309,6 +309,7 @@ class InProcessExecutor:
             else:
                 # In-memory store for deps when no file configured
                 from py_code_mode.deps.store import MemoryDepsStore
+
                 deps_store = MemoryDepsStore()
                 for dep in initial_deps:
                     deps_store.add(dep)

@@ -277,9 +277,6 @@ class TestGetSerializableAccess:
             assert callable(storage.get_serializable_access)
 
 
-
-
 # NOTE: TestStorageBackendExecutionMethods was removed in the executor-ownership refactor.
 # storage.get_tool_registry() was removed - tools are now owned by executors via config.
 # storage.get_skill_library() tests remain in test_skills.py and test_semantic.py.
-
