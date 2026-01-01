@@ -36,11 +36,13 @@ SHARED = HERE.parent / "shared"
 
 
 async def main() -> None:
-    # Load tools and skills from shared directory
+    # Storage for skills and artifacts only
     storage = FileStorage(base_path=SHARED)
 
-    # Configure subprocess executor
+    # Configure subprocess executor with tools from config
     config = SubprocessConfig(
+        # Tools owned by executor
+        tools_path=SHARED / "tools",
         # Python version for venv (defaults to current if not specified)
         python_version="3.11",
         # Execution timeout in seconds

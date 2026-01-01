@@ -54,10 +54,16 @@ uv run python example.py
 ## How It Works
 
 ```python
+from pathlib import Path
 from py_code_mode import FileStorage, Session
 from py_code_mode.execution import SubprocessConfig, SubprocessExecutor
 
+# Storage for skills and artifacts only
+storage = FileStorage(base_path=Path("./data"))
+
+# Executor with tools from config
 config = SubprocessConfig(
+    tools_path=Path("./tools"),  # Tools owned by executor
     python_version="3.11",
     default_timeout=60.0,
     startup_timeout=30.0,

@@ -35,6 +35,7 @@ from autogen_ext.models.anthropic import AnthropicChatCompletionClient
 from dotenv import load_dotenv
 
 from py_code_mode import FileStorage, RedisStorage, Session
+from py_code_mode.execution import InProcessConfig, InProcessExecutor
 from py_code_mode.integrations.autogen import create_run_code_tool
 
 # Load .env file
@@ -68,9 +69,14 @@ def create_storage():
 
 
 async def main():
-    # Create storage and session
+    # Create storage (for skills and artifacts only)
     storage = create_storage()
-    async with Session(storage=storage) as session:
+
+    # Executor with tools from config
+    config = InProcessConfig(tools_path=SHARED / "tools")
+    executor = InProcessExecutor(config=config)
+
+    async with Session(storage=storage, executor=executor) as session:
         # Create the run_code tool for AutoGen
         run_code = create_run_code_tool(session=session)
 

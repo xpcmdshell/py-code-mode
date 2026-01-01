@@ -18,6 +18,7 @@ import anthropic
 from dotenv import load_dotenv
 
 from py_code_mode import FileStorage, Session
+from py_code_mode.execution import InProcessConfig, InProcessExecutor
 
 # Load .env file (for ANTHROPIC_API_KEY)
 load_dotenv()
@@ -73,9 +74,14 @@ def extract_code(text: str) -> str | None:
 
 
 async def main() -> None:
-    # Load tools and skills from shared directory
+    # Storage for skills and artifacts only
     storage = FileStorage(base_path=SHARED)
-    async with Session(storage=storage) as session:
+
+    # Executor with tools from config
+    config = InProcessConfig(tools_path=SHARED / "tools")
+    executor = InProcessExecutor(config=config)
+
+    async with Session(storage=storage, executor=executor) as session:
         # Initialize Claude client
         client = anthropic.Anthropic()
         messages: list[dict] = []
