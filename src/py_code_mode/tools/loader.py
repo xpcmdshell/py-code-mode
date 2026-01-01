@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from py_code_mode.skills.embeddings import Embedder
 from py_code_mode.tools.registry import ToolRegistry
 
 
@@ -30,4 +31,6 @@ async def load_tools_from_path(path: Path) -> ToolRegistry:
         registry = await load_tools_from_path(Path("./tools"))
         tools = registry.list_tools()
     """
-    return await ToolRegistry.from_dir(str(path))
+    # Start loading embedder model in background for faster first search
+    embedder = Embedder(start_loading=True)
+    return await ToolRegistry.from_dir(str(path), embedder=embedder)

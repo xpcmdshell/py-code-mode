@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -104,13 +105,16 @@ class Embedder:
     DEFAULT_MODEL = "bge-small"
     QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
 
-    def __init__(self, model_name: str | None = None) -> None:
+    def __init__(self, model_name: str | None = None, start_loading: bool = False) -> None:
         """Initialize embedder.
 
         Args:
             model_name: Model alias or full HuggingFace name. Default: bge-small.
+            start_loading: If True, start loading the model in a background thread
+                immediately. The first embed() call will block until loading completes.
 
-        Note: The model is not loaded until embed() or embed_query() is called.
+        Note: By default, the model is not loaded until embed() or embed_query()
+        is called. Use start_loading=True for MCP servers to reduce first-search latency.
         """
         # Suppress tokenizer parallelism warning when forking
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -123,6 +127,11 @@ class Embedder:
         # Lazy-loaded attributes
         self._model: SentenceTransformer | None = None
         self._device: str | None = None
+        self._loading_lock = threading.Lock()
+        self._loading_thread: threading.Thread | None = None
+
+        if start_loading:
+            self._start_background_loading()
 
     def _detect_device(self) -> str:
         """Detect best available device."""
@@ -134,15 +143,37 @@ class Embedder:
             return "mps"
         return "cpu"
 
-    def _ensure_model_loaded(self) -> None:
-        """Load the SentenceTransformer model if not already loaded."""
-        if self._model is not None:
+    def _start_background_loading(self) -> None:
+        """Start loading the model in a background thread."""
+        if self._loading_thread is not None:
             return
 
-        from sentence_transformers import SentenceTransformer
+        def load():
+            self._load_model()
 
-        self._device = self._detect_device()
-        self._model = SentenceTransformer(self._resolved_model_name, device=self._device)
+        self._loading_thread = threading.Thread(target=load, daemon=True)
+        self._loading_thread.start()
+
+    def _load_model(self) -> None:
+        """Load the SentenceTransformer model (thread-safe)."""
+        with self._loading_lock:
+            if self._model is not None:
+                return
+
+            from sentence_transformers import SentenceTransformer
+
+            self._device = self._detect_device()
+            self._model = SentenceTransformer(self._resolved_model_name, device=self._device)
+
+    def _ensure_model_loaded(self) -> None:
+        """Ensure model is loaded, blocking if background loading is in progress."""
+        # Wait for background thread if it's running
+        if self._loading_thread is not None:
+            self._loading_thread.join()
+
+        # Load if not already loaded (handles case where no background loading)
+        if self._model is None:
+            self._load_model()
 
     @property
     def device(self) -> str:

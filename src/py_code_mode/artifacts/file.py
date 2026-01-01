@@ -140,7 +140,7 @@ class FileArtifactStore:
         file_path = self._safe_path(name)
 
         if not file_path.exists():
-            raise ArtifactNotFoundError(f"Artifact not found: {name}")
+            raise ArtifactNotFoundError(name)
 
         # Check metadata for data type
         data_type = None
@@ -272,7 +272,7 @@ class FileArtifactStore:
         """
         file_path = self._safe_path(name)
         if not file_path.exists():
-            raise ArtifactNotFoundError(f"File not found: {name}")
+            raise ArtifactNotFoundError(name)
 
         now = datetime.now(UTC)
         self._index[name] = {

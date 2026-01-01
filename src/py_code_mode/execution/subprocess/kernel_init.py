@@ -178,7 +178,7 @@ def _rpc_call(method: str, **params) -> Any:
             raise RuntimeError(f"Failed to parse RPC response: {{e}}")
 
         if response.get("error"):
-            raise RuntimeError(f"RPC error: {{response['error']}}")
+            raise RuntimeError(response["error"])
 
         return response.get("result")
 

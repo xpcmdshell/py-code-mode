@@ -111,7 +111,7 @@ class RedisArtifactStore:
         content = self._redis.get(data_key)
 
         if content is None:
-            raise ArtifactNotFoundError(f"Artifact not found: {name}")
+            raise ArtifactNotFoundError(name)
 
         # Check metadata for data type
         data_type = None
