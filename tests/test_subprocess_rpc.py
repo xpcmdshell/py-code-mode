@@ -74,13 +74,13 @@ class TestRPCRequest:
         data = {
             "type": "rpc_request",
             "id": "test-id",
-            "method": "invoke_skill",
+            "method": "skills.invoke",
             "params": {"name": "my_skill", "args": {}},
         }
         request = RPCRequest.from_dict(data)
 
         assert request.id == "test-id"
-        assert request.method == "invoke_skill"
+        assert request.method == "skills.invoke"
         assert request.params == {"name": "my_skill", "args": {}}
 
     def test_from_dict_with_missing_params_defaults_to_empty(self) -> None:
@@ -103,7 +103,7 @@ class TestRPCRequest:
     def test_roundtrip_serialization(self) -> None:
         """to_dict and from_dict are inverse operations."""
         original = RPCRequest(
-            method="save_artifact",
+            method="artifacts.save",
             params={"name": "data", "value": [1, 2, 3]},
             id="roundtrip-id",
         )
@@ -377,13 +377,13 @@ class TestRPCDispatch:
         return provider
 
     @pytest.mark.asyncio
-    async def test_dispatch_call_tool(self, mock_provider: MagicMock) -> None:
-        """_dispatch_rpc routes call_tool to provider."""
+    async def test_dispatch_tools_call(self, mock_provider: MagicMock) -> None:
+        """_dispatch_rpc routes tools.call to provider."""
         host = KernelHost()
         host._provider = mock_provider
 
         request = RPCRequest(
-            method="call_tool", params={"name": "curl", "args": {"url": "http://test"}}
+            method="tools.call", params={"name": "curl", "args": {"url": "http://test"}}
         )
         result = await host._dispatch_rpc(request)
 
@@ -391,48 +391,48 @@ class TestRPCDispatch:
         mock_provider.call_tool.assert_called_once_with("curl", {"url": "http://test"})
 
     @pytest.mark.asyncio
-    async def test_dispatch_list_tools(self, mock_provider: MagicMock) -> None:
-        """_dispatch_rpc routes list_tools to provider."""
+    async def test_dispatch_tools_list(self, mock_provider: MagicMock) -> None:
+        """_dispatch_rpc routes tools.list to provider."""
         host = KernelHost()
         host._provider = mock_provider
 
-        request = RPCRequest(method="list_tools", params={})
+        request = RPCRequest(method="tools.list", params={})
         result = await host._dispatch_rpc(request)
 
         assert result == [{"name": "curl"}]
         mock_provider.list_tools.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_dispatch_invoke_skill(self, mock_provider: MagicMock) -> None:
-        """_dispatch_rpc routes invoke_skill to provider."""
+    async def test_dispatch_skills_invoke(self, mock_provider: MagicMock) -> None:
+        """_dispatch_rpc routes skills.invoke to provider."""
         host = KernelHost()
         host._provider = mock_provider
 
-        request = RPCRequest(method="invoke_skill", params={"name": "my_skill", "args": {"x": 1}})
+        request = RPCRequest(method="skills.invoke", params={"name": "my_skill", "args": {"x": 1}})
         result = await host._dispatch_rpc(request)
 
         assert result == "skill_result"
         mock_provider.invoke_skill.assert_called_once_with("my_skill", {"x": 1})
 
     @pytest.mark.asyncio
-    async def test_dispatch_load_artifact(self, mock_provider: MagicMock) -> None:
-        """_dispatch_rpc routes load_artifact to provider."""
+    async def test_dispatch_artifacts_load(self, mock_provider: MagicMock) -> None:
+        """_dispatch_rpc routes artifacts.load to provider."""
         host = KernelHost()
         host._provider = mock_provider
 
-        request = RPCRequest(method="load_artifact", params={"name": "data"})
+        request = RPCRequest(method="artifacts.load", params={"name": "data"})
         result = await host._dispatch_rpc(request)
 
         assert result == "artifact_data"
         mock_provider.load_artifact.assert_called_once_with("data")
 
     @pytest.mark.asyncio
-    async def test_dispatch_add_dep(self, mock_provider: MagicMock) -> None:
-        """_dispatch_rpc routes add_dep to provider."""
+    async def test_dispatch_deps_add(self, mock_provider: MagicMock) -> None:
+        """_dispatch_rpc routes deps.add to provider."""
         host = KernelHost()
         host._provider = mock_provider
 
-        request = RPCRequest(method="add_dep", params={"package": "requests"})
+        request = RPCRequest(method="deps.add", params={"package": "requests"})
         result = await host._dispatch_rpc(request)
 
         assert result == {"installed": ["pkg"]}
@@ -455,7 +455,7 @@ class TestRPCDispatch:
         host = KernelHost()
         host._provider = None
 
-        request = RPCRequest(method="list_tools", params={})
+        request = RPCRequest(method="tools.list", params={})
 
         with pytest.raises(RuntimeError, match="No resource provider"):
             await host._dispatch_rpc(request)

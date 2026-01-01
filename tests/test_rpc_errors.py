@@ -96,8 +96,8 @@ skills.create(
 
         assert result.error is not None
         # Error message should contain structured information
-        assert "SkillError" in result.error
-        assert "invoke_skill" in result.error
+        # Format: "skills.invoke: [ModuleNotFoundError] message"
+        assert "skills.invoke" in result.error
         assert "ModuleNotFoundError" in result.error
 
     @pytest.mark.asyncio
@@ -116,8 +116,8 @@ skills.create("bad_syntax", "if x", "broken skill")
 
         assert result.error is not None
         # Error message should contain structured information
-        assert "SkillError" in result.error
-        assert "create_skill" in result.error
+        # Format: "skills.create: [SyntaxError] message"
+        assert "skills.create" in result.error
         assert "SyntaxError" in result.error or "syntax" in result.error.lower()
 
 
@@ -175,8 +175,8 @@ class TestArtifactErrors:
 
         assert result.error is not None
         # Error message should contain structured information
-        assert "ArtifactError" in result.error
-        assert "load_artifact" in result.error
+        # Format: "artifacts.load: [ArtifactNotFoundError] message"
+        assert "artifacts.load" in result.error
         # Should indicate the artifact was not found
         assert "not found" in result.error.lower() or "nonexistent_artifact_xyz" in result.error
 
@@ -204,8 +204,8 @@ class TestDepsErrors:
 
         assert result.error is not None
         # Error message should contain structured information
-        assert "DepsError" in result.error
-        assert "add_dep" in result.error
+        # Format: "deps.add: [RuntimeDepsDisabledError] message"
+        assert "deps.add" in result.error
         # Should indicate deps are disabled
         error_lower = result.error.lower()
         assert "disabled" in error_lower or "runtime" in error_lower
@@ -255,13 +255,13 @@ skills.create(
     async def test_error_preserves_operation_name(self, executor_with_storage) -> None:
         """Errors preserve the operation name (method) that failed.
 
-        Contract: The operation like 'load_artifact' should appear in the error.
+        Contract: The operation like 'load' should appear in the error.
         """
         result = await executor_with_storage.run('artifacts.load("nonexistent")')
 
         assert result.error is not None
-        # Should contain the operation name
-        assert "load_artifact" in result.error
+        # Should contain the operation name (now matches what agent writes)
+        assert "artifacts.load" in result.error
 
     @pytest.mark.asyncio
     async def test_error_preserves_namespace(self, executor_with_storage) -> None:
@@ -287,7 +287,7 @@ skills.create(
 
         assert result.error is not None
         # Should match the format: namespace.operation: [Type] message
-        # e.g., "artifacts.load_artifact: [ArtifactNotFoundError] ..."
+        # e.g., "artifacts.load: [ArtifactNotFoundError] ..."
         assert "." in result.error  # namespace.operation separator
         assert ":" in result.error  # operation: message separator
         assert "[" in result.error and "]" in result.error  # [Type] brackets
@@ -388,7 +388,7 @@ class TestErrorAttributes:
         """
         result = await executor_with_storage.run("""
 try:
-    raise NamespaceError("skills", "invoke_skill", "test error")
+    raise NamespaceError("skills", "invoke", "test error")
 except NamespaceError as e:
     result = e.namespace
 result
@@ -405,14 +405,14 @@ result
         """
         result = await executor_with_storage.run("""
 try:
-    raise NamespaceError("skills", "invoke_skill", "test error")
+    raise NamespaceError("skills", "invoke", "test error")
 except NamespaceError as e:
     result = e.operation
 result
 """)
 
         assert result.error is None
-        assert "invoke_skill" in str(result.value)
+        assert "invoke" in str(result.value)
 
     @pytest.mark.asyncio
     async def test_namespace_error_has_original_type_attribute(self, executor_with_storage) -> None:
@@ -422,7 +422,7 @@ result
         """
         result = await executor_with_storage.run("""
 try:
-    raise NamespaceError("skills", "invoke_skill", "test error", "ValueError")
+    raise NamespaceError("skills", "invoke", "test error", "ValueError")
 except NamespaceError as e:
     result = e.original_type
 result
