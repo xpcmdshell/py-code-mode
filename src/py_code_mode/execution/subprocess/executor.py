@@ -333,7 +333,7 @@ class SubprocessExecutor:
             self._km = None
 
         if (
-            self._config.cleanup_venv_on_close
+            self._config.get_resolved_cleanup()
             and self._venv is not None
             and self._venv_manager is not None
         ):

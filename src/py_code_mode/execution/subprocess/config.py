@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -26,14 +27,19 @@ class SubprocessConfig:
     Attributes:
         python_version: Python version for venv creation (e.g., "3.11", "3.12").
             Must be in major.minor format. Defaults to current Python version.
-        venv_path: Path to virtual environment. None means auto-create in temp.
+        venv_path: Path to virtual environment. None means auto-create based on
+            cache_venv setting (cached path or temp directory).
         base_deps: Dependencies to install in the venv. Defaults to
             ("ipykernel", "py-code-mode") for namespace injection support.
         startup_timeout: Timeout for kernel to become ready (seconds).
         default_timeout: Default timeout for code execution (seconds).
             None means no timeout (unlimited).
         allow_runtime_deps: Enable deps.add() for runtime dependency installation.
-        cleanup_venv_on_close: Delete temp venv on close.
+        cleanup_venv_on_close: Delete venv on close. None means auto-detect:
+            False if cache_venv=True, True if cache_venv=False.
+        cache_venv: Enable persistent venv caching. When True and venv_path is None,
+            uses canonical cache path (~/.cache/py-code-mode/venv-{version}).
+            Default: True.
     """
 
     python_version: str | None = None
@@ -42,7 +48,8 @@ class SubprocessConfig:
     startup_timeout: float = 30.0
     default_timeout: float | None = 60.0
     allow_runtime_deps: bool = True
-    cleanup_venv_on_close: bool = True
+    cleanup_venv_on_close: bool | None = None
+    cache_venv: bool = True
 
     def __post_init__(self) -> None:
         """Validate configuration values."""
@@ -66,3 +73,40 @@ class SubprocessConfig:
         if self.default_timeout is not None and self.default_timeout <= 0.0:
             msg = f"default_timeout must be positive or None, got: {self.default_timeout}"
             raise ValueError(msg)
+
+    @staticmethod
+    def get_canonical_venv_path(python_version: str) -> Path:
+        """Get deterministic cache path for venv.
+
+        Returns: ~/.cache/py-code-mode/venv-{python_version}
+        Respects XDG_CACHE_HOME environment variable.
+
+        Args:
+            python_version: Python version string (e.g., "3.11", "3.12").
+
+        Returns:
+            Absolute path to the canonical venv location.
+        """
+        xdg_cache = os.environ.get("XDG_CACHE_HOME")
+        if xdg_cache:
+            cache_dir = Path(xdg_cache)
+        else:
+            cache_dir = Path.home() / ".cache"
+        return cache_dir / "py-code-mode" / f"venv-{python_version}"
+
+    def get_resolved_cleanup(self) -> bool:
+        """Resolve cleanup_venv_on_close to a boolean.
+
+        When None (auto):
+        - cache_venv=True -> False (don't cleanup cached venv)
+        - cache_venv=False -> True (cleanup temp venv)
+
+        When explicit bool, return that value.
+
+        Returns:
+            True if venv should be cleaned up on close, False otherwise.
+        """
+        if self.cleanup_venv_on_close is not None:
+            return self.cleanup_venv_on_close
+        # Auto: opposite of cache_venv
+        return not self.cache_venv

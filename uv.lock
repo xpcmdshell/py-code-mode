@@ -2582,6 +2582,7 @@ version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
+    { name = "filelock" },
     { name = "jupyter-client" },
     { name = "numpy" },
     { name = "pyyaml" },
@@ -2643,6 +2644,7 @@ requires-dist = [
     { name = "docker", marker = "extra == 'container'", specifier = ">=7.0" },
     { name = "fastapi", marker = "extra == 'container'", specifier = ">=0.100" },
     { name = "fastmcp", specifier = ">=2.0.0" },
+    { name = "filelock", specifier = ">=3.0" },
     { name = "httpx", marker = "extra == 'container'", specifier = ">=0.25" },
     { name = "ipykernel", marker = "extra == 'jupyter'", specifier = ">=6.0" },
     { name = "jupyter-client", specifier = ">=8.6" },
