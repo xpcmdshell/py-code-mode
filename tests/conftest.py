@@ -19,6 +19,24 @@ from py_code_mode import JsonSchema, ToolDefinition
 # Disable accelerate to avoid meta tensor issues with safetensors in parallel tests
 os.environ["ACCELERATE_DISABLE"] = "1"
 
+# Singleton Embedder to avoid OOM from multiple model loads in parallel xdist workers
+from py_code_mode.skills.embeddings import Embedder
+
+_SHARED_EMBEDDER = None
+_original_embedder_init = Embedder.__init__
+
+
+def _patched_embedder_init(self, model_name=None, start_loading=False):
+    global _SHARED_EMBEDDER
+    if _SHARED_EMBEDDER is None:
+        _original_embedder_init(self, model_name, start_loading)
+        _SHARED_EMBEDDER = self
+    else:
+        self.__dict__.update(_SHARED_EMBEDDER.__dict__)
+
+
+Embedder.__init__ = _patched_embedder_init
+
 # Configure DOCKER_HOST for Docker Desktop on macOS/Windows
 # This fixes socket path issues for both testcontainers and our ContainerExecutor
 if not os.environ.get("DOCKER_HOST"):
