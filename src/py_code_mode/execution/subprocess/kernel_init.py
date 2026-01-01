@@ -34,6 +34,11 @@ from typing import Any, NamedTuple
 import zmq
 from IPython import get_ipython
 
+# Disable colored tracebacks - MCP clients don't render ANSI codes
+_ip = get_ipython()
+if _ip is not None:
+    _ip.colors = "NoColor"
+
 # Threading lock to prevent concurrent RPC corruption
 _rpc_lock = threading.Lock()
 
