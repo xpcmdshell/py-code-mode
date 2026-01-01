@@ -47,6 +47,71 @@ _RPC_TIMEOUT = {ipc_timeout}
 
 
 # =============================================================================
+# RPC Error Hierarchy (mirrors py_code_mode.errors)
+# =============================================================================
+
+class RPCError(Exception):
+    """Base for all RPC-related errors."""
+    pass
+
+
+class RPCTransportError(RPCError):
+    """RPC plumbing failed (JSON parse, timeout, channel broken, protocol violation)."""
+    pass
+
+
+class NamespaceError(RPCError):
+    """Base for namespace operation failures.
+
+    Provides structured context about which namespace, operation, and
+    original exception type caused the failure.
+    """
+    def __init__(
+        self,
+        namespace: str,
+        operation: str,
+        message: str,
+        original_type: str = "RuntimeError",
+    ) -> None:
+        self.namespace = namespace
+        self.operation = operation
+        self.original_type = original_type
+        super().__init__(f"{{namespace}}.{{operation}}: [{{original_type}}] {{message}}")
+
+
+class SkillError(NamespaceError):
+    """Error in skills namespace operation."""
+    def __init__(
+        self, operation: str, message: str, original_type: str = "RuntimeError"
+    ) -> None:
+        super().__init__("skills", operation, message, original_type)
+
+
+class ToolError(NamespaceError):
+    """Error in tools namespace operation."""
+    def __init__(
+        self, operation: str, message: str, original_type: str = "RuntimeError"
+    ) -> None:
+        super().__init__("tools", operation, message, original_type)
+
+
+class ArtifactError(NamespaceError):
+    """Error in artifacts namespace operation."""
+    def __init__(
+        self, operation: str, message: str, original_type: str = "RuntimeError"
+    ) -> None:
+        super().__init__("artifacts", operation, message, original_type)
+
+
+class DepsError(NamespaceError):
+    """Error in deps namespace operation."""
+    def __init__(
+        self, operation: str, message: str, original_type: str = "RuntimeError"
+    ) -> None:
+        super().__init__("deps", operation, message, original_type)
+
+
+# =============================================================================
 # Lightweight types that mirror host-side types for API compatibility
 # =============================================================================
 
@@ -183,7 +248,33 @@ def _rpc_call(method: str, **params) -> Any:
             raise RuntimeError(f"Failed to parse RPC response: {{e}}")
 
         if response.get("error"):
-            raise RuntimeError(response["error"])
+            err = response["error"]
+            if isinstance(err, dict):
+                # Validate required keys
+                required_keys = {{"namespace", "operation", "message", "type"}}
+                if not required_keys.issubset(err.keys()):
+                    raise RPCTransportError(f"Malformed RPC error dict (missing keys): {{err!r}}")
+
+                # Structured error from host
+                namespace = err["namespace"]
+                operation = err["operation"]
+                message = err["message"]
+                error_type = err["type"]
+
+                # Map namespace to error class
+                if namespace == "skills":
+                    raise SkillError(operation, message, error_type)
+                elif namespace == "tools":
+                    raise ToolError(operation, message, error_type)
+                elif namespace == "artifacts":
+                    raise ArtifactError(operation, message, error_type)
+                elif namespace == "deps":
+                    raise DepsError(operation, message, error_type)
+                else:
+                    raise RPCError(f"{{namespace}}.{{operation}}: [{{error_type}}] {{message}}")
+            else:
+                # Non-dict error is a protocol violation
+                raise RPCTransportError(f"Host sent non-dict error (protocol violation): {{err!r}}")
 
         return response.get("result")
 

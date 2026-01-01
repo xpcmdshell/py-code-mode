@@ -73,12 +73,14 @@ class RPCResponse:
     Attributes:
         id: Request ID this response corresponds to.
         result: The method result (if successful).
-        error: Error message (if failed).
+        error: Structured error dict (if failed).
+            Format: {"namespace": str, "operation": str, "message": str, "type": str}
+            Non-dict values indicate a protocol violation and will raise RPCTransportError.
     """
 
     id: str
     result: Any = None
-    error: str | None = None
+    error: dict[str, Any] | str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for JSON transmission.

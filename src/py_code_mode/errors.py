@@ -133,3 +133,96 @@ class ConfigurationError(CodeModeError):
     """Error in configuration (missing deps, invalid config)."""
 
     pass
+
+
+# =============================================================================
+# RPC Error Hierarchy
+# =============================================================================
+
+# WARNING: These error classes are duplicated in kernel_init.py for subprocess execution.
+# If you modify any of these classes, you MUST update kernel_init.py to match.
+# See: src/py_code_mode/execution/subprocess/kernel_init.py
+
+
+class RPCError(CodeModeError):
+    """Base for all RPC-related errors.
+
+    Raised when RPC communication between host and kernel fails or when
+    namespace operations fail via RPC.
+    """
+
+    pass
+
+
+class RPCTransportError(RPCError):
+    """RPC plumbing failed (JSON parse, timeout, channel broken).
+
+    Raised for low-level transport issues, not application-level errors.
+    """
+
+    pass
+
+
+class NamespaceError(RPCError):
+    """Base for namespace operation failures.
+
+    Provides structured context about which namespace, operation, and
+    original exception type caused the failure.
+
+    Attributes:
+        namespace: The namespace where the error occurred (skills, tools, artifacts, deps).
+        operation: The operation that failed (e.g., invoke_skill, call_tool).
+        original_type: The original exception type name from the host.
+    """
+
+    def __init__(
+        self,
+        namespace: str,
+        operation: str,
+        message: str,
+        original_type: str = "RuntimeError",
+    ) -> None:
+        self.namespace = namespace
+        self.operation = operation
+        self.original_type = original_type
+        super().__init__(f"{namespace}.{operation}: [{original_type}] {message}")
+
+
+class SkillError(NamespaceError):
+    """Error in skills namespace operation.
+
+    Raised when skill invocation, creation, search, or deletion fails.
+    """
+
+    def __init__(self, operation: str, message: str, original_type: str = "RuntimeError") -> None:
+        super().__init__("skills", operation, message, original_type)
+
+
+class ToolError(NamespaceError):
+    """Error in tools namespace operation.
+
+    Raised when tool invocation, search, or listing fails.
+    """
+
+    def __init__(self, operation: str, message: str, original_type: str = "RuntimeError") -> None:
+        super().__init__("tools", operation, message, original_type)
+
+
+class ArtifactError(NamespaceError):
+    """Error in artifacts namespace operation.
+
+    Raised when artifact save, load, list, or delete fails.
+    """
+
+    def __init__(self, operation: str, message: str, original_type: str = "RuntimeError") -> None:
+        super().__init__("artifacts", operation, message, original_type)
+
+
+class DepsError(NamespaceError):
+    """Error in deps namespace operation.
+
+    Raised when dependency add, remove, list, or sync fails.
+    """
+
+    def __init__(self, operation: str, message: str, original_type: str = "RuntimeError") -> None:
+        super().__init__("deps", operation, message, original_type)

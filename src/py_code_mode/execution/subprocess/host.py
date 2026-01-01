@@ -30,6 +30,47 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Method name to namespace mapping
+_METHOD_TO_NAMESPACE: dict[str, str] = {
+    # Skills methods
+    "invoke_skill": "skills",
+    "search_skills": "skills",
+    "list_skills": "skills",
+    "get_skill": "skills",
+    "create_skill": "skills",
+    "delete_skill": "skills",
+    # Tools methods
+    "call_tool": "tools",
+    "list_tools": "tools",
+    "search_tools": "tools",
+    "list_tool_recipes": "tools",
+    # Artifacts methods
+    "load_artifact": "artifacts",
+    "save_artifact": "artifacts",
+    "list_artifacts": "artifacts",
+    "delete_artifact": "artifacts",
+    "artifact_exists": "artifacts",
+    "get_artifact": "artifacts",
+    # Deps methods
+    "add_dep": "deps",
+    "remove_dep": "deps",
+    "list_deps": "deps",
+    "sync_deps": "deps",
+}
+
+
+def _method_to_namespace(method: str) -> str:
+    """Map an RPC method name to its namespace.
+
+    Args:
+        method: The RPC method name (e.g., "invoke_skill", "call_tool").
+
+    Returns:
+        The namespace name (skills, tools, artifacts, deps, or rpc for unknown).
+    """
+    return _METHOD_TO_NAMESPACE.get(method, "rpc")
+
+
 @runtime_checkable
 class ResourceProvider(Protocol):
     """Protocol for providing resources to the kernel.
@@ -393,7 +434,15 @@ class KernelHost:
             response = RPCResponse(id=request.id, result=rpc_result)
         except Exception as e:
             logger.warning("RPC error for %s: %s", request.method, e)
-            response = RPCResponse(id=request.id, error=str(e))
+            response = RPCResponse(
+                id=request.id,
+                error={
+                    "namespace": _method_to_namespace(request.method),
+                    "operation": request.method,
+                    "message": str(e),
+                    "type": type(e).__name__,
+                },
+            )
 
         # Send response back via input_reply
         self._send_input_reply(json.dumps(response.to_dict()))
