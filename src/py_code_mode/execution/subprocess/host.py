@@ -255,10 +255,12 @@ class KernelHost:
                     msg = await self._kc.get_stdin_msg(timeout=0.5)
                     await self._handle_stdin_message(msg, msg_id)
                 except Empty:
+                    # Timeout on queue.get() - normal during polling, continue waiting
                     continue
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
+                    # Log and continue to prevent listener thread crash
                     logger.warning("Error handling stdin message: %s", e)
 
         async def listen_iopub() -> None:
@@ -268,10 +270,12 @@ class KernelHost:
                     msg = await self._kc.get_iopub_msg(timeout=0.5)
                     self._handle_iopub_message(msg, result, msg_id)
                 except Empty:
+                    # Timeout on queue.get() - normal during polling, continue waiting
                     continue
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
+                    # Log and continue to prevent listener thread crash
                     logger.warning("Error handling iopub message: %s", e)
 
         async def listen_shell() -> None:
@@ -292,10 +296,12 @@ class KernelHost:
                                 result.traceback = content.get("traceback", [])
                             done_event.set()
                 except Empty:
+                    # Timeout on queue.get() - normal during polling, continue waiting
                     continue
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
+                    # Log and continue to prevent listener thread crash
                     logger.warning("Error handling shell message: %s", e)
 
         async def timeout_watcher() -> None:
@@ -344,6 +350,7 @@ class KernelHost:
                 iopub_msg = await self._kc.get_iopub_msg(timeout=0.1)
                 self._handle_iopub_message(iopub_msg, result, msg_id)
         except Empty:
+            # Queue exhausted - all remaining messages processed
             pass
 
         return result

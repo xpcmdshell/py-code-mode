@@ -269,6 +269,29 @@ class RedisStorage:
         """Get the Redis client."""
         return self._redis
 
+    def _reconstruct_redis_url(self) -> str:
+        """Reconstruct Redis URL from client connection pool.
+
+        Returns:
+            Redis URL string with host, port, db, and credentials (if present).
+        """
+        pool = self._redis.connection_pool
+        kwargs = pool.connection_kwargs
+        host = kwargs.get("host", "localhost")
+        port = kwargs.get("port", 6379)
+        db = kwargs.get("db", 0)
+        username = kwargs.get("username")
+        password = kwargs.get("password")
+
+        if username and password:
+            encoded_user = quote(username, safe="")
+            encoded_pass = quote(password, safe="")
+            return f"redis://{encoded_user}:{encoded_pass}@{host}:{port}/{db}"
+        elif password:
+            return f"redis://:{quote(password, safe='')}@{host}:{port}/{db}"
+        else:
+            return f"redis://{host}:{port}/{db}"
+
     def get_vector_store(self) -> VectorStore | None:
         """Return RedisVectorStore if available, else None.
 
@@ -311,23 +334,7 @@ class RedisStorage:
         if self._url is not None:
             redis_url = self._url
         else:
-            # Reconstruct Redis URL from client connection
-            pool = self._redis.connection_pool
-            kwargs = pool.connection_kwargs
-            host = kwargs.get("host", "localhost")
-            port = kwargs.get("port", 6379)
-            db = kwargs.get("db", 0)
-            username = kwargs.get("username")
-            password = kwargs.get("password")
-
-            if username and password:
-                encoded_user = quote(username, safe="")
-                encoded_pass = quote(password, safe="")
-                redis_url = f"redis://{encoded_user}:{encoded_pass}@{host}:{port}/{db}"
-            elif password:
-                redis_url = f"redis://:{quote(password, safe='')}@{host}:{port}/{db}"
-            else:
-                redis_url = f"redis://{host}:{port}/{db}"
+            redis_url = self._reconstruct_redis_url()
 
         prefix = self._prefix
         # vectors_prefix is set when RedisVectorStore dependencies are available
@@ -387,26 +394,8 @@ class RedisStorage:
             This config can be passed to bootstrap_namespaces() to reconstruct
             the storage in a subprocess.
         """
-        # Reconstruct Redis URL from client connection pool
-        pool = self._redis.connection_pool
-        kwargs = pool.connection_kwargs
-        host = kwargs.get("host", "localhost")
-        port = kwargs.get("port", 6379)
-        db = kwargs.get("db", 0)
-        username = kwargs.get("username")
-        password = kwargs.get("password")
-
-        if username and password:
-            encoded_user = quote(username, safe="")
-            encoded_pass = quote(password, safe="")
-            redis_url = f"redis://{encoded_user}:{encoded_pass}@{host}:{port}/{db}"
-        elif password:
-            redis_url = f"redis://:{quote(password, safe='')}@{host}:{port}/{db}"
-        else:
-            redis_url = f"redis://{host}:{port}/{db}"
-
         return {
             "type": "redis",
-            "url": redis_url,
+            "url": self._reconstruct_redis_url(),
             "prefix": self._prefix,
         }
