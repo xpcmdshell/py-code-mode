@@ -71,9 +71,8 @@ class ResourceProvider(Protocol):
         ...
 
     # Skill methods
-    async def invoke_skill(self, name: str, args: dict[str, Any]) -> Any:
-        """Invoke a skill by name with given arguments."""
-        ...
+    # Note: No invoke_skill - skills execute locally in kernel after fetching
+    # source via get_skill. This ensures skills can import runtime-installed packages.
 
     async def search_skills(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Search for skills matching query."""
@@ -448,8 +447,9 @@ class KernelHost:
             return await self._provider.list_tool_recipes(params["name"])
 
         # Skills methods
-        elif method == "skills.invoke":
-            return await self._provider.invoke_skill(params["name"], params.get("args", {}))
+        # Note: skills.invoke is NOT handled here - skills execute locally in kernel
+        # after fetching source via skills.get. This ensures skills can import
+        # packages installed at runtime in the kernel's venv.
         elif method == "skills.search":
             return await self._provider.search_skills(params["query"], params.get("limit", 5))
         elif method == "skills.list":

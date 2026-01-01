@@ -187,65 +187,6 @@ class StorageResourceProvider:
     # Skill methods
     # -------------------------------------------------------------------------
 
-    async def invoke_skill(self, name: str, args: dict[str, Any]) -> Any:
-        """Invoke a skill by name with given arguments.
-
-        The skill is executed in the host process with access to tools,
-        skills, and artifacts namespaces. Execution runs in a thread pool
-        to avoid blocking the event loop while allowing sync tool calls.
-        """
-        import asyncio
-        import builtins
-        import concurrent.futures
-
-        library = self._get_skill_library()
-        skill = library.get(name)
-        if skill is None:
-            raise ValueError(f"Skill not found: {name}")
-
-        # Execute skill in host with access to namespaces
-        from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
-        from py_code_mode.tools import ToolsNamespace
-
-        registry = self._get_tool_registry()
-        tools_ns = ToolsNamespace(registry) if registry else None
-        artifact_store = self._storage.get_artifact_store()
-
-        # Get the current event loop for thread-safe tool calls
-        loop = asyncio.get_running_loop()
-        if tools_ns:
-            tools_ns.set_loop(loop)
-
-        # Create execution namespace dict first
-        skill_namespace: dict[str, Any] = {
-            "tools": tools_ns,
-            "artifacts": artifact_store,
-        }
-
-        # Create SkillsNamespace that wraps the library and provides invoke()
-        # Pass the namespace dict so skills can access tools/artifacts
-        skills_ns = SkillsNamespace(library, skill_namespace)
-        skill_namespace["skills"] = skills_ns
-
-        def run_skill_sync() -> Any:
-            """Run skill synchronously in a thread."""
-            # Compile and execute skill
-            _run_code = getattr(builtins, "exec")
-            code = compile(skill.source, f"<skill:{name}>", "exec")
-            _run_code(code, skill_namespace)
-            # Call the run function
-            return skill_namespace["run"](**args)
-
-        # Run skill in thread pool to avoid blocking the event loop
-        # This allows the skill to make sync tool calls that use
-        # run_coroutine_threadsafe to call back into the event loop
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(run_skill_sync)
-            # Wait for completion while allowing async cooperation
-            while not future.done():
-                await asyncio.sleep(0.01)
-            return future.result()
-
     async def search_skills(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Search for skills matching query."""
         library = self._get_skill_library()
