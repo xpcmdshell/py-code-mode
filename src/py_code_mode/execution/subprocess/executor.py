@@ -734,6 +734,11 @@ class SubprocessExecutor:
         """Shutdown kernel and cleanup venv."""
         self._closed = True
 
+        # Close tool registry first (MCP adapters need cleanup in same task)
+        if self._tool_registry is not None:
+            await self._tool_registry.close()
+            self._tool_registry = None
+
         if self._host is not None:
             await self._host.shutdown()
             self._host = None
