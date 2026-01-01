@@ -20,9 +20,12 @@ async with Session(storage=storage) as session:
 ### Configuration
 
 ```python
+from pathlib import Path
 from py_code_mode.execution import InProcessExecutor, InProcessConfig
 
 config = InProcessConfig(
+    tools_path=Path("./tools"),  # Path to YAML tool definitions
+    deps=["pandas>=2.0", "numpy"],  # Pre-configured dependencies
     default_timeout=30.0,  # Default execution timeout in seconds
     allow_runtime_deps=True  # Allow agents to install packages at runtime
 )
@@ -54,9 +57,11 @@ async with Session(storage=storage, executor=executor) as session:
 Code runs in a Jupyter kernel subprocess. Process-level isolation without Docker overhead.
 
 ```python
+from pathlib import Path
 from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
 
 config = SubprocessConfig(
+    tools_path=Path("./tools"),  # Path to YAML tool definitions
     python_version="3.11",  # Python version for the subprocess
     default_timeout=120.0,  # Execution timeout
     allow_runtime_deps=False  # Lock down dependency installation
@@ -79,10 +84,12 @@ async with Session(storage=storage, executor=executor) as session:
 
 ```python
 SubprocessConfig(
-    python_version="3.11",      # Python version (default: current version)
-    default_timeout=120.0,      # Default timeout in seconds
-    allow_runtime_deps=True,    # Allow runtime package installation
-    venv_dir=None              # Custom venv directory (default: temp dir)
+    tools_path=Path("./tools"),  # Path to YAML tool definitions
+    deps=["pandas", "numpy"],    # Pre-configured dependencies
+    python_version="3.11",       # Python version (default: current version)
+    default_timeout=120.0,       # Default timeout in seconds
+    allow_runtime_deps=True,     # Allow runtime package installation
+    venv_dir=None                # Custom venv directory (default: temp dir)
 )
 ```
 
@@ -107,9 +114,12 @@ SubprocessConfig(
 Code runs in a Docker container. Full isolation for untrusted code.
 
 ```python
+from pathlib import Path
 from py_code_mode.execution import ContainerExecutor, ContainerConfig
 
 config = ContainerConfig(
+    tools_path=Path("./tools"),  # Path to YAML tool definitions (mounted into container)
+    deps=["requests"],  # Pre-configured dependencies
     timeout=60.0,  # Execution timeout
     allow_runtime_deps=False,  # Lock down deps for security
     auth_token="your-secret-token",  # API authentication (required for production)
@@ -140,13 +150,15 @@ config = ContainerConfig(
 
 ```python
 ContainerConfig(
+    tools_path=Path("./tools"),  # Path to YAML tool definitions (mounted)
+    deps=["requests"],          # Pre-configured dependencies
     timeout=60.0,               # Execution timeout
     allow_runtime_deps=False,   # Lock down package installation
     auth_token="secret",        # Bearer token for API auth (production)
     auth_disabled=False,        # Set True for local dev only (no auth)
     network_disabled=False,     # Disable container network access
     memory_limit="512m",        # Container memory limit
-    cpu_quota=None             # CPU quota (default: no limit)
+    cpu_quota=None              # CPU quota (default: no limit)
 )
 ```
 
@@ -209,17 +221,26 @@ docker build -t py-code-mode:tools -f docker/Dockerfile.tools .
 Executors are interchangeable - same code works with any executor:
 
 ```python
+from pathlib import Path
+import os
+
+tools_path = Path("./tools")
+
 # Development: InProcess for speed
-async with Session(storage=storage) as session:
+config = InProcessConfig(tools_path=tools_path)
+executor = InProcessExecutor(config)
+async with Session(storage=storage, executor=executor) as session:
     result = await session.run(code)
 
 # Testing: Subprocess for isolation
-executor = SubprocessExecutor(SubprocessConfig())
+config = SubprocessConfig(tools_path=tools_path)
+executor = SubprocessExecutor(config)
 async with Session(storage=storage, executor=executor) as session:
     result = await session.run(code)
 
 # Production: Container for security (with auth)
-executor = ContainerExecutor(ContainerConfig(auth_token=os.getenv("AUTH_TOKEN")))
+config = ContainerConfig(tools_path=tools_path, auth_token=os.getenv("AUTH_TOKEN"))
+executor = ContainerExecutor(config)
 async with Session(storage=storage, executor=executor) as session:
     result = await session.run(code)
 ```

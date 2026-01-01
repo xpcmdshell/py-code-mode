@@ -1,10 +1,10 @@
 # Storage
 
-Storage backends determine where tools, skills, artifacts, and dependencies persist.
+Storage backends determine where skills and artifacts persist. Tools and dependencies are now owned by executors (via config).
 
 ## FileStorage
 
-Stores data in local directories. Good for development and single-instance deployments.
+Stores skills and artifacts in local directories. Good for development and single-instance deployments.
 
 ```python
 from pathlib import Path
@@ -17,11 +17,12 @@ storage = FileStorage(base_path=Path("./data"))
 
 ```
 ./data/
-├── tools/          # Tool YAML definitions
 ├── skills/         # Skill .py files
 ├── artifacts/      # Saved data
-└── requirements.txt  # Dependencies
+└── vectors/        # Embedding cache (if chromadb installed)
 ```
+
+**Note:** Tools are loaded from executor config (`config.tools_path`), not storage.
 
 ### When to Use
 
@@ -51,11 +52,12 @@ storage = RedisStorage(url="redis://localhost:6379", prefix="my-agents")
 ### Key Structure
 
 ```
-{prefix}:tools:{name}          # Tool definitions
 {prefix}:skills:{name}         # Skill source code
 {prefix}:artifacts:{name}      # Artifact data
-{prefix}:deps                  # Dependency list
+{prefix}:vectors:*             # Embedding cache (if RediSearch available)
 ```
+
+**Note:** Tools are loaded from executor config (`config.tools_path`), not storage. Dependencies are also configured via executor config.
 
 ### When to Use
 
@@ -240,13 +242,22 @@ redis_storage = RedisStorage(url="redis://prod-redis:6379", prefix="prod")
 Storage backends implement a common protocol, making them interchangeable:
 
 ```python
-def create_session(storage_type: str):
+from pathlib import Path
+from py_code_mode import Session, FileStorage, RedisStorage
+from py_code_mode.execution import InProcessConfig, InProcessExecutor
+
+def create_session(storage_type: str, tools_path: Path):
+    # Choose storage based on environment
     if storage_type == "file":
         storage = FileStorage(base_path=Path("./data"))
     elif storage_type == "redis":
         storage = RedisStorage(url="redis://localhost:6379", prefix="app")
 
-    return Session(storage=storage)
+    # Executor config is the same for both storage types
+    config = InProcessConfig(tools_path=tools_path)
+    executor = InProcessExecutor(config=config)
+
+    return Session(storage=storage, executor=executor)
 ```
 
-All session features work with any storage backend - the choice only affects where data persists.
+All session features work with any storage backend - the choice only affects where skills and artifacts persist. Tools and deps come from executor config.

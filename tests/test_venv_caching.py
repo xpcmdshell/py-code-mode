@@ -13,7 +13,6 @@ Feature Overview:
 
 import hashlib
 import os
-import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -525,7 +524,6 @@ async def test_create_cleans_up_partial_venv_on_failure(tmp_path):
 
     This prevents accumulation of broken venvs in cache.
     """
-    import asyncio
     from unittest.mock import AsyncMock
 
     venv_path = tmp_path / "partial-venv"

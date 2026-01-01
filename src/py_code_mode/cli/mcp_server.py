@@ -1,19 +1,27 @@
 """MCP server exposing py-code-mode executor to MCP clients.
 
 Usage:
-    # File storage
+    # File storage (skills/artifacts only)
     py-code-mode-mcp --storage ./data
+
+    # With tools directory (executor-owned)
+    py-code-mode-mcp --storage ./data --tools ./project/tools
 
     # Redis storage
     py-code-mode-mcp --redis redis://localhost:6379 --prefix my-agent
 
     # With Claude Code
-    claude mcp add py-code-mode -- py-code-mode-mcp --storage ~/.code-mode
+    claude mcp add py-code-mode -- py-code-mode-mcp --storage ~/.code-mode --tools ./tools
 
 Note on execution:
     Code runs in an isolated subprocess with its own virtual environment and
     IPython kernel (SubprocessExecutor). This provides process isolation while
     still allowing access to CLI tools on your system.
+
+Note on architecture:
+    Storage (--storage or --redis) holds skills and artifacts.
+    Tools are owned by the executor and loaded from --tools directory.
+    This separation allows different tool configurations per execution context.
 """
 
 from __future__ import annotations
@@ -324,14 +332,17 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # File storage
+  # File storage (skills/artifacts only)
   py-code-mode-mcp --storage ./data
+
+  # With tools directory
+  py-code-mode-mcp --storage ./data --tools ./project/tools
 
   # Redis storage
   py-code-mode-mcp --redis redis://localhost:6379 --prefix my-agent
 
   # Add to Claude Code
-  claude mcp add py-code-mode -- py-code-mode-mcp --storage ~/.code-mode
+  claude mcp add py-code-mode -- py-code-mode-mcp --storage ~/.code-mode --tools ./tools
         """,
     )
 

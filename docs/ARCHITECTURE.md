@@ -29,42 +29,54 @@ All namespaces are automatically injected into code execution. Skills also have 
 
 ## Storage Abstraction
 
-Storage handles where tools, skills, artifacts, and deps live. Two implementations:
+Storage handles where skills and artifacts live. Tools and deps are owned by executors via config.
 
-| Storage Type | Use Case | Tools | Skills | Artifacts | Deps |
-|-------------|----------|-------|--------|-----------|------|
-| `FileStorage` | Local development | YAML files | `.py` files | Binary files | `requirements.txt` |
-| `RedisStorage` | Distributed/production | Redis keys | Redis keys | Redis keys | Redis keys |
+| Storage Type | Use Case | Skills | Artifacts |
+|-------------|----------|--------|-----------|
+| `FileStorage` | Local development | `.py` files | Binary files |
+| `RedisStorage` | Distributed/production | Redis keys | Redis keys |
 
 **Current API:**
 ```python
 from pathlib import Path
 from py_code_mode import Session, FileStorage, RedisStorage
-from py_code_mode.execution import InProcessExecutor, ContainerExecutor, ContainerConfig
+from py_code_mode.execution import InProcessExecutor, InProcessConfig, ContainerExecutor, ContainerConfig
 
-# File-based storage (single base_path creates subdirs)
+# File-based storage for skills and artifacts
 storage = FileStorage(base_path=Path("./storage"))
-# Creates: ./storage/tools/, ./storage/skills/, ./storage/artifacts/
+# Creates: ./storage/skills/, ./storage/artifacts/
 
-# Redis-based storage (URL + prefix)
+# Redis-based storage for skills and artifacts
 storage = RedisStorage(url="redis://localhost:6379", prefix="myapp")
-# Uses keys: myapp:tools:*, myapp:skills:*, myapp:artifacts:*
+# Uses keys: myapp:skills:*, myapp:artifacts:*
 
-# Session with default in-process executor
-async with Session(storage=storage) as session:
+# Configure executor with tools and deps (owned by executor, not storage)
+config = InProcessConfig(
+    tools_path=Path("./tools"),  # YAML tool definitions
+    deps=["pandas>=2.0", "numpy"],  # Pre-configured dependencies
+)
+executor = InProcessExecutor(config=config)
+
+# Session with storage and executor
+async with Session(storage=storage, executor=executor) as session:
     result = await session.run('tools.curl(url="...")')
 
-# Session with explicit executor
-executor = ContainerExecutor(config=ContainerConfig(...))
+# Or with ContainerExecutor
+config = ContainerConfig(
+    tools_path=Path("./tools"),
+    deps=["requests"],
+    auth_disabled=True,  # For local dev
+)
+executor = ContainerExecutor(config=config)
 async with Session(storage=storage, executor=executor) as session:
     result = await session.run('tools.curl(url="...")')
 ```
 
 **Key design:**
-- `Session` accepts typed `Executor` instances, not `backend="container"` strings
-- `FileStorage` takes single `base_path`, creates subdirs automatically
-- `RedisStorage` takes `url` parameter (or `redis` client for advanced use cases)
-- Session uses `StorageBackend` protocol to get components directly
+- `Session` accepts typed `Executor` instances
+- `FileStorage`/`RedisStorage` only handle skills and artifacts
+- Tools and deps are configured via executor config (`tools_path`, `deps`, `deps_file`)
+- Session uses `StorageBackend` protocol for skills and artifacts
 
 ## StorageBackend Protocol
 
@@ -72,7 +84,10 @@ The `StorageBackend` protocol provides a clean interface for storage backends:
 
 ```python
 class StorageBackend(Protocol):
-    """Protocol for unified storage backend."""
+    """Protocol for unified storage backend.
+
+    Provides skills and artifacts storage. Tools and deps are owned by executors.
+    """
 
     def get_serializable_access(self) -> FileStorageAccess | RedisStorageAccess:
         """Return serializable access descriptor for cross-process communication.
@@ -82,18 +97,6 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def to_bootstrap_config(self) -> dict:
-        """Serialize storage config for subprocess bootstrap.
-
-        Returns a dict that can be passed to bootstrap_namespaces()
-        in a subprocess to reconstruct tools, skills, artifacts namespaces.
-        """
-        ...
-
-    def get_tool_registry(self) -> ToolRegistry:
-        """Return ToolRegistry for in-process execution."""
-        ...
-
     def get_skill_library(self) -> SkillLibrary:
         """Return SkillLibrary for in-process execution."""
         ...
@@ -101,16 +104,12 @@ class StorageBackend(Protocol):
     def get_artifact_store(self) -> ArtifactStoreProtocol:
         """Return artifact store for in-process execution."""
         ...
-
-    def get_vector_store(self) -> VectorStore | None:
-        """Return VectorStore for embedding caching if available."""
-        ...
 ```
 
 **Design rationale:**
 - `get_serializable_access()`: Returns path/connection info that can be sent to other processes (containers, subprocesses)
-- `to_bootstrap_config()`: Returns serializable dict for subprocess namespace reconstruction (see Bootstrap Architecture below)
-- `get_tool_registry()`, `get_skill_library()`, `get_artifact_store()`: Return live objects for in-process execution
+- `get_skill_library()`, `get_artifact_store()`: Return live objects for in-process execution
+- Tools and deps are owned by executors (via `config.tools_path`, `config.deps`)
 - No wrapper layers or dict-like access - components are accessed directly
 
 ---
@@ -123,15 +122,16 @@ Cross-process executors (SubprocessExecutor, ContainerExecutor) need to reconstr
 Host Process                          Subprocess/Container
 -----------                          --------------------
 storage.to_bootstrap_config()
++ executor config (tools_path, deps)
         |
         v
     {                                 bootstrap_namespaces(config)
       "type": "file",                         |
-      "tools_path": "/path/to/tools",         v
-      "skills_path": "/path/to/skills",   +-------------------+
-      "artifacts_path": "/path/to/..."    | tools namespace   |
-    }                                     | skills namespace  |
-        |                                 | artifacts namespace|
+      "base_path": "/path/to/storage",        v
+    }                                    +-------------------+
+    + tools_path from executor           | tools namespace   |
+    + deps from executor                 | skills namespace  |
+        |                                | artifacts namespace|
         +---- (serialized) ------------> +-------------------+
 ```
 
@@ -139,34 +139,36 @@ storage.to_bootstrap_config()
 
 | Function | Location | Purpose |
 |----------|----------|---------|
-| `storage.to_bootstrap_config()` | `storage/backends.py` | Serialize storage config |
+| `storage.to_bootstrap_config()` | `storage/backends.py` | Serialize storage config (skills, artifacts) |
+| `executor.config.tools_path` | Executor config | Path to tool YAML definitions |
 | `bootstrap_namespaces(config)` | `execution/bootstrap.py` | Reconstruct namespaces from config |
 
 **FileStorage bootstrap config:**
 ```python
 {
     "type": "file",
-    "tools_path": "/absolute/path/to/tools",
-    "skills_path": "/absolute/path/to/skills",
-    "artifacts_path": "/absolute/path/to/artifacts"
+    "base_path": "/absolute/path/to/storage"
 }
+# Skills at base_path/skills/, artifacts at base_path/artifacts/
+# Tools come from executor config.tools_path (separate from storage)
 ```
 
 **RedisStorage bootstrap config:**
 ```python
 {
     "type": "redis",
-    "redis_url": "redis://localhost:6379",
-    "tools_prefix": "myapp:tools",
-    "skills_prefix": "myapp:skills",
-    "artifacts_prefix": "myapp:artifacts"
+    "url": "redis://localhost:6379",
+    "prefix": "myapp"
 }
+# Skills at myapp:skills:*, artifacts at myapp:artifacts:*
+# Tools come from executor config.tools_path (separate from storage)
 ```
 
 **Why this matters:**
 - Subprocess needs to create its own ToolRegistry, SkillLibrary, ArtifactStore from scratch
 - Cannot pass live Python objects across process boundaries
 - Config dict is JSON-serializable and can be sent via IPC, HTTP, environment variables
+- Tools path is passed separately from storage config (executor owns tools)
 - `bootstrap_namespaces()` returns a dict with `tools`, `skills`, `artifacts` ready for code execution
 
 ## Session Architecture
@@ -176,30 +178,33 @@ Session orchestrates storage and execution:
 ```
 Session(storage=StorageBackend, executor=Executor)
     |
-    +-- Storage provides components directly:
-    |       storage.get_tool_registry()    -> ToolRegistry
+    +-- Storage provides (skills and artifacts only):
     |       storage.get_skill_library()    -> SkillLibrary
     |       storage.get_artifact_store()   -> ArtifactStoreProtocol
+    |
+    +-- Executor provides (tools and deps):
+    |       executor.config.tools_path     -> Path to YAML tool definitions
+    |       executor.config.deps           -> Pre-configured dependencies
     |
     +-- For cross-process executors:
     |       storage.get_serializable_access() -> FileStorageAccess | RedisStorageAccess
     |
-    +-- Executor (where code runs):
+    +-- Executor implementations:
             +-- InProcessExecutor (default)
-            |       Uses components directly from storage
+            |       Gets skills/artifacts from storage, tools from config
             |
             +-- ContainerExecutor (Docker)
-            |       Receives serializable access, reconstructs components
+            |       Receives serializable access + tools_path, reconstructs
             |
             +-- SubprocessExecutor (Jupyter kernel)
-                    Receives serializable access, reconstructs components
+                    Receives serializable access + tools_path, reconstructs
 ```
 
 **Key Flow:**
 1. User creates `Session(storage=storage, executor=executor)`
-2. Session starts executor with storage access
-3. In-process executor gets components directly from storage
-4. Cross-process executors receive serializable access descriptor
+2. Session starts executor with storage backend
+3. Executor gets skills/artifacts from storage, tools from its own config
+4. Cross-process executors serialize storage access + tools_path
 5. Executor builds namespaces: `tools.*`, `skills.*`, `artifacts.*`
 6. User calls `session.run(code)` which delegates to executor
 
@@ -268,18 +273,31 @@ class PackageInstaller(Protocol):
 4. Future code execution includes the package
 5. `deps.sync()` ensures all configured deps are installed
 
-**With FileStorage:**
+**Deps via Executor Config:**
 
 ```python
-storage = FileStorage(base_path=Path("./storage"))
-# Creates: ./storage/requirements.txt (managed by deps namespace)
+from py_code_mode.execution import InProcessConfig, InProcessExecutor
+
+# Pre-configure deps via executor config
+config = InProcessConfig(
+    deps=["pandas>=2.0", "numpy"],  # Inline list
+    deps_file=Path("./requirements.txt"),  # Or from file
+)
+executor = InProcessExecutor(config=config)
+
+async with Session(storage=storage, executor=executor) as session:
+    # deps.list() returns pre-configured deps
+    # deps.sync() installs them
+    pass
 ```
 
-**With RedisStorage:**
+**Runtime deps (when allowed):**
 
 ```python
-storage = RedisStorage(url="redis://localhost:6379", prefix="myapp")
-# Uses keys: myapp:deps (JSON list of package names)
+# With allow_runtime_deps=True (default), agent code can manage deps
+await session.run('deps.add("requests")')  # Adds and installs
+await session.run('deps.list()')  # Shows all deps
+await session.run('deps.remove("requests")')  # Removes
 ```
 
 ---
@@ -345,11 +363,14 @@ result = tools.curl.get.call_sync(url="...")
 |   +----------------------------------------------------------+   |
 |   |                     Your Agent                           |   |
 |   |                                                          |   |
-|   |   storage = FileStorage(                                 |   |
-|   |       base_path=Path("./storage")                        |   |
-|   |   )  # Creates tools/, skills/, artifacts/ subdirs       |   |
+|   |   storage = FileStorage(base_path=Path("./storage"))     |   |
+|   |   # Creates: skills/, artifacts/ subdirs                 |   |
 |   |                                                          |   |
-|   |   async with Session(storage=storage) as session:        |   |
+|   |   config = InProcessConfig(tools_path=Path("./tools"))   |   |
+|   |   executor = InProcessExecutor(config=config)            |   |
+|   |                                                          |   |
+|   |   async with Session(storage=storage,                    |   |
+|   |                      executor=executor) as session:      |   |
 |   |       result = await session.run('tools.curl(...)')      |   |
 |   +-------------------------+--------------------------------+   |
 |                             |                                    |
@@ -360,14 +381,14 @@ result = tools.curl.get.call_sync(url="...")
 |   |                                                          |   |
 |   |   +-------------+ +-------------+ +------------------+   |   |
 |   |   |ToolRegistry | |SkillLibrary | |FileArtifactStore |   |   |
-|   |   | (file)      | | (file)      | | (file)           |   |   |
+|   |   |(from config)| | (storage)   | | (storage)        |   |   |
 |   |   +------+------+ +------+------+ +--------+---------+   |   |
 |   +----------|--------------+|-----------------+-------------+   |
 |              |               |                 |                 |
 |   +----------v------+ +------v------+ +--------v--------+        |
-|   |  ./tools/       | |  ./skills/  | |  ./artifacts/   |        |
-|   |  +-- curl.yaml  | |  +-- *.py   | |  +-- *.bin      |        |
-|   |  +-- nmap.yaml  | |             | |                 |        |
+|   |  ./tools/       | |./storage/   | |./storage/       |        |
+|   |  +-- curl.yaml  | |  skills/    | |  artifacts/     |        |
+|   |  +-- nmap.yaml  | |  +-- *.py   | |  +-- *.bin      |        |
 |   +-----------------+ +-------------+ +-----------------+        |
 |                                                                  |
 +------------------------------------------------------------------+
@@ -377,11 +398,16 @@ result = tools.curl.get.call_sync(url="...")
 ```python
 from pathlib import Path
 from py_code_mode import Session, FileStorage
+from py_code_mode.execution import InProcessConfig, InProcessExecutor
 
-# FileStorage creates tools/, skills/, artifacts/ subdirs automatically
+# Storage for skills and artifacts
 storage = FileStorage(base_path=Path("./storage"))
 
-async with Session(storage=storage) as session:
+# Executor with tools path (separate from storage)
+config = InProcessConfig(tools_path=Path("./tools"))
+executor = InProcessExecutor(config=config)
+
+async with Session(storage=storage, executor=executor) as session:
     result = await session.run('tools.curl(url="https://api.example.com")')
     print(result.value)
 ```
@@ -399,12 +425,15 @@ async with Session(storage=storage) as session:
 |   +----------------------------------------------------------+   |
 |   |                     Your Agent                           |   |
 |   |                                                          |   |
-|   |   storage = RedisStorage(                                |   |
-|   |       url="redis://localhost:6379",                      |   |
-|   |       prefix="agent"                                     |   |
-|   |   )  # Uses agent:tools:*, agent:skills:*, etc.          |   |
+|   |   storage = RedisStorage(url="redis://localhost:6379",   |   |
+|   |                          prefix="agent")                 |   |
+|   |   # Uses agent:skills:*, agent:artifacts:*               |   |
 |   |                                                          |   |
-|   |   async with Session(storage=storage) as session:        |   |
+|   |   config = InProcessConfig(tools_path=Path("./tools"))   |   |
+|   |   executor = InProcessExecutor(config=config)            |   |
+|   |                                                          |   |
+|   |   async with Session(storage=storage,                    |   |
+|   |                      executor=executor) as session:      |   |
 |   |       result = await session.run('tools.curl(...)')      |   |
 |   +-------------------------+--------------------------------+   |
 |                             |                                    |
@@ -413,48 +442,54 @@ async with Session(storage=storage) as session:
 |   |                                                          |   |
 |   |   +-------------+ +-------------+ +------------------+   |   |
 |   |   |ToolRegistry | |SkillLibrary | |RedisArtifactStore|   |   |
-|   |   | (Redis)     | | (Redis)     | | (Redis)          |   |   |
+|   |   |(from config)| | (Redis)     | | (Redis)          |   |   |
 |   |   +------+------+ +------+------+ +--------+---------+   |   |
 |   +----------|--------------+|-----------------+-------------+   |
 |              |               |                 |                 |
-+--------------|---------------|-----------------|-----------------+
-               |               |                 |
-    +----------v---------------v-----------------v-----------+
+|   +----------v------+        |                 |                 |
+|   |  ./tools/       |        |                 |                 |
+|   |  +-- curl.yaml  |        |                 |                 |
+|   |  +-- nmap.yaml  |        |                 |                 |
+|   +-----------------+        |                 |                 |
+|                              |                 |                 |
++------------------------------|-----------------|------------------+
+                               |                 |
+    +--------------------------v-----------------v-----------+
     |                       Redis                            |
     |                                                        |
-    |  agent:tools:*  |  agent:skills:*  | agent:artifacts:* |
-    |  (yaml configs) |  (python code)   | (binary data)     |
+    |  agent:skills:*        |       agent:artifacts:*       |
+    |  (python code)         |       (binary data)           |
     |                                                        |
     +--------------------------------------------------------+
 ```
 
 **Code:**
 ```python
+from pathlib import Path
 from py_code_mode import Session, RedisStorage
+from py_code_mode.execution import InProcessConfig, InProcessExecutor
 
-# RedisStorage takes URL and prefix
+# RedisStorage for skills and artifacts
 storage = RedisStorage(url="redis://localhost:6379", prefix="agent")
-# Creates keys: agent:tools:*, agent:skills:*, agent:artifacts:*
 
-async with Session(storage=storage) as session:
+# Executor with tools from local filesystem
+config = InProcessConfig(tools_path=Path("./tools"))
+executor = InProcessExecutor(config=config)
+
+async with Session(storage=storage, executor=executor) as session:
     result = await session.run('tools.curl(url="https://api.example.com")')
     print(result.value)
 ```
 
-**Provisioning to Redis:**
+**Provisioning skills to Redis:**
 ```bash
-# Tools
-python -m py_code_mode.store bootstrap \
-    --source ./tools \
-    --target redis://localhost:6379 \
-    --prefix agent-tools \
-    --type tools
-
-# Skills
+# Skills (provisioned to Redis for distributed access)
 python -m py_code_mode.store bootstrap \
     --source ./skills \
     --target redis://localhost:6379 \
     --prefix agent-skills
+
+# Tools stay on filesystem (executor loads from tools_path)
 ```
 
 ---
@@ -464,7 +499,7 @@ python -m py_code_mode.store bootstrap \
 **Best for:** Process isolation with local development.
 
 **Note:** Container backend is used with Session by passing `ContainerExecutor` explicitly.
-Storage is provided via volume mounts for tools, skills, and artifacts.
+Tools come from executor config (mounted to container). Skills and artifacts from storage.
 
 ```
 +------------------------------------------------------------------+
@@ -473,14 +508,13 @@ Storage is provided via volume mounts for tools, skills, and artifacts.
 |   +----------------------------------------------------------+   |
 |   |                     Your Agent                           |   |
 |   |                                                          |   |
-|   |   from py_code_mode.execution import (                   |   |
-|   |       ContainerExecutor, ContainerConfig                 |   |
-|   |   )                                                      |   |
-|   |                                                          |   |
 |   |   storage = FileStorage(base_path=Path("./storage"))     |   |
-|   |   executor = ContainerExecutor(config=ContainerConfig(   |   |
-|   |       image="py-code-mode:latest",                       |   |
-|   |   ))                                                     |   |
+|   |                                                          |   |
+|   |   config = ContainerConfig(                              |   |
+|   |       tools_path=Path("./tools"),  # Mounted to container|   |
+|   |       auth_disabled=True,  # Local dev                   |   |
+|   |   )                                                      |   |
+|   |   executor = ContainerExecutor(config=config)            |   |
 |   |                                                          |   |
 |   |   async with Session(storage=storage,                    |   |
 |   |                      executor=executor) as session:      |   |
@@ -490,21 +524,20 @@ Storage is provided via volume mounts for tools, skills, and artifacts.
 |                             v                                    |
 |   +=========================================================+   |
 |   ||               Docker Container                        ||   |
-|   ||               (FileStorageAccess passed via Session)  ||   |
 |   ||                                                       ||   |
 |   ||   +-----------------------------------------------+   ||   |
 |   ||   |            SessionServer (FastAPI)            |   ||   |
 |   ||   |                                               |   ||   |
 |   ||   |   +-------------+ +-------------+ +--------+  |   ||   |
 |   ||   |   |ToolRegistry | |SkillLibrary | |FileArt.|  |   ||   |
-|   ||   |   | (mounted)   | | (mounted)   | |(mount) |  |   ||   |
+|   ||   |   |(from config)| | (mounted)   | |(mount) |  |   ||   |
 |   ||   |   +------+------+ +------+------+ +---+----+  |   ||   |
 |   ||   +----------|--------------|-------------|-------+   ||   |
 |   ||              |              |             |           ||   |
 |   ||   +----------v------+ +-----v-----+ +-----v-------+   ||   |
-|   ||   |TOOLS_CONFIG yaml| |/app/skills| |/workspace/  |   ||   |
-|   ||   |(in container or | | (volume)  | |artifacts/   |   ||   |
-|   ||   | mounted)        | |           | |(volume)     |   ||   |
+|   ||   |/app/tools/      | |/app/      | |/workspace/  |   ||   |
+|   ||   |(from config,    | | skills/   | |artifacts/   |   ||   |
+|   ||   | volume mounted) | | (volume)  | |(volume)     |   ||   |
 |   ||   +-----------------+ +-----^-----+ +------^------+   ||   |
 |   +=============================|===============|==========+   |
 |                                 |               |               |
@@ -514,20 +547,19 @@ Storage is provided via volume mounts for tools, skills, and artifacts.
 |   +-----------------------------+--------------+-------------+  |
 |   |                     Host Filesystem                      |  |
 |   |                                                          |  |
-|   |   ./skills/              ./artifacts/                    |  |
-|   |   +-- *.py               +-- (agent-created files)       |  |
+|   |   ./tools/     ./storage/skills/  ./storage/artifacts/   |  |
+|   |   +-- *.yaml   +-- *.py           +-- (files)            |  |
 |   |                                                          |  |
 |   +----------------------------------------------------------+  |
 |                                                                  |
 +------------------------------------------------------------------+
 ```
 
-**Environment:**
+**Environment (container receives via mounts and env vars):**
 ```
-# No REDIS_URL = file-based mode
-TOOLS_CONFIG=/app/tools/tools.yaml    # Can be in image or mounted
-SKILLS_PATH=/app/skills               # Volume mounted from host
-ARTIFACTS_PATH=/workspace/artifacts   # Volume mounted from host
+TOOLS_PATH=/app/tools           # From config.tools_path (mounted)
+SKILLS_PATH=/app/skills         # From storage (mounted)
+ARTIFACTS_PATH=/workspace/artifacts  # From storage (mounted)
 ```
 
 ---
@@ -537,7 +569,7 @@ ARTIFACTS_PATH=/workspace/artifacts   # Volume mounted from host
 **Best for:** Cloud deployments, horizontal scaling, shared state.
 
 **Note:** Container backend is used with Session by passing `ContainerExecutor` explicitly.
-Session derives RedisStorageAccess from RedisStorage and passes to container.
+Tools still come from executor config (mounted). Skills and artifacts from Redis.
 
 ```
 +------------------------------------------------------------------+
@@ -546,15 +578,14 @@ Session derives RedisStorageAccess from RedisStorage and passes to container.
 |   +----------------------------------------------------------+   |
 |   |                     Your Agent                           |   |
 |   |                                                          |   |
-|   |   from py_code_mode.execution import (                   |   |
-|   |       ContainerExecutor, ContainerConfig                 |   |
-|   |   )                                                      |   |
-|   |                                                          |   |
 |   |   storage = RedisStorage(url="redis://redis:6379",       |   |
 |   |                          prefix="agent")                 |   |
-|   |   executor = ContainerExecutor(config=ContainerConfig(   |   |
-|   |       image="py-code-mode:latest"                        |   |
-|   |   ))                                                     |   |
+|   |                                                          |   |
+|   |   config = ContainerConfig(                              |   |
+|   |       tools_path=Path("./tools"),  # Mounted to container|   |
+|   |       auth_token=os.environ["AUTH_TOKEN"],  # Production |   |
+|   |   )                                                      |   |
+|   |   executor = ContainerExecutor(config=config)            |   |
 |   |                                                          |   |
 |   |   async with Session(storage=storage,                    |   |
 |   |                      executor=executor) as session:      |   |
@@ -564,34 +595,33 @@ Session derives RedisStorageAccess from RedisStorage and passes to container.
 |                             v                                    |
 |   +=========================================================+   |
 |   ||               Docker Container                        ||   |
-|   ||               (RedisStorageAccess passed via Session) ||   |
 |   ||                                                       ||   |
 |   ||   +-----------------------------------------------+   ||   |
 |   ||   |            SessionServer (FastAPI)            |   ||   |
 |   ||   |                                               |   ||   |
-|   ||   |   Receives RedisStorageAccess from Session:   |   ||   |
-|   ||   |   - redis_url: connection string              |   ||   |
-|   ||   |   - tools_prefix, skills_prefix, etc.         |   ||   |
-|   ||   |                                               |   ||   |
-|   ||   |   Loads from Redis:                           |   ||   |
-|   ||   |   - registry = registry_from_redis(store)     |   ||   |
-|   ||   |   - skill_library from RedisSkillStore        |   ||   |
-|   ||   |   - artifact_store = RedisArtifactStore       |   ||   |
+|   ||   |   Receives:                                   |   ||   |
+|   ||   |   - tools_path from config (mounted)          |   ||   |
+|   ||   |   - RedisStorageAccess for skills/artifacts   |   ||   |
 |   ||   |                                               |   ||   |
 |   ||   |   +-------------+ +-------------+ +--------+  |   ||   |
 |   ||   |   |ToolRegistry | |SkillLibrary | |RedisArt|  |   ||   |
-|   ||   |   | (Redis)     | | (Redis)     | |(Redis) |  |   ||   |
+|   ||   |   |(from config)| | (Redis)     | |(Redis) |  |   ||   |
 |   ||   |   +------+------+ +------+------+ +---+----+  |   ||   |
 |   ||   +----------|--------------|-------------|-------+   ||   |
-|   +===============|==============|=============|===========+   |
-|                   |              |             |                |
-+-------------------|--------------|-------------|----------------+
-                    |              |             |
-         +----------v--------------v-------------v----------+
+|   ||              |              |             |           ||   |
+|   ||   +----------v------+       |             |           ||   |
+|   ||   |/app/tools/      |       |             |           ||   |
+|   ||   |(volume mounted) |       |             |           ||   |
+|   ||   +-----------------+       |             |           ||   |
+|   +==============================|=============|===========+   |
+|                                  |             |                |
++----------------------------------|-------------|----------------+
+                                   |             |
+         +-------------------------v-------------v----------+
          |                       Redis                      |
          |                                                  |
-         |  agent-tools:*  |  agent-skills:*  |  agent-artifacts:*
-         |  (yaml configs) |  (python code)   |  (binary data)
+         |  agent:skills:*        |    agent:artifacts:*    |
+         |  (python code)         |    (binary data)        |
          |                                                  |
          |  Provisioned via:                                |
          |  python -m py_code_mode.store bootstrap ...      |
@@ -600,56 +630,51 @@ Session derives RedisStorageAccess from RedisStorage and passes to container.
 ```
 
 **Key flow:**
-1. Session derives `RedisStorageAccess` from `RedisStorage`
-2. Session passes `RedisStorageAccess` to `executor.start(storage_access=...)`
-3. ContainerExecutor configures container with Redis connection details
-4. SessionServer (in container) loads everything from Redis using provided prefixes
-
-**No volume mounts needed** - all data comes from Redis.
+1. Session passes storage backend to `executor.start(storage=...)`
+2. ContainerExecutor mounts tools_path from config
+3. ContainerExecutor passes Redis connection details for skills/artifacts
+4. SessionServer (in container) loads skills/artifacts from Redis, tools from mount
 
 **Provisioning before deployment:**
 ```bash
-# Bootstrap tools to Redis
-python -m py_code_mode.store bootstrap \
-    --source ./tools \
-    --target redis://redis:6379 \
-    --prefix agent:tools \
-    --type tools
-
-# Bootstrap skills to Redis
+# Bootstrap skills to Redis (tools stay on filesystem)
 python -m py_code_mode.store bootstrap \
     --source ./skills \
     --target redis://redis:6379 \
     --prefix agent:skills
+
+# Tools are mounted from config.tools_path (not in Redis)
 ```
 
 ---
 
 ## Storage Comparison Matrix
 
-| Storage Type | API | Tools Source | Skills Source | Artifacts Store |
-|--------------|-----|--------------|---------------|-----------------|
-| FileStorage | `Session(storage=FileStorage(base_path=...))` | `<base>/tools/*.yaml` | `<base>/skills/*.py` | `<base>/artifacts/` |
-| RedisStorage | `Session(storage=RedisStorage(url=..., prefix=...))` | `<prefix>:tools:*` | `<prefix>:skills:*` | `<prefix>:artifacts:*` |
-| Container + File | `Session(storage=FileStorage(...), executor=ContainerExecutor(...))` | Volume mounted | Volume mounted | Volume mounted |
-| Container + Redis | `Session(storage=RedisStorage(...), executor=ContainerExecutor(...))` | Redis keys | Redis keys | Redis keys |
+| Scenario | Storage | Tools Source | Skills Source | Artifacts Store |
+|----------|---------|--------------|---------------|-----------------|
+| Local dev | FileStorage | `config.tools_path/*.yaml` | `<base>/skills/*.py` | `<base>/artifacts/` |
+| Distributed | RedisStorage | `config.tools_path/*.yaml` | `<prefix>:skills:*` | `<prefix>:artifacts:*` |
+| Container + File | FileStorage | `config.tools_path` (mounted) | `<base>/skills/` (mounted) | `<base>/artifacts/` (mounted) |
+| Container + Redis | RedisStorage | `config.tools_path` (mounted) | Redis keys | Redis keys |
+
+**Key insight:** Tools always come from `config.tools_path` (executor owns tools). Only skills and artifacts vary by storage type.
 
 **Decision tree:**
 
 ```
-Choose storage backend:
+Choose storage backend (for skills and artifacts):
     |
     +-- Single machine, local dev?  -> FileStorage(base_path=Path("./storage"))
     +-- Distributed, production?    -> RedisStorage(url="redis://...", prefix="app")
 
-Choose executor:
+Choose executor (with tools_path):
     |
-    +-- Same-process execution?     -> InProcessExecutor() (default)
-    +-- Process isolation needed?   -> ContainerExecutor(config=ContainerConfig(...))
-    +-- Lightweight isolation?      -> SubprocessExecutor(config=SubprocessConfig(...))
+    +-- Same-process execution?     -> InProcessExecutor(config=InProcessConfig(tools_path=...))
+    +-- Docker isolation?           -> ContainerExecutor(config=ContainerConfig(tools_path=...))
+    +-- Subprocess isolation?       -> SubprocessExecutor(config=SubprocessConfig(tools_path=...))
 
 Combine:
-    Session(storage=storage, executor=executor)  # or omit executor for default
+    Session(storage=storage, executor=executor)
 ```
 
 ---
@@ -674,15 +699,14 @@ SubprocessExecutor runs code in an IPython/Jupyter kernel within a subprocess. I
 |   +----------------------------------------------------------+   |
 |   |                     Your Agent                           |   |
 |   |                                                          |   |
-|   |   from py_code_mode.execution import (                   |   |
-|   |       SubprocessExecutor, SubprocessConfig               |   |
-|   |   )                                                      |   |
-|   |                                                          |   |
 |   |   storage = FileStorage(base_path=Path("./storage"))     |   |
-|   |   executor = SubprocessExecutor(config=SubprocessConfig( |   |
+|   |                                                          |   |
+|   |   config = SubprocessConfig(                             |   |
+|   |       tools_path=Path("./tools"),                        |   |
 |   |       python_version="3.11",                             |   |
 |   |       default_timeout=120.0,                             |   |
-|   |   ))                                                     |   |
+|   |   )                                                      |   |
+|   |   executor = SubprocessExecutor(config=config)           |   |
 |   |                                                          |   |
 |   |   async with Session(storage=storage,                    |   |
 |   |                      executor=executor) as session:      |   |
@@ -695,7 +719,8 @@ SubprocessExecutor runs code in an IPython/Jupyter kernel within a subprocess. I
 |   ||                                                       ||   |
 |   ||   +-----------------------------------------------+   ||   |
 |   ||   |   tools.* skills.* artifacts.* namespaces     |   ||   |
-|   ||   |   (injected from storage at kernel start)     |   ||   |
+|   ||   |   (tools from config, skills/artifacts from   |   ||   |
+|   ||   |    storage, injected at kernel start)         |   ||   |
 |   ||   +-----------------------------------------------+   ||   |
 |   ||                                                       ||   |
 |   ||   Virtual environment created with:                   ||   |
@@ -715,12 +740,13 @@ from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
 
 storage = FileStorage(base_path=Path("./storage"))
 
-# Configure subprocess executor
+# Configure subprocess executor with tools_path
 config = SubprocessConfig(
-    python_version="3.11",      # Python version for venv
-    default_timeout=120.0,      # Execution timeout
-    startup_timeout=30.0,       # Kernel ready timeout
-    cleanup_venv_on_close=True, # Delete temp venv on close
+    tools_path=Path("./tools"),  # Tools from executor config
+    python_version="3.11",       # Python version for venv
+    default_timeout=120.0,       # Execution timeout
+    startup_timeout=30.0,        # Kernel ready timeout
+    cleanup_venv_on_close=True,  # Delete temp venv on close
 )
 executor = SubprocessExecutor(config=config)
 
@@ -1010,33 +1036,32 @@ recipes:                          # Named presets
 
 ## Deployment Checklist
 
-### Local Development (Session + FileStorage)
-- [ ] Create base storage directory
-- [ ] Add YAML tool definitions to `<base_path>/tools/`
+### Local Development (Session + FileStorage + InProcessExecutor)
+- [ ] Create base storage directory for skills and artifacts
+- [ ] Add YAML tool definitions to separate tools directory
 - [ ] Add Python skill files to `<base_path>/skills/`
-- [ ] Initialize `<base_path>/requirements.txt` (optional, created on first dep.add())
-- [ ] Use `Session(storage=FileStorage(base_path=Path("./storage")))`
+- [ ] Configure executor: `InProcessConfig(tools_path=Path("./tools"))`
+- [ ] Use `Session(storage=FileStorage(base_path=...), executor=InProcessExecutor(config))`
 
 ### Local with Container Isolation (Container + File)
-- [ ] Build Docker image with py-code-mode and tools installed
-- [ ] Configure `TOOLS_CONFIG` in image or mount tools directory
-- [ ] Mount skills directory: `-v ./skills:/app/skills:ro`
-- [ ] Mount artifacts directory: `-v ./artifacts:/workspace/artifacts:rw`
-- [ ] Mount deps directory: `-v ./requirements.txt:/app/requirements.txt:rw`
+- [ ] Build Docker image with py-code-mode installed
+- [ ] Configure `ContainerConfig(tools_path=Path("./tools"))` - will be mounted
+- [ ] Storage provides skills and artifacts directories (also mounted)
+- [ ] Set `auth_disabled=True` for local development
 - [ ] Use `Session(storage=FileStorage(...), executor=ContainerExecutor(config))`
 
 ### Production (Session + RedisStorage)
 - [ ] Provision Redis instance
-- [ ] Bootstrap tools: `python -m py_code_mode.store bootstrap --type tools --target redis://... --prefix myapp:tools`
 - [ ] Bootstrap skills: `python -m py_code_mode.store bootstrap --target redis://... --prefix myapp:skills`
-- [ ] Initialize deps (optional): Pre-populate `myapp:deps` Redis key if needed
+- [ ] Tools stay on filesystem (via executor config)
 - [ ] Create storage: `RedisStorage(url="redis://...", prefix="myapp")`
-- [ ] Use `Session(storage=storage)`
+- [ ] Configure executor: `InProcessConfig(tools_path=Path("./tools"))`
+- [ ] Use `Session(storage=storage, executor=executor)`
 
 ### Production with Container Isolation
 - [ ] Provision Redis instance
-- [ ] Bootstrap tools and skills to Redis (as above)
-- [ ] Initialize deps in Redis (optional)
+- [ ] Bootstrap skills to Redis (as above)
+- [ ] Tools on filesystem (mounted to container via `config.tools_path`)
 - [ ] Create storage: `RedisStorage(url="redis://...", prefix="myapp")`
-- [ ] Create executor: `ContainerExecutor(config=ContainerConfig(...))`
+- [ ] Create executor: `ContainerExecutor(config=ContainerConfig(tools_path=..., auth_token=...))`
 - [ ] Use `Session(storage=storage, executor=executor)`

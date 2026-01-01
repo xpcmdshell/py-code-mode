@@ -107,7 +107,8 @@ class TestSessionSyncDepsOnStart:
     async def test_sync_deps_on_start_installs_configured_deps(self, tmp_path: Path) -> None:
         """Session.start() installs deps when sync_deps_on_start=True.
 
-        User action: Pre-configure deps via executor config, create session with sync_deps_on_start=True.
+        User action: Pre-configure deps via executor config, create session
+        with sync_deps_on_start=True.
         Verification: Deps are installed during session.start().
         Breaks when: sync_deps_on_start doesn't trigger installation.
         """

@@ -1028,7 +1028,8 @@ class TestSyncDepsOnStartIntegration:
     async def test_sync_deps_on_start_calls_executor_install_deps(self, tmp_path: Path) -> None:
         """sync_deps_on_start=True calls executor.install_deps() during start.
 
-        User action: Pre-configure deps in executor config, create session with sync_deps_on_start=True.
+        User action: Pre-configure deps in executor config, create session
+        with sync_deps_on_start=True.
         Verification: Executor's install_deps called with configured deps.
         Breaks when: _sync_deps doesn't call executor.install_deps.
         """
