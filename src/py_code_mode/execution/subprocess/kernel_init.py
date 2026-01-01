@@ -290,7 +290,7 @@ class _ToolRecipeProxy:
         """Invoke the recipe with given arguments."""
         # Recipe invocation: name is "tool.recipe"
         return _rpc_call(
-            "call_tool",
+            "tools.call",
             name=f"{{self._tool_name}}.{{self._recipe_name}}",
             args=kwargs,
         )
@@ -305,7 +305,7 @@ class _ToolProxy:
 
     def __call__(self, **kwargs) -> Any:
         """Direct tool invocation (escape hatch)."""
-        return _rpc_call("call_tool", name=self._name, args=kwargs)
+        return _rpc_call("tools.call", name=self._name, args=kwargs)
 
     def __getattr__(self, recipe_name: str) -> _ToolRecipeProxy:
         """Get a recipe proxy for tools.tool.recipe(...) syntax."""
@@ -315,7 +315,7 @@ class _ToolProxy:
 
     def list(self) -> list[dict[str, Any]]:
         """List recipes for this tool."""
-        return _rpc_call("list_tool_recipes", name=self._name)
+        return _rpc_call("tools.list_recipes", name=self._name)
 
 
 # Cache for valid tool names to avoid repeated RPC calls
@@ -326,7 +326,7 @@ def _get_known_tools() -> set[str]:
     """Get set of known tool names, caching result."""
     global _known_tools
     if _known_tools is None:
-        result = _rpc_call("list_tools")
+        result = _rpc_call("tools.list")
         _known_tools = {{t["name"] for t in result}}
     return _known_tools
 
@@ -370,7 +370,7 @@ class ToolsProxy:
             List of dicts with name, description, and tags keys.
         """
         # Return raw dicts (not NamedTuples) so they serialize cleanly through IPython
-        return _rpc_call("list_tools")
+        return _rpc_call("tools.list")
 
     def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search tools by query.
@@ -379,7 +379,7 @@ class ToolsProxy:
             List of dicts matching the query.
         """
         # Return raw dicts (not NamedTuples) so they serialize cleanly through IPython
-        return _rpc_call("search_tools", query=query, limit=limit)
+        return _rpc_call("tools.search", query=query, limit=limit)
 
 
 class SkillsProxy:
@@ -404,7 +404,7 @@ class SkillsProxy:
         Note: Uses skill_name (not name) to avoid collision with skills
         that have a 'name' parameter.
         """
-        return _rpc_call("invoke_skill", name=skill_name, args=kwargs)
+        return _rpc_call("skills.invoke", name=skill_name, args=kwargs)
 
     def search(self, query: str, limit: int = 5) -> list[Skill]:
         """Search for skills matching query.
@@ -412,7 +412,7 @@ class SkillsProxy:
         Returns:
             List of Skill objects matching the query.
         """
-        result = _rpc_call("search_skills", query=query, limit=limit)
+        result = _rpc_call("skills.search", query=query, limit=limit)
         return [
             Skill(
                 name=s["name"],
@@ -428,7 +428,7 @@ class SkillsProxy:
         Returns:
             List of Skill objects.
         """
-        result = _rpc_call("list_skills")
+        result = _rpc_call("skills.list")
         return [
             Skill(
                 name=s["name"],
@@ -443,7 +443,7 @@ class SkillsProxy:
 
         Returns full skill details including source.
         """
-        return _rpc_call("get_skill", name=name)
+        return _rpc_call("skills.get", name=name)
 
     def create(self, name: str, source: str, description: str = "") -> Skill:
         """Create and save a new skill.
@@ -451,7 +451,7 @@ class SkillsProxy:
         Returns:
             Skill object for the created skill.
         """
-        result = _rpc_call("create_skill", name=name, source=source, description=description)
+        result = _rpc_call("skills.create", name=name, source=source, description=description)
         return Skill(
             name=result["name"],
             description=result.get("description", ""),
@@ -460,7 +460,7 @@ class SkillsProxy:
 
     def delete(self, name: str) -> bool:
         """Delete a skill."""
-        return _rpc_call("delete_skill", name=name)
+        return _rpc_call("skills.delete", name=name)
 
     def __getattr__(self, name: str) -> Any:
         """Allow skills.skill_name(...) syntax."""
@@ -482,7 +482,7 @@ class ArtifactsProxy:
 
     def load(self, name: str) -> Any:
         """Load an artifact by name."""
-        return _rpc_call("load_artifact", name=name)
+        return _rpc_call("artifacts.load", name=name)
 
     def save(self, name: str, data: Any, description: str = "") -> ArtifactMeta:
         """Save an artifact.
@@ -490,7 +490,7 @@ class ArtifactsProxy:
         Returns:
             ArtifactMeta with name, path, description, created_at.
         """
-        result = _rpc_call("save_artifact", name=name, data=data, description=description)
+        result = _rpc_call("artifacts.save", name=name, data=data, description=description)
         return ArtifactMeta(
             name=result["name"],
             path=result.get("path", ""),
@@ -504,7 +504,7 @@ class ArtifactsProxy:
         Returns:
             List of ArtifactMeta objects.
         """
-        result = _rpc_call("list_artifacts")
+        result = _rpc_call("artifacts.list")
         return [
             ArtifactMeta(
                 name=a["name"],
@@ -517,15 +517,15 @@ class ArtifactsProxy:
 
     def delete(self, name: str) -> None:
         """Delete an artifact."""
-        return _rpc_call("delete_artifact", name=name)
+        return _rpc_call("artifacts.delete", name=name)
 
     def exists(self, name: str) -> bool:
         """Check if an artifact exists."""
-        return _rpc_call("artifact_exists", name=name)
+        return _rpc_call("artifacts.exists", name=name)
 
     def get(self, name: str) -> ArtifactMeta | None:
         """Get artifact metadata."""
-        result = _rpc_call("get_artifact", name=name)
+        result = _rpc_call("artifacts.get", name=name)
         if result is None:
             return None
         return ArtifactMeta(
@@ -555,7 +555,7 @@ class DepsProxy:
         Returns:
             SyncResult with installed, already_present, and failed tuples.
         """
-        result = _rpc_call("add_dep", package=package)
+        result = _rpc_call("deps.add", package=package)
         return SyncResult(
             installed=tuple(result.get("installed", [])),
             already_present=tuple(result.get("already_present", [])),
@@ -564,11 +564,11 @@ class DepsProxy:
 
     def remove(self, package: str) -> bool:
         """Remove a package from configuration."""
-        return _rpc_call("remove_dep", package=package)
+        return _rpc_call("deps.remove", package=package)
 
     def list(self) -> list[str]:
         """List configured packages."""
-        return _rpc_call("list_deps")
+        return _rpc_call("deps.list")
 
     def sync(self) -> SyncResult:
         """Install all configured packages.
@@ -576,7 +576,7 @@ class DepsProxy:
         Returns:
             SyncResult with installed, already_present, and failed tuples.
         """
-        result = _rpc_call("sync_deps")
+        result = _rpc_call("deps.sync")
         return SyncResult(
             installed=tuple(result.get("installed", [])),
             already_present=tuple(result.get("already_present", [])),

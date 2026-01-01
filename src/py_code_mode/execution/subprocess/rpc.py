@@ -80,7 +80,7 @@ class RPCResponse:
 
     id: str
     result: Any = None
-    error: dict[str, Any] | str | None = None
+    error: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for JSON transmission.

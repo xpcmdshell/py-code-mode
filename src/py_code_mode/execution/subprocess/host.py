@@ -30,45 +30,19 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Method name to namespace mapping
-_METHOD_TO_NAMESPACE: dict[str, str] = {
-    # Skills methods
-    "invoke_skill": "skills",
-    "search_skills": "skills",
-    "list_skills": "skills",
-    "get_skill": "skills",
-    "create_skill": "skills",
-    "delete_skill": "skills",
-    # Tools methods
-    "call_tool": "tools",
-    "list_tools": "tools",
-    "search_tools": "tools",
-    "list_tool_recipes": "tools",
-    # Artifacts methods
-    "load_artifact": "artifacts",
-    "save_artifact": "artifacts",
-    "list_artifacts": "artifacts",
-    "delete_artifact": "artifacts",
-    "artifact_exists": "artifacts",
-    "get_artifact": "artifacts",
-    # Deps methods
-    "add_dep": "deps",
-    "remove_dep": "deps",
-    "list_deps": "deps",
-    "sync_deps": "deps",
-}
-
-
-def _method_to_namespace(method: str) -> str:
-    """Map an RPC method name to its namespace.
+def _parse_method(method: str) -> tuple[str, str]:
+    """Parse RPC method name into namespace and operation.
 
     Args:
-        method: The RPC method name (e.g., "invoke_skill", "call_tool").
+        method: The RPC method name (e.g., "skills.invoke", "tools.call").
 
     Returns:
-        The namespace name (skills, tools, artifacts, deps, or rpc for unknown).
+        Tuple of (namespace, operation). Returns ("rpc", method) for unknown format.
     """
-    return _METHOD_TO_NAMESPACE.get(method, "rpc")
+    if "." in method:
+        namespace, operation = method.split(".", 1)
+        return namespace, operation
+    return "rpc", method
 
 
 @runtime_checkable
@@ -433,12 +407,13 @@ class KernelHost:
             rpc_result = await self._dispatch_rpc(request)
             response = RPCResponse(id=request.id, result=rpc_result)
         except Exception as e:
-            logger.warning("RPC error for %s: %s", request.method, e)
+            namespace, operation = _parse_method(request.method)
+            logger.warning("RPC error for %s.%s: %s", namespace, operation, e)
             response = RPCResponse(
                 id=request.id,
                 error={
-                    "namespace": _method_to_namespace(request.method),
-                    "operation": request.method,
+                    "namespace": namespace,
+                    "operation": operation,
                     "message": str(e),
                     "type": type(e).__name__,
                 },
@@ -455,56 +430,56 @@ class KernelHost:
         method = request.method
         params = request.params
 
-        # Tool methods
-        if method == "call_tool":
+        # Tools methods
+        if method == "tools.call":
             return await self._provider.call_tool(params["name"], params.get("args", {}))
-        elif method == "list_tools":
+        elif method == "tools.list":
             return await self._provider.list_tools()
-        elif method == "search_tools":
+        elif method == "tools.search":
             return await self._provider.search_tools(params["query"], params.get("limit", 10))
-        elif method == "list_tool_recipes":
+        elif method == "tools.list_recipes":
             return await self._provider.list_tool_recipes(params["name"])
 
-        # Skill methods
-        elif method == "invoke_skill":
+        # Skills methods
+        elif method == "skills.invoke":
             return await self._provider.invoke_skill(params["name"], params.get("args", {}))
-        elif method == "search_skills":
+        elif method == "skills.search":
             return await self._provider.search_skills(params["query"], params.get("limit", 5))
-        elif method == "list_skills":
+        elif method == "skills.list":
             return await self._provider.list_skills()
-        elif method == "get_skill":
+        elif method == "skills.get":
             return await self._provider.get_skill(params["name"])
-        elif method == "create_skill":
+        elif method == "skills.create":
             return await self._provider.create_skill(
                 params["name"], params["source"], params.get("description", "")
             )
-        elif method == "delete_skill":
+        elif method == "skills.delete":
             return await self._provider.delete_skill(params["name"])
 
-        # Artifact methods
-        elif method == "load_artifact":
+        # Artifacts methods
+        elif method == "artifacts.load":
             return await self._provider.load_artifact(params["name"])
-        elif method == "save_artifact":
+        elif method == "artifacts.save":
             return await self._provider.save_artifact(
                 params["name"], params["data"], params.get("description", "")
             )
-        elif method == "list_artifacts":
+        elif method == "artifacts.list":
             return await self._provider.list_artifacts()
-        elif method == "delete_artifact":
+        elif method == "artifacts.delete":
             return await self._provider.delete_artifact(params["name"])
-        elif method == "artifact_exists":
+        elif method == "artifacts.exists":
             return await self._provider.artifact_exists(params["name"])
-        elif method == "get_artifact":
+        elif method == "artifacts.get":
             return await self._provider.get_artifact(params["name"])
 
         # Deps methods
-        elif method == "add_dep":
+        elif method == "deps.add":
             return await self._provider.add_dep(params["package"])
-        elif method == "remove_dep":
+        elif method == "deps.remove":
             return await self._provider.remove_dep(params["package"])
-        elif method == "list_deps":
+        elif method == "deps.list":
             return await self._provider.list_deps()
-        elif method == "sync_deps":
+        elif method == "deps.sync":
             return await self._provider.sync_deps()
 
         else:
