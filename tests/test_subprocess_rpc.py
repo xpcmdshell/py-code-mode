@@ -358,7 +358,7 @@ class TestRPCDispatch:
         provider.list_tools = AsyncMock(return_value=[{"name": "curl"}])
         provider.search_tools = AsyncMock(return_value=[{"name": "curl"}])
         provider.list_tool_recipes = AsyncMock(return_value=[{"name": "get"}])
-        provider.invoke_skill = AsyncMock(return_value="skill_result")
+        # Note: No invoke_skill - skills execute locally in kernel, not via RPC
         provider.search_skills = AsyncMock(return_value=[{"name": "my_skill"}])
         provider.list_skills = AsyncMock(return_value=[])
         provider.get_skill = AsyncMock(return_value={"name": "test"})
@@ -402,17 +402,8 @@ class TestRPCDispatch:
         assert result == [{"name": "curl"}]
         mock_provider.list_tools.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_dispatch_skills_invoke(self, mock_provider: MagicMock) -> None:
-        """_dispatch_rpc routes skills.invoke to provider."""
-        host = KernelHost()
-        host._provider = mock_provider
-
-        request = RPCRequest(method="skills.invoke", params={"name": "my_skill", "args": {"x": 1}})
-        result = await host._dispatch_rpc(request)
-
-        assert result == "skill_result"
-        mock_provider.invoke_skill.assert_called_once_with("my_skill", {"x": 1})
+    # Note: skills.invoke is NOT an RPC method - skills execute locally in kernel
+    # after fetching source via skills.get. See test_dispatch_skills_get instead.
 
     @pytest.mark.asyncio
     async def test_dispatch_artifacts_load(self, mock_provider: MagicMock) -> None:

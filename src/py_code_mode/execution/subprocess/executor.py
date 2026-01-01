@@ -187,65 +187,6 @@ class StorageResourceProvider:
     # Skill methods
     # -------------------------------------------------------------------------
 
-    async def invoke_skill(self, name: str, args: dict[str, Any]) -> Any:
-        """Invoke a skill by name with given arguments.
-
-        The skill is executed in the host process with access to tools,
-        skills, and artifacts namespaces. Execution runs in a thread pool
-        to avoid blocking the event loop while allowing sync tool calls.
-        """
-        import asyncio
-        import builtins
-        import concurrent.futures
-
-        library = self._get_skill_library()
-        skill = library.get(name)
-        if skill is None:
-            raise ValueError(f"Skill not found: {name}")
-
-        # Execute skill in host with access to namespaces
-        from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
-        from py_code_mode.tools import ToolsNamespace
-
-        registry = self._get_tool_registry()
-        tools_ns = ToolsNamespace(registry) if registry else None
-        artifact_store = self._storage.get_artifact_store()
-
-        # Get the current event loop for thread-safe tool calls
-        loop = asyncio.get_running_loop()
-        if tools_ns:
-            tools_ns.set_loop(loop)
-
-        # Create execution namespace dict first
-        skill_namespace: dict[str, Any] = {
-            "tools": tools_ns,
-            "artifacts": artifact_store,
-        }
-
-        # Create SkillsNamespace that wraps the library and provides invoke()
-        # Pass the namespace dict so skills can access tools/artifacts
-        skills_ns = SkillsNamespace(library, skill_namespace)
-        skill_namespace["skills"] = skills_ns
-
-        def run_skill_sync() -> Any:
-            """Run skill synchronously in a thread."""
-            # Compile and execute skill
-            _run_code = getattr(builtins, "exec")
-            code = compile(skill.source, f"<skill:{name}>", "exec")
-            _run_code(code, skill_namespace)
-            # Call the run function
-            return skill_namespace["run"](**args)
-
-        # Run skill in thread pool to avoid blocking the event loop
-        # This allows the skill to make sync tool calls that use
-        # run_coroutine_threadsafe to call back into the event loop
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(run_skill_sync)
-            # Wait for completion while allowing async cooperation
-            while not future.done():
-                await asyncio.sleep(0.01)
-            return future.result()
-
     async def search_skills(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Search for skills matching query."""
         library = self._get_skill_library()
@@ -729,6 +670,89 @@ class SubprocessExecutor:
                 failed.append(pkg)
 
         return {"removed": removed, "not_found": [], "failed": failed}
+
+    async def add_dep(self, package: str) -> dict[str, Any]:
+        """Add and install a single package.
+
+        Delegates to the provider which handles deps store and venv installation.
+        After installation, invalidates the kernel's import cache so the new
+        package is immediately importable.
+        """
+        if self._provider is None:
+            return {"installed": [], "already_present": [], "failed": [package]}
+
+        result = await self._provider.add_dep(package)
+
+        # Invalidate import caches in the kernel so newly installed packages
+        # are immediately importable without restarting the kernel
+        if result.get("installed") and self._host is not None:
+            await self._host.execute(
+                "import importlib; importlib.invalidate_caches()",
+                allow_stdin=False,
+                timeout=5.0,
+            )
+
+        return result
+
+    async def remove_dep(self, package: str) -> dict[str, Any]:
+        """Remove a package from configuration.
+
+        Delegates to the provider which handles deps store removal.
+        """
+        if self._provider is None:
+            return {
+                "removed": [],
+                "not_found": [package],
+                "failed": [],
+                "removed_from_config": False,
+            }
+        removed = await self._provider.remove_dep(package)
+        return {
+            "removed": [package] if removed else [],
+            "not_found": [] if removed else [package],
+            "failed": [],
+            "removed_from_config": removed,
+        }
+
+    async def list_deps(self) -> list[str]:
+        """List all configured dependencies."""
+        if self._provider is None:
+            return []
+        return await self._provider.list_deps()
+
+    async def sync_deps(self) -> dict[str, Any]:
+        """Sync all configured dependencies.
+
+        After installation, invalidates the kernel's import cache so newly
+        installed packages are immediately importable.
+        """
+        if self._provider is None:
+            return {"installed": [], "already_present": [], "failed": []}
+
+        result = await self._provider.sync_deps()
+
+        # Invalidate import caches in the kernel so newly installed packages
+        # are immediately importable without restarting the kernel
+        if result.get("installed") and self._host is not None:
+            await self._host.execute(
+                "import importlib; importlib.invalidate_caches()",
+                allow_stdin=False,
+                timeout=5.0,
+            )
+
+        return result
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        """List all available tools."""
+        if self._provider is None:
+            return []
+        return await self._provider.list_tools()
+
+    async def search_tools(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Search tools by name/description."""
+        if self._provider is None:
+            return []
+        return await self._provider.search_tools(query, limit)
 
     async def close(self) -> None:
         """Shutdown kernel and cleanup venv."""

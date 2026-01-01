@@ -234,3 +234,89 @@ class Executor(Protocol):
             RuntimeError: If executor not started
         """
         ...
+
+    async def add_dep(self, package: str) -> dict[str, Any]:
+        """Add and install a single package.
+
+        Adds the package to the deps store and installs it.
+        This is the single-package equivalent of install_deps().
+
+        Args:
+            package: Package specification (e.g., "pandas>=2.0")
+
+        Returns:
+            Dict with keys:
+            - installed: List of successfully installed packages
+            - already_present: List of packages already installed
+            - failed: List of packages that failed to install
+
+        Raises:
+            RuntimeDepsDisabledError: If runtime deps are disabled via config
+            RuntimeError: If executor not started
+        """
+        ...
+
+    async def remove_dep(self, package: str) -> dict[str, Any]:
+        """Remove a package from configuration and uninstall it.
+
+        Removes the package from deps store and uninstalls it.
+        This is the single-package equivalent of uninstall_deps().
+
+        Args:
+            package: Package name to remove
+
+        Returns:
+            Dict with keys:
+            - removed: List of successfully removed packages
+            - not_found: List of packages that were not installed
+            - failed: List of packages that failed to uninstall
+            - removed_from_config: Boolean indicating if removed from config
+
+        Raises:
+            RuntimeDepsDisabledError: If runtime deps are disabled via config
+            RuntimeError: If executor not started
+        """
+        ...
+
+    async def list_deps(self) -> list[str]:
+        """List all configured dependencies.
+
+        Returns:
+            List of package specifications.
+        """
+        ...
+
+    async def sync_deps(self) -> dict[str, Any]:
+        """Sync all configured dependencies.
+
+        Installs all packages in the deps store that aren't already installed.
+        This is always allowed even when allow_runtime_deps=False because
+        it only installs pre-configured packages.
+
+        Returns:
+            Dict with keys:
+            - installed: List of successfully installed packages
+            - already_present: List of packages already installed
+            - failed: List of packages that failed to install
+        """
+        ...
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        """List all available tools.
+
+        Returns:
+            List of tool info dicts with 'name', 'description', 'tags' keys.
+        """
+        ...
+
+    async def search_tools(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Search tools by name/description.
+
+        Args:
+            query: Search query string.
+            limit: Maximum number of results.
+
+        Returns:
+            List of matching tool info dicts.
+        """
+        ...
