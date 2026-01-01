@@ -285,7 +285,7 @@ class TestSessionFacadeDepsMethodsContract:
 
     @pytest.mark.asyncio
     async def test_add_dep_returns_install_result(self, tmp_path: Path) -> None:
-        """add_dep() returns result dict from executor.install_deps().
+        """add_dep() returns result dict from deps.add().
 
         Contract: Returns dict with installed, already_present, failed keys.
         Breaks when: Return type changes.
@@ -313,10 +313,13 @@ class TestSessionFacadeDepsMethodsContract:
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        # Pre-add a package to the store so there's something to remove
-        storage.get_deps_store().add("six")
+        # NOTE: In new architecture, deps are executor-owned. We add a dep first
+        # via the session so there's something to remove.
 
         async with Session(storage=storage) as session:
+            # First add a package via session
+            await session.add_dep("six")
+            # Now remove it
             result = await session.remove_dep("six")
             assert isinstance(result, dict)
             assert "removed" in result
@@ -326,7 +329,7 @@ class TestSessionFacadeDepsMethodsContract:
 
     @pytest.mark.asyncio
     async def test_sync_deps_returns_install_result(self, tmp_path: Path) -> None:
-        """sync_deps() returns result dict from executor.install_deps().
+        """sync_deps() returns result dict from deps.sync().
 
         Contract: Returns dict with installed, already_present, failed keys.
         Breaks when: Return type changes.
@@ -345,15 +348,20 @@ class TestSessionFacadeDepsMethodsContract:
 
 
 class TestSessionFacadeDepsPersistence:
-    """Tests for Session facade persisting deps to storage."""
+    """Tests for Session facade persisting deps.
+
+    NOTE: In the new architecture, deps are executor-owned (via config.deps).
+    This tests that deps can be added/removed via the session and persist
+    during the session lifetime.
+    """
 
     @pytest.mark.asyncio
-    async def test_add_dep_persists_to_storage(self, tmp_path: Path) -> None:
-        """add_dep() persists package to storage before installing.
+    async def test_add_dep_persists_in_session(self, tmp_path: Path) -> None:
+        """add_dep() adds package to executor's deps namespace.
 
         User action: Add dep via session.
-        Verification: Package appears in storage.get_deps_store().list().
-        Breaks when: Package not persisted to storage.
+        Verification: Package appears in deps.list() within the same session.
+        Breaks when: Package not persisted to executor's deps namespace.
         """
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
@@ -362,85 +370,102 @@ class TestSessionFacadeDepsPersistence:
 
         async with Session(storage=storage) as session:
             await session.add_dep("six")
-
-        # After session closed, check storage directly
-        deps = storage.get_deps_store().list()
-        assert "six" in deps
+            # Verify it's in the deps list
+            deps = await session.list_deps()
+            assert "six" in deps
 
     @pytest.mark.asyncio
-    async def test_remove_dep_removes_from_storage(self, tmp_path: Path) -> None:
-        """remove_dep() removes package from storage.
+    async def test_remove_dep_removes_from_session(self, tmp_path: Path) -> None:
+        """remove_dep() removes package from executor's deps namespace.
 
         User action: Add then remove dep via session.
-        Verification: Package no longer in storage.get_deps_store().list().
-        Breaks when: Package not removed from storage.
+        Verification: Package no longer in deps.list().
+        Breaks when: Package not removed from executor's deps namespace.
         """
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        storage.get_deps_store().add("six")
 
         async with Session(storage=storage) as session:
+            # Add a dep first
+            await session.add_dep("six")
+            deps = await session.list_deps()
+            assert "six" in deps
+
+            # Now remove it
             result = await session.remove_dep("six")
             assert result["removed_from_config"] is True
 
-        # After session closed, check storage directly
-        deps = storage.get_deps_store().list()
-        assert "six" not in deps
+            # Verify it's gone
+            deps = await session.list_deps()
+            assert "six" not in deps
 
 
 class TestSessionFacadeDepsErrorHandling:
-    """Tests for Session facade error handling."""
+    """Tests for Session facade error handling.
+
+    NOTE: Session.add_dep/remove_dep/sync_deps now auto-start the session,
+    so "Session not started" errors don't occur. These tests verify the
+    methods work correctly with auto-start.
+    """
 
     @pytest.mark.asyncio
-    async def test_add_dep_raises_when_not_started(self, tmp_path: Path) -> None:
-        """add_dep() raises RuntimeError when session not started.
+    async def test_add_dep_auto_starts_session(self, tmp_path: Path) -> None:
+        """add_dep() auto-starts session if not started.
 
-        Breaks when: Method doesn't check for started state.
+        Breaks when: Method fails without explicit start().
         """
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
         session = Session(storage=storage)
-        # Don't call start()
+        # Don't call start() - should auto-start
 
-        with pytest.raises(RuntimeError, match="Session not started"):
-            await session.add_dep("six")
+        try:
+            result = await session.add_dep("six")
+            assert isinstance(result, dict)
+        finally:
+            await session.close()
 
     @pytest.mark.asyncio
-    async def test_remove_dep_raises_when_not_started(self, tmp_path: Path) -> None:
-        """remove_dep() raises RuntimeError when session not started.
+    async def test_remove_dep_auto_starts_session(self, tmp_path: Path) -> None:
+        """remove_dep() auto-starts session if not started.
 
-        Breaks when: Method doesn't check for started state.
+        Breaks when: Method fails without explicit start().
         """
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
         session = Session(storage=storage)
-        # Don't call start()
+        # Don't call start() - should auto-start
 
-        with pytest.raises(RuntimeError, match="Session not started"):
-            await session.remove_dep("six")
+        try:
+            result = await session.remove_dep("six")
+            assert isinstance(result, dict)
+        finally:
+            await session.close()
 
     @pytest.mark.asyncio
-    async def test_sync_deps_raises_when_not_started(self, tmp_path: Path) -> None:
-        """sync_deps() raises RuntimeError when session not started.
+    async def test_sync_deps_auto_starts_session(self, tmp_path: Path) -> None:
+        """sync_deps() auto-starts session if not started.
 
-        Breaks when: Method doesn't check for started state.
+        Breaks when: Method fails without explicit start().
         """
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        storage.get_deps_store().add("six")
         session = Session(storage=storage)
-        # Don't call start()
+        # Don't call start() - should auto-start
 
-        with pytest.raises(RuntimeError, match="Session not started"):
-            await session.sync_deps()
+        try:
+            result = await session.sync_deps()
+            assert isinstance(result, dict)
+        finally:
+            await session.close()
 
 
 # =============================================================================
@@ -912,18 +937,21 @@ class TestDepsCapabilityConstants:
 
 
 class TestSessionExecutorDepsIntegration:
-    """Integration tests for Session delegating to Executor for deps operations."""
+    """Integration tests for Session delegating to Executor for deps operations.
+
+    NOTE: In the new architecture, Session.add_dep/remove_dep delegate to the
+    deps namespace via run(), not directly to executor methods. These tests
+    verify the high-level behavior works correctly.
+    """
 
     @pytest.mark.asyncio
-    async def test_session_add_dep_calls_executor_install_deps(self, tmp_path: Path) -> None:
-        """Session.add_dep() calls executor.install_deps().
+    async def test_session_add_dep_works_with_executor(self, tmp_path: Path) -> None:
+        """Session.add_dep() adds package via executor's deps namespace.
 
         User action: Add dep via session.
-        Verification: Executor's install_deps called with package.
-        Breaks when: Session doesn't delegate to executor.
+        Verification: Package appears in deps.list().
+        Breaks when: Session doesn't delegate properly to executor.
         """
-        from unittest.mock import AsyncMock, patch
-
         from py_code_mode.execution.in_process import InProcessExecutor
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
@@ -932,70 +960,60 @@ class TestSessionExecutorDepsIntegration:
         executor = InProcessExecutor()
 
         async with Session(storage=storage, executor=executor) as session:
-            with patch.object(executor, "install_deps", new_callable=AsyncMock) as mock_install:
-                mock_install.return_value = {
-                    "installed": ["six"],
-                    "already_present": [],
-                    "failed": [],
-                }
-                await session.add_dep("six")
-                mock_install.assert_called_once_with(["six"])
+            result = await session.add_dep("six")
+            assert isinstance(result, dict)
+            # Verify it's in the deps list
+            deps = await session.list_deps()
+            assert "six" in deps
 
     @pytest.mark.asyncio
-    async def test_session_remove_dep_calls_executor_uninstall_deps(self, tmp_path: Path) -> None:
-        """Session.remove_dep() calls executor.uninstall_deps().
+    async def test_session_remove_dep_works_with_executor(self, tmp_path: Path) -> None:
+        """Session.remove_dep() removes package via executor's deps namespace.
 
-        User action: Remove dep via session.
-        Verification: Executor's uninstall_deps called with package.
-        Breaks when: Session doesn't delegate to executor.
+        User action: Add then remove dep via session.
+        Verification: Package no longer in deps.list().
+        Breaks when: Session doesn't delegate properly to executor.
         """
-        from unittest.mock import AsyncMock, patch
-
         from py_code_mode.execution.in_process import InProcessExecutor
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        storage.get_deps_store().add("six")
         executor = InProcessExecutor()
 
         async with Session(storage=storage, executor=executor) as session:
-            with patch.object(executor, "uninstall_deps", new_callable=AsyncMock) as mock_uninstall:
-                mock_uninstall.return_value = {"removed": ["six"], "not_found": [], "failed": []}
-                await session.remove_dep("six")
-                mock_uninstall.assert_called_once_with(["six"])
+            # Add first
+            await session.add_dep("six")
+            # Now remove
+            result = await session.remove_dep("six")
+            assert isinstance(result, dict)
+            # Verify it's gone
+            deps = await session.list_deps()
+            assert "six" not in deps
 
     @pytest.mark.asyncio
-    async def test_session_sync_deps_calls_executor_install_deps(self, tmp_path: Path) -> None:
-        """Session.sync_deps() calls executor.install_deps() with all configured deps.
+    async def test_session_sync_deps_with_preconfigured_deps(self, tmp_path: Path) -> None:
+        """Session.sync_deps() syncs pre-configured deps from executor config.
 
-        User action: Pre-configure deps, call sync_deps.
-        Verification: Executor's install_deps called with all packages.
-        Breaks when: Session doesn't collect all deps from storage.
+        User action: Pre-configure deps in executor config, call sync_deps.
+        Verification: sync_deps returns success.
+        Breaks when: Session doesn't properly invoke deps.sync().
         """
-        from unittest.mock import AsyncMock, patch
-
-        from py_code_mode.execution.in_process import InProcessExecutor
+        from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        storage.get_deps_store().add("six")
-        storage.get_deps_store().add("colorama")
-        executor = InProcessExecutor()
+        # Pre-configure deps in executor config
+        config = InProcessConfig(deps=("six", "colorama"))
+        executor = InProcessExecutor(config=config)
 
         async with Session(storage=storage, executor=executor) as session:
-            with patch.object(executor, "install_deps", new_callable=AsyncMock) as mock_install:
-                mock_install.return_value = {
-                    "installed": ["six", "colorama"],
-                    "already_present": [],
-                    "failed": [],
-                }
-                await session.sync_deps()
-                # Should be called with all configured deps
-                call_args = mock_install.call_args[0][0]
-                assert "six" in call_args
-                assert "colorama" in call_args
+            result = await session.sync_deps()
+            assert isinstance(result, dict)
+            assert "installed" in result
+            assert "already_present" in result
+            assert "failed" in result
 
 
 # =============================================================================
@@ -1010,20 +1028,21 @@ class TestSyncDepsOnStartIntegration:
     async def test_sync_deps_on_start_calls_executor_install_deps(self, tmp_path: Path) -> None:
         """sync_deps_on_start=True calls executor.install_deps() during start.
 
-        User action: Pre-configure deps, create session with sync_deps_on_start=True.
+        User action: Pre-configure deps in executor config, create session
+        with sync_deps_on_start=True.
         Verification: Executor's install_deps called with configured deps.
         Breaks when: _sync_deps doesn't call executor.install_deps.
         """
         from unittest.mock import AsyncMock, patch
 
-        from py_code_mode.execution.in_process import InProcessExecutor
+        from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        storage.get_deps_store().add("six")
-
-        executor = InProcessExecutor()
+        # Pre-configure deps in executor config (not storage)
+        config = InProcessConfig(deps=("six",))
+        executor = InProcessExecutor(config=config)
 
         session = Session(storage=storage, executor=executor, sync_deps_on_start=True)
 

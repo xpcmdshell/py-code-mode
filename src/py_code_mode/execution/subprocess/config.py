@@ -30,7 +30,8 @@ class SubprocessConfig:
         venv_path: Path to virtual environment. None means auto-create based on
             cache_venv setting (cached path or temp directory).
         base_deps: Dependencies to install in the venv. Defaults to
-            ("ipykernel", "py-code-mode") for namespace injection support.
+            ("ipykernel",) for RPC-based namespace access. pyzmq is included
+            automatically as an ipykernel dependency.
         startup_timeout: Timeout for kernel to become ready (seconds).
         default_timeout: Default timeout for code execution (seconds).
             None means no timeout (unlimited).
@@ -40,16 +41,29 @@ class SubprocessConfig:
         cache_venv: Enable persistent venv caching. When True and venv_path is None,
             uses canonical cache path (~/.cache/py-code-mode/venv-{version}).
             Default: True.
+        tools_path: Path to directory with YAML tool definitions.
+            None means no tools loaded from filesystem.
+        deps: Tuple of user-configured package specs to pre-install
+            (e.g., ("pandas>=2.0", "numpy")). Distinct from base_deps which
+            are kernel dependencies. None means no pre-configured user deps.
+        deps_file: Path to requirements.txt-style file for pre-configured deps.
+            None means no deps file.
+        ipc_timeout: Timeout for IPC queries (tool/skill/artifact) in seconds.
+            Default: 30.0.
     """
 
     python_version: str | None = None
     venv_path: Path | None = None
-    base_deps: tuple[str, ...] = ("ipykernel", "py-code-mode")
+    base_deps: tuple[str, ...] = ("ipykernel",)
     startup_timeout: float = 30.0
     default_timeout: float | None = 60.0
     allow_runtime_deps: bool = True
     cleanup_venv_on_close: bool | None = None
     cache_venv: bool = True
+    tools_path: Path | None = None
+    deps: tuple[str, ...] | None = None
+    deps_file: Path | None = None
+    ipc_timeout: float = 30.0
 
     def __post_init__(self) -> None:
         """Validate configuration values."""

@@ -1,16 +1,23 @@
-"""Failing tests for dependency configuration gaps.
+"""Tests for dependency configuration features.
 
-These tests are written TDD-style - they WILL FAIL because the features
-do not exist yet. The builder will implement code to make them pass.
+These tests verify the deps configuration architecture where:
+- Deps are owned by executors via config (not storage)
+- Pre-configuration is done via InProcessConfig(deps=["pkg"]) etc.
+- Session.sync_deps_on_start triggers installation on session start
+- allow_runtime_deps=False blocks deps.add()/remove() at runtime
+
+Architecture (post executor-ownership refactor):
+- Storage owns: skills, artifacts
+- Executor owns: tools, deps (via config.tools_path, config.deps)
 
 Gap 1: Initial Deps + sync_deps_on_start
-    - StorageBackend gets get_deps_store() method
+    - Executor configs accept deps/deps_file parameters
     - Session gets sync_deps_on_start parameter
 
 Gap 2: InProcessExecutor allow_runtime_deps
     - InProcessConfig with allow_runtime_deps flag
     - InProcessExecutor accepts config
-    - Blocks deps.add/sync when disabled, allows deps.list/remove
+    - Blocks deps.add/remove when disabled, allows deps.list/sync
 
 Gap 3: MCP --no-runtime-deps Flag
     - MCP server accepts --no-runtime-deps flag
@@ -39,147 +46,19 @@ if TYPE_CHECKING:
 
 # =============================================================================
 # Gap 1: Initial Deps + sync_deps_on_start
+#
+# NOTE: storage.get_deps_store() was removed in the executor-ownership refactor.
+# Deps are now pre-configured via executor config:
+#   InProcessConfig(deps=["pandas", "numpy"])
+#   InProcessConfig(deps_file=Path("requirements.txt"))
 # =============================================================================
-
-
-class TestStorageGetDepsStore:
-    """Tests for StorageBackend.get_deps_store() method.
-
-    This enables pre-configuring dependencies before session start:
-        storage.get_deps_store().add("pandas")
-        storage.get_deps_store().add("numpy")
-        Session(storage=storage, sync_deps_on_start=True)
-
-    The deps are installed when session starts.
-    """
-
-    # -------------------------------------------------------------------------
-    # Contract Tests
-    # -------------------------------------------------------------------------
-
-    def test_file_storage_get_deps_store_exists(self, tmp_path: Path) -> None:
-        """FileStorage has get_deps_store() method.
-
-        Contract: FileStorage.get_deps_store() returns DepsStore.
-        Breaks when: Method missing from FileStorage.
-        """
-        from py_code_mode.storage import FileStorage
-
-        storage = FileStorage(tmp_path)
-
-        # Method must exist
-        assert hasattr(storage, "get_deps_store")
-        assert callable(storage.get_deps_store)
-
-    def test_file_storage_get_deps_store_returns_deps_store(self, tmp_path: Path) -> None:
-        """FileStorage.get_deps_store() returns a DepsStore instance.
-
-        Contract: Return type is DepsStore protocol.
-        Breaks when: Returns wrong type.
-        """
-        from py_code_mode.deps import DepsStore
-        from py_code_mode.storage import FileStorage
-
-        storage = FileStorage(tmp_path)
-        deps_store = storage.get_deps_store()
-
-        # Should implement DepsStore protocol
-        assert isinstance(deps_store, DepsStore)
-        assert hasattr(deps_store, "add")
-        assert hasattr(deps_store, "remove")
-        assert hasattr(deps_store, "list")
-
-    def test_redis_storage_get_deps_store_exists(self) -> None:
-        """RedisStorage has get_deps_store() method.
-
-        Contract: RedisStorage.get_deps_store() returns DepsStore.
-        Breaks when: Method missing from RedisStorage.
-        """
-        pytest.importorskip("redis")
-        from unittest.mock import MagicMock
-
-        from py_code_mode.storage import RedisStorage
-
-        mock_redis = MagicMock()
-        storage = RedisStorage(redis=mock_redis, prefix="test")
-
-        # Method must exist
-        assert hasattr(storage, "get_deps_store")
-        assert callable(storage.get_deps_store)
-
-    def test_redis_storage_get_deps_store_returns_deps_store(self) -> None:
-        """RedisStorage.get_deps_store() returns a DepsStore instance.
-
-        Contract: Return type is DepsStore protocol.
-        Breaks when: Returns wrong type.
-        """
-        pytest.importorskip("redis")
-        from unittest.mock import MagicMock
-
-        from py_code_mode.deps import DepsStore
-        from py_code_mode.storage import RedisStorage
-
-        mock_redis = MagicMock()
-        mock_redis.smembers.return_value = set()
-        storage = RedisStorage(redis=mock_redis, prefix="test")
-        deps_store = storage.get_deps_store()
-
-        # Should implement DepsStore protocol
-        assert isinstance(deps_store, DepsStore)
-
-    # -------------------------------------------------------------------------
-    # User Journey Tests
-    # -------------------------------------------------------------------------
-
-    def test_pre_configure_deps_via_storage(self, tmp_path: Path) -> None:
-        """Pre-configure dependencies before session creation.
-
-        User action: Add deps via storage before creating session.
-        Verification: Deps are stored and can be listed.
-        Breaks when: get_deps_store() not usable before session.
-        """
-        from py_code_mode.storage import FileStorage
-
-        storage = FileStorage(tmp_path)
-
-        # Add deps before session exists
-        deps_store = storage.get_deps_store()
-        deps_store.add("pandas>=2.0")
-        deps_store.add("numpy")
-
-        # Verify deps are stored
-        deps = deps_store.list()
-        assert "pandas>=2.0" in deps or "pandas>=2.0".lower().replace("_", "-") in deps
-        assert "numpy" in deps
-
-    # -------------------------------------------------------------------------
-    # Invariant Tests
-    # -------------------------------------------------------------------------
-
-    def test_get_deps_store_returns_same_instance(self, tmp_path: Path) -> None:
-        """get_deps_store() returns consistent store instance.
-
-        Invariant: Multiple calls return same/equivalent store.
-        Breaks when: Each call creates new disconnected store.
-        """
-        from py_code_mode.storage import FileStorage
-
-        storage = FileStorage(tmp_path)
-
-        store1 = storage.get_deps_store()
-        store1.add("six")
-
-        store2 = storage.get_deps_store()
-        deps = store2.list()
-
-        # Should see the dep added via store1
-        assert "six" in deps
 
 
 class TestSessionSyncDepsOnStart:
     """Tests for Session sync_deps_on_start parameter.
 
-    When True, Session.start() installs all deps from storage.
+    When True, Session.start() installs all deps from executor config.
+    Deps are pre-configured via InProcessConfig(deps=[...]).
     """
 
     # -------------------------------------------------------------------------
@@ -228,28 +107,33 @@ class TestSessionSyncDepsOnStart:
     async def test_sync_deps_on_start_installs_configured_deps(self, tmp_path: Path) -> None:
         """Session.start() installs deps when sync_deps_on_start=True.
 
-        User action: Pre-configure deps, create session with sync_deps_on_start=True.
+        User action: Pre-configure deps via executor config, create session
+        with sync_deps_on_start=True.
         Verification: Deps are installed during session.start().
         Breaks when: sync_deps_on_start doesn't trigger installation.
         """
         from unittest.mock import AsyncMock, patch
 
+        from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
 
-        # Pre-configure deps
-        deps_store = storage.get_deps_store()
-        deps_store.add("six")  # Real package that's fast to install
+        # Pre-configure deps via executor config (new architecture)
+        config = InProcessConfig(deps=["six"])
+        executor = InProcessExecutor(config=config)
 
         # Create session with sync_deps_on_start
-        session = Session(storage=storage, sync_deps_on_start=True)
+        session = Session(storage=storage, executor=executor, sync_deps_on_start=True)
 
-        # Mock the sync operation to verify it's called
-        with patch.object(session, "_sync_deps", new_callable=AsyncMock) as mock_sync:
+        # Mock the executor's install_deps to verify it's called
+        with patch.object(executor, "install_deps", new_callable=AsyncMock) as mock_install:
+            mock_install.return_value = {"installed": ["six"], "already_present": [], "failed": []}
             await session.start()
-            mock_sync.assert_called_once()
+            mock_install.assert_called_once_with(["six"])
+
+        await session.close()
 
     @pytest.mark.asyncio
     async def test_sync_deps_on_start_with_no_deps_succeeds(self, tmp_path: Path) -> None:
@@ -264,10 +148,7 @@ class TestSessionSyncDepsOnStart:
 
         storage = FileStorage(tmp_path)
 
-        # No deps configured
-        deps_store = storage.get_deps_store()
-        assert deps_store.list() == []
-
+        # No deps configured in executor config (default)
         # Should not raise
         session = Session(storage=storage, sync_deps_on_start=True)
         await session.start()
@@ -285,18 +166,21 @@ class TestSessionSyncDepsOnStart:
         """
         from unittest.mock import AsyncMock, patch
 
+        from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        deps_store = storage.get_deps_store()
-        deps_store.add("pandas")
 
-        session = Session(storage=storage, sync_deps_on_start=False)
+        # Configure deps but don't sync on start
+        config = InProcessConfig(deps=["pandas"])
+        executor = InProcessExecutor(config=config)
 
-        with patch.object(session, "_sync_deps", new_callable=AsyncMock) as mock_sync:
+        session = Session(storage=storage, executor=executor, sync_deps_on_start=False)
+
+        with patch.object(executor, "install_deps", new_callable=AsyncMock) as mock_install:
             await session.start()
-            mock_sync.assert_not_called()
+            mock_install.assert_not_called()
 
         await session.close()
 
@@ -486,10 +370,9 @@ class TestInProcessExecutorConfig:
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        # Pre-add a dep
-        storage.get_deps_store().add("six")
 
-        config = InProcessConfig(allow_runtime_deps=False)
+        # Pre-configure deps via executor config (new architecture)
+        config = InProcessConfig(deps=["six"], allow_runtime_deps=False)
         executor = InProcessExecutor(config=config)
 
         async with Session(storage=storage, executor=executor) as session:
@@ -745,31 +628,34 @@ class TestDepsConfigurationWorkflow:
         """Complete workflow: pre-configure, sync on start, runtime locked.
 
         User journey:
-        1. Developer adds deps via storage
+        1. Developer pre-configures deps via executor config
         2. Session starts with sync_deps_on_start=True
         3. Runtime deps disabled, agent cannot add/remove
 
         Breaks when: Any step in the workflow fails.
         """
+        from unittest.mock import AsyncMock, patch
+
         from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
 
-        # 1. Pre-configure deps
-        deps_store = storage.get_deps_store()
-        deps_store.add("six")
+        # 1. Pre-configure deps via executor config (new architecture)
+        config = InProcessConfig(deps=["six"], allow_runtime_deps=False)
+        executor = InProcessExecutor(config=config)
 
         # 2. Create session with sync and runtime disabled
-        config = InProcessConfig(allow_runtime_deps=False)
-        executor = InProcessExecutor(config=config)
         session = Session(storage=storage, executor=executor, sync_deps_on_start=True)
 
-        await session.start()
+        # Mock install_deps to avoid actual installation
+        with patch.object(executor, "install_deps", new_callable=AsyncMock) as mock_install:
+            mock_install.return_value = {"installed": ["six"], "already_present": [], "failed": []}
+            await session.start()
 
         try:
-            # 3. Verify deps are synced
+            # 3. Verify deps config is accessible (list should show configured deps)
             result = await session.run("deps.list()")
             assert result.is_ok
             assert "six" in result.value
@@ -995,7 +881,7 @@ class TestSubprocessExecutorDepsConfigGaps:
         """Complete workflow: pre-configure, sync on start, runtime locked with SubprocessExecutor.
 
         User journey:
-        1. Developer adds deps via storage.get_deps_store().add("six")
+        1. Developer pre-configures deps via executor config
         2. Creates SubprocessExecutor with allow_runtime_deps=False
         3. Creates Session with sync_deps_on_start=True
         4. Verifies deps.list() includes "six"
@@ -1011,15 +897,12 @@ class TestSubprocessExecutorDepsConfigGaps:
 
         storage = FileStorage(tmp_path)
 
-        # 1. Pre-configure deps
-        deps_store = storage.get_deps_store()
-        deps_store.add("six")
-
-        # 2. Create SubprocessExecutor with runtime deps disabled
+        # 1-2. Pre-configure deps via executor config (new architecture)
         config = SubprocessConfig(
             python_version="3.12",
             venv_path=tmp_path / "venv",
             base_deps=("ipykernel", "py-code-mode"),
+            deps=("six",),  # Pre-configured deps via config
             allow_runtime_deps=False,
         )
         executor = SubprocessExecutor(config=config)
@@ -1091,13 +974,13 @@ class TestSubprocessExecutorDepsConfigGaps:
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        # Pre-add a dep
-        storage.get_deps_store().add("six")
 
+        # Pre-configure deps via executor config (new architecture)
         config = SubprocessConfig(
             python_version="3.12",
             venv_path=tmp_path / "venv",
             base_deps=("ipykernel", "py-code-mode"),
+            deps=("six",),  # Pre-configured deps
             allow_runtime_deps=False,
         )
         executor = SubprocessExecutor(config=config)
@@ -1234,12 +1117,12 @@ class TestContainerExecutorDepsConfigGaps:
 
     @pytest.mark.asyncio
     async def test_pre_configure_deps_visible_in_container(self, tmp_path: Path) -> None:
-        """Pre-configured deps via storage.get_deps_store().add() appear in deps.list().
+        """Pre-configured deps via executor config appear in deps.list().
 
-        User action: Add deps via storage before session, then list via deps.list().
+        User action: Pre-configure deps via config before session, then list via deps.list().
         Verification: deps.list() shows the pre-configured package.
         Breaks when: ContainerExecutor doesn't inject deps namespace or doesn't
-                     use the same storage backend for deps.
+                     use the pre-configured deps.
         """
         from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
         from py_code_mode.session import Session
@@ -1247,11 +1130,8 @@ class TestContainerExecutorDepsConfigGaps:
 
         storage = FileStorage(tmp_path)
 
-        # Pre-configure deps before session
-        deps_store = storage.get_deps_store()
-        deps_store.add("six")
-
-        config = ContainerConfig(auth_disabled=True)
+        # Pre-configure deps via executor config (new architecture)
+        config = ContainerConfig(deps=("six",), auth_disabled=True)
         executor = ContainerExecutor(config=config)
 
         async with Session(storage=storage, executor=executor) as session:
@@ -1268,7 +1148,7 @@ class TestContainerExecutorDepsConfigGaps:
     async def test_sync_deps_on_start_installs_in_container(self, tmp_path: Path) -> None:
         """sync_deps_on_start=True installs pre-configured deps in container.
 
-        User action: Pre-configure deps, start session with sync_deps_on_start=True.
+        User action: Pre-configure deps via config, start session with sync_deps_on_start=True.
         Verification: Package is importable after session start.
         Breaks when: sync_deps_on_start doesn't trigger installation in container.
         """
@@ -1278,11 +1158,8 @@ class TestContainerExecutorDepsConfigGaps:
 
         storage = FileStorage(tmp_path)
 
-        # Pre-configure deps
-        deps_store = storage.get_deps_store()
-        deps_store.add("six")
-
-        config = ContainerConfig(auth_disabled=True)
+        # Pre-configure deps via executor config (new architecture)
+        config = ContainerConfig(deps=("six",), auth_disabled=True)
         executor = ContainerExecutor(config=config)
 
         async with Session(storage=storage, executor=executor, sync_deps_on_start=True) as session:
@@ -1361,10 +1238,9 @@ class TestContainerExecutorDepsConfigGaps:
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        # Pre-add a dep
-        storage.get_deps_store().add("six")
 
-        config = ContainerConfig(allow_runtime_deps=False, auth_disabled=True)
+        # Pre-configure deps via executor config (new architecture)
+        config = ContainerConfig(deps=("six",), allow_runtime_deps=False, auth_disabled=True)
         executor = ContainerExecutor(config=config)
 
         async with Session(storage=storage, executor=executor) as session:
@@ -1435,7 +1311,7 @@ class TestContainerExecutorDepsConfigGaps:
     async def test_import_works_after_sync_container(self, tmp_path: Path) -> None:
         """Pre-configured packages can be imported after sync in container.
 
-        User action: Pre-configure dep, sync, then import.
+        User action: Pre-configure dep via config, sync, then import.
         Verification: Import succeeds.
         Breaks when: Package not actually installed or import path wrong.
         """
@@ -1445,11 +1321,8 @@ class TestContainerExecutorDepsConfigGaps:
 
         storage = FileStorage(tmp_path)
 
-        # Pre-configure deps
-        deps_store = storage.get_deps_store()
-        deps_store.add("six")
-
-        config = ContainerConfig(auth_disabled=True)
+        # Pre-configure deps via executor config (new architecture)
+        config = ContainerConfig(deps=("six",), auth_disabled=True)
         executor = ContainerExecutor(config=config)
 
         async with Session(storage=storage, executor=executor) as session:

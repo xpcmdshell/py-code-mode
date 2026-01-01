@@ -40,10 +40,8 @@ class TestNamespaceSetupCodeVectorStoreGeneration:
         Breaks when: Code doesn't import ChromaVectorStore despite vectors_path.
         """
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=Path("/app/vectors"),  # Present
         )
 
@@ -61,10 +59,8 @@ class TestNamespaceSetupCodeVectorStoreGeneration:
         """
         vectors_path = Path("/test/vectors")
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/test/skills"),
             artifacts_path=Path("/test/artifacts"),
-            deps_path=Path("/test/deps"),
             vectors_path=vectors_path,
         )
 
@@ -81,10 +77,8 @@ class TestNamespaceSetupCodeVectorStoreGeneration:
         Breaks when: create_skill_library() called without vector_store parameter.
         """
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=Path("/app/vectors"),
         )
 
@@ -100,10 +94,8 @@ class TestNamespaceSetupCodeVectorStoreGeneration:
         Breaks when: ChromaVectorStore created without embedder.
         """
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=Path("/app/vectors"),
         )
 
@@ -130,10 +122,8 @@ class TestNamespaceSetupCodeVectorStoreFallback:
         Breaks when: ImportError crashes kernel instead of falling back.
         """
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=Path("/app/vectors"),
         )
 
@@ -149,10 +139,8 @@ class TestNamespaceSetupCodeVectorStoreFallback:
         on fallback path.
         """
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=Path("/app/vectors"),
         )
 
@@ -168,10 +156,8 @@ class TestNamespaceSetupCodeVectorStoreFallback:
         Breaks when: Code generation has syntax errors.
         """
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=Path("/app/vectors"),
         )
 
@@ -198,10 +184,8 @@ class TestNamespaceSetupCodeWithoutVectorStore:
         Breaks when: Unnecessary import added even without vector store.
         """
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=None,  # No vector store
         )
 
@@ -216,10 +200,8 @@ class TestNamespaceSetupCodeWithoutVectorStore:
         Breaks when: SkillLibrary creation requires vector_store.
         """
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=None,
         )
 
@@ -346,10 +328,8 @@ class TestStorageAccessVectorStoreReconstruction:
         """
         vectors_path = Path("/app/vectors")
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=vectors_path,
         )
 
@@ -362,10 +342,8 @@ class TestStorageAccessVectorStoreReconstruction:
         Breaks when: None value causes serialization errors.
         """
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=None,
         )
 
@@ -379,10 +357,8 @@ class TestStorageAccessVectorStoreReconstruction:
         """
         vectors_path = Path("/specific/vectors/location")
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=vectors_path,
         )
 
@@ -406,10 +382,8 @@ class TestVectorStoreCodeGenerationEdgeCases:
         Breaks when: Code assumes vectors directory exists, crashes on startup.
         """
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=Path("/nonexistent/vectors"),
         )
 
@@ -427,10 +401,8 @@ class TestVectorStoreCodeGenerationEdgeCases:
         # Path with spaces and quotes
         vectors_path = Path('/app/vectors with spaces/"quotes"')
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=vectors_path,
         )
 
@@ -450,10 +422,8 @@ class TestVectorStoreCodeGenerationEdgeCases:
         Breaks when: Multiple embedder instances created wastefully.
         """
         storage_access = FileStorageAccess(
-            tools_path=None,
             skills_path=Path("/app/skills"),
             artifacts_path=Path("/app/artifacts"),
-            deps_path=Path("/app/deps"),
             vectors_path=Path("/app/vectors"),
         )
 

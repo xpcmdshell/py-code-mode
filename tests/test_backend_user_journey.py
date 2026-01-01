@@ -20,7 +20,7 @@ import pytest
 import redis
 
 from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
-from py_code_mode.execution.in_process import InProcessExecutor
+from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
 from py_code_mode.session import Session
 from py_code_mode.storage import FileStorage, RedisStorage
 
@@ -64,12 +64,20 @@ recipes:
 
 
 @pytest.fixture
-def tools_storage(tmp_path: Path, echo_tool_yaml: str) -> Path:
-    """Create storage with echo tool configured."""
+def tools_dir(tmp_path: Path, echo_tool_yaml: str) -> Path:
+    """Create tools directory with echo tool configured."""
     tools = tmp_path / "tools"
     tools.mkdir(parents=True)
     (tools / "echo.yaml").write_text(echo_tool_yaml)
-    return tmp_path
+    return tools
+
+
+@pytest.fixture
+def tools_storage(tmp_path: Path, tools_dir: Path) -> Path:
+    """Create storage directory (separate from tools)."""
+    storage_path = tmp_path / "storage"
+    storage_path.mkdir(parents=True)
+    return storage_path
 
 
 @pytest.fixture
@@ -94,14 +102,17 @@ class TestAgentFullWorkflow:
     """
 
     @pytest.mark.asyncio
-    async def test_agent_full_workflow_in_process(self, tools_storage: Path) -> None:
+    async def test_agent_full_workflow_in_process(
+        self, tools_storage: Path, tools_dir: Path
+    ) -> None:
         """Complete agent workflow with InProcessExecutor.
 
         User story: An agent lists tools, uses a tool, creates a skill,
         invokes the skill, and saves results as an artifact.
         """
         storage = FileStorage(tools_storage)
-        executor = InProcessExecutor()
+        config = InProcessConfig(tools_path=tools_dir)
+        executor = InProcessExecutor(config=config)
 
         async with Session(storage=storage, executor=executor) as session:
             # 1. Agent lists available tools
@@ -145,14 +156,18 @@ skills.create(
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
     @pytest.mark.xdist_group("docker")
-    async def test_agent_full_workflow_container(self, tools_storage: Path) -> None:
+    async def test_agent_full_workflow_container(
+        self, tools_storage: Path, tools_dir: Path
+    ) -> None:
         """Complete agent workflow with ContainerExecutor.
 
         Same workflow as in-process but running inside a Docker container.
         This validates that all namespace injections work in container context.
         """
         storage = FileStorage(tools_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=60.0, auth_disabled=True))
+        executor = ContainerExecutor(
+            ContainerConfig(timeout=60.0, auth_disabled=True, tools_path=tools_dir)
+        )
 
         async with Session(storage=storage, executor=executor) as session:
             # 1. Agent lists available tools
@@ -205,10 +220,12 @@ class TestContainerToolsInvocation:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_tools_list_in_container(self, tools_storage: Path) -> None:
+    async def test_tools_list_in_container(self, tools_storage: Path, tools_dir: Path) -> None:
         """tools.list() returns configured tools inside container."""
         storage = FileStorage(tools_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
+        executor = ContainerExecutor(
+            ContainerConfig(timeout=30.0, auth_disabled=True, tools_path=tools_dir)
+        )
 
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("tools.list()")
@@ -219,10 +236,12 @@ class TestContainerToolsInvocation:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_tools_call_in_container(self, tools_storage: Path) -> None:
+    async def test_tools_call_in_container(self, tools_storage: Path, tools_dir: Path) -> None:
         """tools.<name>() works inside container."""
         storage = FileStorage(tools_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
+        executor = ContainerExecutor(
+            ContainerConfig(timeout=30.0, auth_disabled=True, tools_path=tools_dir)
+        )
 
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run('tools.echo.echo(text="container test")')
@@ -231,10 +250,12 @@ class TestContainerToolsInvocation:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_tools_search_in_container(self, tools_storage: Path) -> None:
+    async def test_tools_search_in_container(self, tools_storage: Path, tools_dir: Path) -> None:
         """tools.search() works inside container."""
         storage = FileStorage(tools_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
+        executor = ContainerExecutor(
+            ContainerConfig(timeout=30.0, auth_disabled=True, tools_path=tools_dir)
+        )
 
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run('tools.search("echo")')
@@ -297,10 +318,14 @@ skills.create(
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_skill_uses_tools_in_container(self, tools_storage: Path) -> None:
+    async def test_skill_uses_tools_in_container(
+        self, tools_storage: Path, tools_dir: Path
+    ) -> None:
         """Skills can call tools from within container execution."""
         storage = FileStorage(tools_storage)
-        executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
+        executor = ContainerExecutor(
+            ContainerConfig(timeout=30.0, auth_disabled=True, tools_path=tools_dir)
+        )
 
         async with Session(storage=storage, executor=executor) as session:
             # Create skill that uses tools
@@ -750,9 +775,11 @@ command: fake_mcp_server
             new_callable=AsyncMock,
             return_value=mock_adapter,
         ):
-            storage = FileStorage(base_path=tmp_path)
+            storage = FileStorage(base_path=tmp_path / "storage")
+            config = InProcessConfig(tools_path=tools_dir)
+            executor = InProcessExecutor(config=config)
 
-            async with Session(storage=storage) as session:
+            async with Session(storage=storage, executor=executor) as session:
                 # Verify MCP tool is accessible
                 result = await session.run("tools.list()")
                 assert result.is_ok, f"tools.list() failed: {result.error}"
@@ -808,9 +835,11 @@ command: nonexistent_mcp_server
             new_callable=AsyncMock,
             side_effect=OSError("Connection failed"),
         ):
-            storage = FileStorage(base_path=tmp_path)
+            storage = FileStorage(base_path=tmp_path / "storage")
+            config = InProcessConfig(tools_path=tools_dir)
+            executor = InProcessExecutor(config=config)
 
-            async with Session(storage=storage) as session:
+            async with Session(storage=storage, executor=executor) as session:
                 # CLI tool should still be accessible despite MCP failure
                 result = await session.run("tools.list()")
                 assert result.is_ok, f"tools.list() failed: {result.error}"

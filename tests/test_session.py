@@ -467,50 +467,47 @@ class TestStorageAccessTypes:
         assert RedisStorageAccess is not None
 
     def test_file_storage_access_has_paths(self) -> None:
-        """FileStorageAccess has tools_path, skills_path, artifacts_path."""
+        """FileStorageAccess has skills_path, artifacts_path.
+
+        NOTE: tools_path and deps_path removed - tools/deps now owned by executors.
+        """
         from py_code_mode.execution.protocol import FileStorageAccess
 
         access = FileStorageAccess(
-            tools_path=Path("/tmp/tools"),
             skills_path=Path("/tmp/skills"),
             artifacts_path=Path("/tmp/artifacts"),
-            deps_path=Path("/tmp/deps"),
         )
-        assert access.tools_path == Path("/tmp/tools")
         assert access.skills_path == Path("/tmp/skills")
         assert access.artifacts_path == Path("/tmp/artifacts")
-        assert access.deps_path == Path("/tmp/deps")
 
     def test_file_storage_access_paths_optional(self) -> None:
-        """FileStorageAccess allows None for tools_path and skills_path."""
+        """FileStorageAccess allows None for skills_path.
+
+        NOTE: tools_path and deps_path removed - tools/deps now owned by executors.
+        """
         from py_code_mode.execution.protocol import FileStorageAccess
 
         access = FileStorageAccess(
-            tools_path=None,
             skills_path=None,
             artifacts_path=Path("/tmp/artifacts"),
-            deps_path=None,
         )
-        assert access.tools_path is None
         assert access.skills_path is None
-        assert access.deps_path is None
 
     def test_redis_storage_access_has_url_and_prefixes(self) -> None:
-        """RedisStorageAccess has redis_url and prefix fields."""
+        """RedisStorageAccess has redis_url and prefix fields.
+
+        NOTE: tools_prefix and deps_prefix removed - tools/deps now owned by executors.
+        """
         from py_code_mode.execution.protocol import RedisStorageAccess
 
         access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            tools_prefix="app:tools",
             skills_prefix="app:skills",
             artifacts_prefix="app:artifacts",
-            deps_prefix="app:deps",
         )
         assert access.redis_url == "redis://localhost:6379"
-        assert access.tools_prefix == "app:tools"
         assert access.skills_prefix == "app:skills"
         assert access.artifacts_prefix == "app:artifacts"
-        assert access.deps_prefix == "app:deps"
 
 
 # =============================================================================

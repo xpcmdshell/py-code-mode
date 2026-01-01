@@ -87,11 +87,16 @@ class Session:
         """Sync configured dependencies by installing them via the executor.
 
         This method installs pre-configured dependencies to the correct executor
-        environment (in-process, subprocess venv, or container).
+        environment (in-process, subprocess venv, or container). Deps are now
+        managed by the executor (via config.deps and config.deps_file), not storage.
         """
-        packages = self._storage.get_deps_store().list()
-        if packages and self._executor is not None:
-            await self._executor.install_deps(packages)
+        if self._executor is None:
+            return
+
+        # Get pre-configured deps from executor config and install them
+        deps = self._executor.get_configured_deps()
+        if deps:
+            await self._executor.install_deps(deps)
 
     async def start(self) -> None:
         """Initialize the executor and inject namespaces.
@@ -207,22 +212,24 @@ class Session:
     async def list_tools(self) -> list[dict[str, Any]]:
         """List all available tools with their descriptions.
 
+        Tools are owned by the executor (loaded from config.tools_path).
+
         Returns:
             List of tool info dicts with 'name', 'description', 'tags' keys.
         """
-        registry = await self._storage.get_tool_registry()
-        tools = registry.list_tools()
-        return [
-            {
-                "name": tool.name,
-                "description": tool.description or "",
-                "tags": list(tool.tags),
-            }
-            for tool in tools
-        ]
+        if not self._started:
+            await self.start()
+
+        # Delegate to executor - tools are executor-owned
+        result = await self.run("tools.list()")
+        if result.error:
+            return []
+        return result.value if result.value else []
 
     async def search_tools(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search tools by name/description/semantic similarity.
+
+        Tools are owned by the executor (loaded from config.tools_path).
 
         Args:
             query: Search query string.
@@ -231,16 +238,14 @@ class Session:
         Returns:
             List of matching tool info dicts.
         """
-        registry = await self._storage.get_tool_registry()
-        tools = registry.search(query, limit=limit)
-        return [
-            {
-                "name": tool.name,
-                "description": tool.description or "",
-                "tags": list(tool.tags),
-            }
-            for tool in tools
-        ]
+        if not self._started:
+            await self.start()
+
+        # Delegate to executor - tools are executor-owned
+        result = await self.run(f"tools.search({query!r}, limit={limit})")
+        if result.error:
+            return []
+        return result.value if result.value else []
 
     # -------------------------------------------------------------------------
     # Skills facade methods
@@ -427,18 +432,26 @@ class Session:
     async def list_deps(self) -> list[str]:
         """List configured dependencies.
 
+        Deps are owned by the executor (loaded from config.deps and config.deps_file).
+
         Returns:
             List of package specifications.
         """
-        deps_ns = self._storage.get_deps_namespace()
-        return deps_ns.list()
+        if not self._started:
+            await self.start()
+
+        # Delegate to executor - deps are executor-owned
+        result = await self.run("deps.list()")
+        if result.error:
+            return []
+        return result.value if result.value else []
 
     async def add_dep(self, package: str) -> dict[str, Any]:
         """Add and install a dependency.
 
-        Persists the package to storage (survives restarts) and installs it
-        to the executor's environment (targets correct Python: in-process,
-        subprocess venv, or container).
+        Persists the package to executor's deps store (survives restarts) and
+        installs it to the executor's environment (targets correct Python:
+        in-process, subprocess venv, or container).
 
         Args:
             package: Package specification (e.g., "pandas>=2.0").
@@ -449,24 +462,25 @@ class Session:
         Raises:
             RuntimeError: If session not started.
         """
-        # 1. Persist to storage via deps namespace to maintain consistency
-        # with list_deps() which also uses the namespace's store.
-        # Note: deps_ns.add() would also install, but we use the executor
-        # to install so it targets the correct environment.
-        deps_ns = self._storage.get_deps_namespace()
-        deps_ns._store.add(package)  # Add to store only, don't install via namespace
+        if not self._started:
+            await self.start()
 
-        # 2. Install via executor (targets correct environment)
         if self._executor is None:
             raise RuntimeError("Session not started")
 
-        return await self._executor.install_deps([package])
+        # Delegate to executor - deps are executor-owned
+        result = await self.run(f"deps.add({package!r})")
+        if result.error:
+            return {"installed": [], "already_present": [], "failed": [package]}
+        if result.value:
+            return self._sync_result_to_dict(result.value)
+        return {"installed": [package], "already_present": [], "failed": []}
 
     async def remove_dep(self, package: str) -> dict[str, Any]:
         """Remove a dependency.
 
-        Removes the package from storage and uninstalls it from the executor's
-        environment.
+        Removes the package from executor's deps store and uninstalls it from
+        the executor's environment.
 
         Args:
             package: Package specification to remove.
@@ -477,18 +491,29 @@ class Session:
         Raises:
             RuntimeError: If session not started.
         """
-        # 1. Remove from storage via deps namespace to maintain consistency
-        # with list_deps() which also uses the namespace's store
-        deps_ns = self._storage.get_deps_namespace()
-        removed_from_store = deps_ns.remove(package)
+        if not self._started:
+            await self.start()
 
-        # 2. Uninstall via executor
         if self._executor is None:
             raise RuntimeError("Session not started")
 
-        result = await self._executor.uninstall_deps([package])
-        result["removed_from_config"] = removed_from_store
-        return result
+        # Delegate to executor - deps are executor-owned
+        result = await self.run(f"deps.remove({package!r})")
+        if result.error:
+            return {
+                "removed": [],
+                "not_found": [],
+                "failed": [package],
+                "removed_from_config": False,
+            }
+
+        removed = result.value if result.value else False
+        return {
+            "removed": [package] if removed else [],
+            "not_found": [] if removed else [package],
+            "failed": [],
+            "removed_from_config": removed,
+        }
 
     async def sync_deps(self) -> dict[str, Any]:
         """Sync all configured dependencies.
@@ -501,14 +526,44 @@ class Session:
         Raises:
             RuntimeError: If session not started.
         """
-        packages = self._storage.get_deps_store().list()
-        if not packages:
-            return {"installed": [], "already_present": [], "failed": []}
+        if not self._started:
+            await self.start()
 
         if self._executor is None:
             raise RuntimeError("Session not started")
 
-        return await self._executor.install_deps(packages)
+        # Delegate to executor - deps are executor-owned
+        result = await self.run("deps.sync()")
+        if result.error:
+            return {"installed": [], "already_present": [], "failed": []}
+        if result.value:
+            return self._sync_result_to_dict(result.value)
+        return {"installed": [], "already_present": [], "failed": []}
+
+    def _sync_result_to_dict(self, value: Any) -> dict[str, Any]:
+        """Convert SyncResult or similar object to dict format.
+
+        SyncResult has installed, already_present, failed as sets.
+        This converts them to lists for JSON serialization.
+        """
+        # Handle dict-like objects
+        if isinstance(value, dict):
+            return {
+                "installed": list(value.get("installed", [])),
+                "already_present": list(value.get("already_present", [])),
+                "failed": list(value.get("failed", [])),
+            }
+
+        # Handle SyncResult-like objects with attributes
+        if hasattr(value, "installed"):
+            return {
+                "installed": list(getattr(value, "installed", [])),
+                "already_present": list(getattr(value, "already_present", [])),
+                "failed": list(getattr(value, "failed", [])),
+            }
+
+        # Fallback - return as-is if already dict-like
+        return {"installed": [], "already_present": [], "failed": []}
 
     # -------------------------------------------------------------------------
     # Context manager

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 # These imports will fail initially - that's expected (TDD red phase)
+from py_code_mode.execution.in_process import InProcessExecutor
 from py_code_mode.session import Session
 from py_code_mode.storage import FileStorage, RedisStorage
 
@@ -83,11 +84,14 @@ class TestSessionExecutionErrors:
 
 
 class TestToolsNamespaceErrors:
-    """Tests for tools namespace error handling."""
+    """Tests for tools namespace error handling.
+
+    Tools are now owned by executors (via config.tools_path), not storage.
+    """
 
     @pytest.fixture
-    def storage(self, tmp_path: Path) -> FileStorage:
-        """Create FileStorage with tools directory."""
+    def tools_dir(self, tmp_path: Path) -> Path:
+        """Create tools directory with echo tool."""
         tools_dir = tmp_path / "tools"
         tools_dir.mkdir()
         (tools_dir / "echo.yaml").write_text(
@@ -99,12 +103,27 @@ args: "{text}"
 description: Echo text back
 """
         )
+        return tools_dir
+
+    @pytest.fixture
+    def storage(self, tmp_path: Path) -> FileStorage:
+        """Create FileStorage for testing."""
         return FileStorage(tmp_path)
 
+    @pytest.fixture
+    def executor(self, tools_dir: Path) -> InProcessExecutor:
+        """Create executor with tools directory."""
+        from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
+
+        config = InProcessConfig(tools_path=tools_dir)
+        return InProcessExecutor(config=config)
+
     @pytest.mark.asyncio
-    async def test_tool_not_found_error(self, storage: FileStorage) -> None:
+    async def test_tool_not_found_error(
+        self, storage: FileStorage, executor: InProcessExecutor
+    ) -> None:
         """Calling nonexistent tool gives clear error."""
-        async with Session(storage=storage) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run('tools.nonexistent(arg="value")')
 
             assert not result.is_ok
@@ -117,9 +136,11 @@ description: Echo text back
             )
 
     @pytest.mark.asyncio
-    async def test_tool_missing_required_arg_error(self, storage: FileStorage) -> None:
+    async def test_tool_missing_required_arg_error(
+        self, storage: FileStorage, executor: InProcessExecutor
+    ) -> None:
         """Tool called without required args gives clear error."""
-        async with Session(storage=storage) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run("tools.echo()")  # Missing required 'text' arg
 
             assert not result.is_ok
@@ -127,9 +148,11 @@ description: Echo text back
             # Should mention missing argument
 
     @pytest.mark.asyncio
-    async def test_tool_invalid_arg_type_error(self, storage: FileStorage) -> None:
+    async def test_tool_invalid_arg_type_error(
+        self, storage: FileStorage, executor: InProcessExecutor
+    ) -> None:
         """Tool called with wrong arg type gives error."""
-        async with Session(storage=storage) as session:
+        async with Session(storage=storage, executor=executor) as session:
             # Pass dict where string expected
             result = await session.run('tools.echo(text={"not": "string"})')
 
@@ -139,9 +162,11 @@ description: Echo text back
                 assert result.error is not None
 
     @pytest.mark.asyncio
-    async def test_tools_escape_hatch_nonexistent_error(self, storage: FileStorage) -> None:
+    async def test_tools_escape_hatch_nonexistent_error(
+        self, storage: FileStorage, executor: InProcessExecutor
+    ) -> None:
         """Escape hatch with nonexistent tool gives error."""
-        async with Session(storage=storage) as session:
+        async with Session(storage=storage, executor=executor) as session:
             result = await session.run("tools.nonexistent()")
 
             assert not result.is_ok
@@ -306,8 +331,9 @@ class TestFileStorageErrors:
         storage = FileStorage(nonexistent)
 
         # Should work (directory created on demand)
-        registry = await storage.get_tool_registry()
-        result = registry.list_tools()
+        # Storage no longer provides tools (executor-owned), test skill library instead
+        library = storage.get_skill_library()
+        result = library.list()
         assert isinstance(result, list)
 
     def test_permission_error_handling(self) -> None:
@@ -318,18 +344,27 @@ class TestFileStorageErrors:
 
     @pytest.mark.asyncio
     async def test_corrupted_yaml_handling(self, tmp_path: Path) -> None:
-        """FileStorage handles corrupted YAML files."""
+        """FileStorage handles corrupted YAML files gracefully.
+
+        Note: Tools are now owned by executors (via config.tools_path), not storage.
+        This test validates that Session can start even if tools directory has bad files.
+        """
+        from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
+
         tools_dir = tmp_path / "tools"
         tools_dir.mkdir()
         (tools_dir / "bad.yaml").write_text("{{{{ invalid yaml")
 
         storage = FileStorage(tmp_path)
+        config = InProcessConfig(tools_path=tools_dir)
+        executor = InProcessExecutor(config=config)
 
         # Should not crash - may skip bad file or return empty
         try:
-            registry = await storage.get_tool_registry()
-            result = registry.list_tools()
-            assert isinstance(result, list)
+            async with Session(storage=storage, executor=executor) as session:
+                result = await session.run("tools.list()")
+                # May return empty list or skip corrupted entries
+                assert isinstance(result.value, list) or result.error is not None
         except Exception:
             pass  # Raising on corrupted files is acceptable
 
@@ -359,22 +394,23 @@ class TestRedisStorageErrors:
         storage = RedisStorage(redis=mock_redis, prefix="test")
 
         # Mock client always works, so this tests basic functionality
-        registry = await storage.get_tool_registry()
-        result = registry.list_tools()
+        # Storage no longer provides tools (executor-owned), test skill library instead
+        library = storage.get_skill_library()
+        result = library.list()
         assert isinstance(result, list)
 
     @pytest.mark.asyncio
     async def test_deserialization_error_handling(self, mock_redis: MockRedisClient) -> None:
-        """RedisStorage handles corrupted data."""
+        """RedisStorage handles corrupted skill data."""
         storage = RedisStorage(redis=mock_redis, prefix="test")
 
-        # Manually inject corrupted data
-        mock_redis.hset("test:tools:__tools__", "bad", b"not valid json {{{")
+        # Manually inject corrupted data into skills
+        mock_redis.hset("test:skills:__skills__", "bad", b"not valid json {{{")
 
         # Should not crash - may skip or error gracefully
         try:
-            registry = await storage.get_tool_registry()
-            result = registry.list_tools()
+            library = storage.get_skill_library()
+            result = library.list()
             # May return empty or skip corrupted entries
             assert isinstance(result, list)
         except Exception:

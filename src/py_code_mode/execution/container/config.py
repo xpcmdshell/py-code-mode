@@ -189,6 +189,7 @@ class ContainerConfig:
     timeout: float = 30.0
     startup_timeout: float = 60.0
     health_check_interval: float = 0.5
+    ipc_timeout: float = 30.0  # Timeout for IPC queries (tool/skill/artifact)
 
     # Container settings
     environment: dict[str, str] = field(default_factory=dict)
@@ -204,6 +205,11 @@ class ContainerConfig:
 
     # Remote mode: connect to existing session server instead of starting Docker
     remote_url: str | None = None  # e.g., "http://session-server:8080"
+
+    # Tools and deps configuration (executor-owned, not storage-owned)
+    tools_path: Path | None = None  # Path to directory with YAML tool definitions
+    deps: tuple[str, ...] | None = None  # Tuple of package specs to pre-install
+    deps_file: Path | None = None  # Path to requirements.txt-style file
 
     def to_docker_config(
         self,
@@ -221,9 +227,11 @@ class ContainerConfig:
 
         Args:
             tools_path: Host path to tools directory (volume mount).
+                       Falls back to self.tools_path if not provided.
             skills_path: Host path to skills directory (volume mount).
             artifacts_path: Host path to artifacts directory (volume mount).
             deps_path: Host path to deps directory (volume mount).
+                      Falls back to self.deps_file's parent if not provided.
             redis_url: Redis URL for Redis-based storage (sets env vars).
             tools_prefix: Redis key prefix for tools.
             skills_prefix: Redis key prefix for skills.
@@ -233,6 +241,12 @@ class ContainerConfig:
         Returns:
             Docker SDK run() configuration dict.
         """
+        # Use config fields as fallbacks for path arguments
+        effective_tools_path = tools_path if tools_path is not None else self.tools_path
+        effective_deps_path = deps_path
+        if effective_deps_path is None and self.deps_file is not None:
+            effective_deps_path = self.deps_file.parent
+
         config: dict[str, Any] = {
             "image": self.image,
             "detach": True,
@@ -248,8 +262,8 @@ class ContainerConfig:
 
         # Add volumes from storage access
         volumes = {}
-        if tools_path:
-            volumes[str(tools_path.absolute())] = {
+        if effective_tools_path:
+            volumes[str(effective_tools_path.absolute())] = {
                 "bind": "/app/tools",
                 "mode": "ro",
             }
@@ -266,8 +280,8 @@ class ContainerConfig:
                 "mode": "rw",
             }
             config["environment"]["ARTIFACTS_PATH"] = "/workspace/artifacts"
-        if deps_path:
-            volumes[str(deps_path.absolute())] = {
+        if effective_deps_path:
+            volumes[str(effective_deps_path.absolute())] = {
                 "bind": "/workspace/deps",
                 "mode": "rw",  # Agents can add/remove deps at runtime
             }

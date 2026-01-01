@@ -13,7 +13,6 @@ Feature Overview:
 
 import hashlib
 import os
-import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -525,16 +524,25 @@ async def test_create_cleans_up_partial_venv_on_failure(tmp_path):
 
     This prevents accumulation of broken venvs in cache.
     """
+    from unittest.mock import AsyncMock
+
     venv_path = tmp_path / "partial-venv"
 
     manager = VenvManager(venv_path=venv_path, python_version="3.11")
 
-    # Mock subprocess to fail during venv creation
-    with patch("subprocess.run") as mock_run:
-        mock_run.side_effect = subprocess.CalledProcessError(1, ["python", "-m", "venv"])
+    # Create a mock process that simulates failure (returncode != 0)
+    mock_proc = AsyncMock()
+    mock_proc.returncode = 1
+    mock_proc.communicate = AsyncMock(return_value=(b"", b"Mock failure"))
 
-        # Should raise exception
-        with pytest.raises(Exception):
+    # Mock asyncio.create_subprocess_exec to return our failing mock process
+    # VenvManager uses asyncio subprocess, not subprocess.run for venv creation
+    with patch(
+        "asyncio.create_subprocess_exec",
+        new=AsyncMock(return_value=mock_proc),
+    ):
+        # Should raise RuntimeError due to failed uv venv command
+        with pytest.raises(RuntimeError, match="uv venv failed"):
             await manager.create()
 
         # Should have cleaned up partial directory

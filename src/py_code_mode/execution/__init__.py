@@ -1,7 +1,7 @@
 """py_code_mode.execution - Code execution backends."""
 
 # Import to trigger registration
-from py_code_mode.execution.in_process import InProcessExecutor
+from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
 from py_code_mode.execution.protocol import (
     Capability,
     Executor,
@@ -44,6 +44,7 @@ __all__ = [
     "get_backend",
     "list_backends",
     "register_backend",
+    "InProcessConfig",
     "InProcessExecutor",
     "ContainerExecutor",
     "ContainerConfig",

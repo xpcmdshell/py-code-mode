@@ -170,6 +170,26 @@ class ContainerExecutor:
         """Return set of all capabilities this backend supports."""
         return set(self._CAPABILITIES)
 
+    def get_configured_deps(self) -> list[str]:
+        """Return list of pre-configured dependencies from executor config.
+
+        These are deps specified via config.deps tuple and config.deps_file.
+        Used by Session._sync_deps() to install deps on start.
+
+        Returns:
+            List of package specifications.
+        """
+        deps: list[str] = []
+        if self._config.deps:
+            deps.extend(self._config.deps)
+        if self._config.deps_file and self._config.deps_file.exists():
+            file_deps = self._config.deps_file.read_text().strip().splitlines()
+            for line in file_deps:
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    deps.append(stripped)
+        return deps
+
     async def __aenter__(self) -> ContainerExecutor:
         """Start container and connect."""
         await self.start()
@@ -366,10 +386,11 @@ class ContainerExecutor:
             access = storage.get_serializable_access()
 
             if isinstance(access, FileStorageAccess):
-                tools_path = access.tools_path
+                # Tools and deps come from executor config, not storage
+                tools_path = self.config.tools_path
                 skills_path = access.skills_path
                 artifacts_path = access.artifacts_path
-                deps_path = access.deps_path
+                deps_path = None  # Deps owned by executor, not storage
                 # Create directories on host before mounting
                 # Skills need to exist for volume mount
                 if skills_path:
@@ -377,17 +398,17 @@ class ContainerExecutor:
                 # Artifacts need to exist for volume mount
                 if artifacts_path:
                     artifacts_path.mkdir(parents=True, exist_ok=True)
-                # Deps directory created in get_serializable_access()
             elif isinstance(access, RedisStorageAccess):
                 redis_url = access.redis_url
                 # Transform localhost URLs for Docker container access
                 # Inside container, localhost refers to container itself, not host
                 if redis_url:
                     redis_url = _transform_localhost_for_docker(redis_url)
-                tools_prefix = access.tools_prefix
+                # Tools and deps prefixes come from executor config, not storage
+                tools_prefix = None  # Tools owned by executor
                 skills_prefix = access.skills_prefix
                 artifacts_prefix = access.artifacts_prefix
-                deps_prefix = access.deps_prefix
+                deps_prefix = None  # Deps owned by executor
             else:
                 raise TypeError(
                     f"Unexpected storage access type: {type(access).__name__}. "
@@ -552,6 +573,280 @@ class ContainerExecutor:
             raise RuntimeError("Container not started")
 
         return await self._client.uninstall_deps(packages)
+
+    # ==========================================================================
+    # Tools API Methods
+    # ==========================================================================
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        """List all registered tools.
+
+        Returns:
+            List of tool metadata dicts with name, description, tags.
+
+        Raises:
+            RuntimeError: If container is not started.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.list_tools()
+
+    async def search_tools(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Search tools by query.
+
+        Args:
+            query: Search query string.
+            limit: Maximum number of results to return.
+
+        Returns:
+            List of matching tool metadata dicts.
+
+        Raises:
+            RuntimeError: If container is not started.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.search_tools(query, limit)
+
+    # ==========================================================================
+    # Skills API Methods
+    # ==========================================================================
+
+    async def list_skills(self) -> list[dict[str, Any]]:
+        """List all skills.
+
+        Returns:
+            List of skill metadata dicts with name, description, parameters.
+
+        Raises:
+            RuntimeError: If container is not started.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.list_skills()
+
+    async def search_skills(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Search skills semantically.
+
+        Args:
+            query: Natural language search query.
+            limit: Maximum number of results to return.
+
+        Returns:
+            List of matching skill metadata dicts.
+
+        Raises:
+            RuntimeError: If container is not started.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.search_skills(query, limit)
+
+    async def get_skill(self, name: str) -> dict[str, Any] | None:
+        """Get skill by name with full source.
+
+        Args:
+            name: Skill name.
+
+        Returns:
+            Skill dict with name, description, parameters, source.
+            None if skill not found.
+
+        Raises:
+            RuntimeError: If container is not started.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.get_skill(name)
+
+    async def add_skill(self, name: str, source: str, description: str) -> dict[str, Any]:
+        """Create a new skill.
+
+        Args:
+            name: Skill name.
+            source: Python source code with run() function.
+            description: Skill description.
+
+        Returns:
+            Created skill metadata dict.
+
+        Raises:
+            RuntimeError: If container is not started or skill creation fails.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.create_skill(name, source, description)
+
+    async def remove_skill(self, name: str) -> bool:
+        """Delete a skill.
+
+        Args:
+            name: Skill name.
+
+        Returns:
+            True if skill was deleted, False if not found.
+
+        Raises:
+            RuntimeError: If container is not started.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.delete_skill(name)
+
+    # ==========================================================================
+    # Artifacts API Methods
+    # ==========================================================================
+
+    async def list_artifacts(self) -> list[dict[str, Any]]:
+        """List all artifacts with metadata.
+
+        Returns:
+            List of artifact metadata dicts.
+
+        Raises:
+            RuntimeError: If container is not started.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.list_artifacts()
+
+    async def load_artifact(self, name: str) -> Any:
+        """Load artifact data.
+
+        Args:
+            name: Artifact name.
+
+        Returns:
+            Artifact data (can be any JSON-serializable type).
+
+        Raises:
+            RuntimeError: If container is not started or artifact not found.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.load_artifact(name)
+
+    async def save_artifact(
+        self,
+        name: str,
+        data: Any,
+        description: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Save artifact.
+
+        Args:
+            name: Artifact name.
+            data: Data to save (must be JSON-serializable).
+            description: Optional description.
+            metadata: Optional additional metadata.
+
+        Returns:
+            Artifact metadata dict.
+
+        Raises:
+            RuntimeError: If container is not started.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.save_artifact(name, data, description, metadata)
+
+    async def delete_artifact(self, name: str) -> None:
+        """Delete artifact.
+
+        Args:
+            name: Artifact name.
+
+        Raises:
+            RuntimeError: If container is not started or artifact not found.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.delete_artifact(name)
+
+    # ==========================================================================
+    # Deps API Methods
+    # ==========================================================================
+
+    async def list_deps(self) -> list[str]:
+        """List configured packages.
+
+        Returns:
+            List of package specifications.
+
+        Raises:
+            RuntimeError: If container is not started.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.api_list_deps()
+
+    async def add_dep(self, package: str) -> dict[str, Any]:
+        """Add and install a package.
+
+        This respects allow_runtime_deps configuration on the server.
+
+        Args:
+            package: Package specification (e.g., "pandas>=2.0").
+
+        Returns:
+            Dict with installation results.
+
+        Raises:
+            RuntimeError: If container is not started, installation fails,
+                         or runtime deps are disabled.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.api_add_dep(package)
+
+    async def remove_dep(self, package: str) -> dict[str, Any]:
+        """Remove a package from configuration.
+
+        This respects allow_runtime_deps configuration on the server.
+
+        Args:
+            package: Package specification to remove.
+
+        Returns:
+            Dict with removal status.
+
+        Raises:
+            RuntimeError: If container is not started or runtime deps are disabled.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.api_remove_dep(package)
+
+    async def sync_deps(self) -> dict[str, Any]:
+        """Install all configured packages.
+
+        This is always allowed, even when allow_runtime_deps=False.
+
+        Returns:
+            Dict with sync results.
+
+        Raises:
+            RuntimeError: If container is not started.
+        """
+        if self._client is None:
+            raise RuntimeError("Container not started")
+
+        return await self._client.api_sync_deps()
 
     def _get_container_port(self) -> int:
         """Get the host port mapped to container port 8080."""

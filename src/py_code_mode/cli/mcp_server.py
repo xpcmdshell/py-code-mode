@@ -1,19 +1,27 @@
 """MCP server exposing py-code-mode executor to MCP clients.
 
 Usage:
-    # File storage
-    py-code-mode-mcp --storage ./data
+    # Base directory (auto-discovers tools/, skills/, artifacts/ subdirs)
+    py-code-mode-mcp --base ~/.code-mode
+
+    # Explicit storage + tools
+    py-code-mode-mcp --storage ./data --tools ./project/tools
 
     # Redis storage
     py-code-mode-mcp --redis redis://localhost:6379 --prefix my-agent
 
     # With Claude Code
-    claude mcp add py-code-mode -- py-code-mode-mcp --storage ~/.code-mode
+    claude mcp add py-code-mode -- py-code-mode-mcp --base ~/.code-mode
 
 Note on execution:
     Code runs in an isolated subprocess with its own virtual environment and
     IPython kernel (SubprocessExecutor). This provides process isolation while
     still allowing access to CLI tools on your system.
+
+Note on architecture:
+    Storage (--storage or --redis) holds skills and artifacts.
+    Tools are owned by the executor and loaded from --tools directory.
+    The --base flag is a convenience that sets both: storage=base, tools=base/tools.
 """
 
 from __future__ import annotations
@@ -81,15 +89,18 @@ async def run_code(code: str) -> str:
 
 
 @mcp.tool
-async def list_tools() -> list[dict]:
+async def list_tools() -> str:
     """List all available tools with their descriptions and parameters."""
     if _session is None:
         raise RuntimeError("Session not initialized")
-    return await _session.list_tools()
+    tools = await _session.list_tools()
+    # Return JSON string for consistent MCP serialization
+    # (FastMCP may not serialize empty lists correctly)
+    return json.dumps(tools)
 
 
 @mcp.tool
-async def search_tools(query: str, limit: int = 10) -> list[dict]:
+async def search_tools(query: str, limit: int = 10) -> str:
     """Search tools by intent using semantic search.
 
     Use natural language to describe what you want to accomplish.
@@ -103,19 +114,21 @@ async def search_tools(query: str, limit: int = 10) -> list[dict]:
     """
     if _session is None:
         raise RuntimeError("Session not initialized")
-    return await _session.search_tools(query, limit)
+    tools = await _session.search_tools(query, limit)
+    return json.dumps(tools)
 
 
 @mcp.tool
-async def list_skills() -> list[dict]:
+async def list_skills() -> str:
     """List all available skills with their descriptions."""
     if _session is None:
         raise RuntimeError("Session not initialized")
-    return await _session.list_skills()
+    skills = await _session.list_skills()
+    return json.dumps(skills)
 
 
 @mcp.tool
-async def search_skills(query: str, limit: int = 5) -> list[dict]:
+async def search_skills(query: str, limit: int = 5) -> str:
     """Search for existing skills before solving a task from scratch.
 
     START HERE: Before writing code, search for skills that might already solve
@@ -131,15 +144,17 @@ async def search_skills(query: str, limit: int = 5) -> list[dict]:
     """
     if _session is None:
         raise RuntimeError("Session not initialized")
-    return await _session.search_skills(query, limit)
+    skills = await _session.search_skills(query, limit)
+    return json.dumps(skills)
 
 
 @mcp.tool
-async def list_artifacts() -> list[dict]:
+async def list_artifacts() -> str:
     """List all stored artifacts with their metadata."""
     if _session is None:
         raise RuntimeError("Session not initialized")
-    return await _session.list_artifacts()
+    artifacts = await _session.list_artifacts()
+    return json.dumps(artifacts)
 
 
 @mcp.tool
@@ -277,6 +292,9 @@ async def create_session(args: argparse.Namespace) -> Session:
     no_runtime_deps = getattr(args, "no_runtime_deps", False)
     timeout = getattr(args, "timeout", None)
 
+    # Tools path from CLI arg (executor-owned, not storage)
+    tools_path = Path(args.tools) if args.tools else None
+
     # Use persistent venv alongside storage for faster restarts
     # For file storage: ./data/.venv/
     # For redis: ~/.cache/py-code-mode/<prefix>/.venv/
@@ -291,6 +309,7 @@ async def create_session(args: argparse.Namespace) -> Session:
         default_timeout=timeout,
         venv_path=venv_path,
         cleanup_venv_on_close=False,  # Persist for faster restarts
+        tools_path=tools_path,  # Tools from CLI arg
     )
     executor = SubprocessExecutor(config=config)
 
@@ -300,11 +319,9 @@ async def create_session(args: argparse.Namespace) -> Session:
     session = Session(storage=storage, executor=executor, sync_deps_on_start=sync_deps)
     await session.start()
 
-    # Pre-load tool registry to establish MCP connections in main task context.
-    # MCP client connections use anyio TaskGroups with cancel scopes that must
-    # be exited by the same task that entered them. Loading here (before
-    # FastMCP spawns handler tasks) ensures cleanup works correctly.
-    await storage.get_tool_registry()
+    # Note: Tool registry pre-loading removed. In the new architecture,
+    # tools are owned by executors (via config.tools_path), not storage.
+    # MCP server tools are provided via executor config if needed.
 
     return session
 
@@ -315,21 +332,36 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # File storage
-  py-code-mode-mcp --storage ./data
+  # Base directory (auto-discovers tools/, skills/, artifacts/)
+  py-code-mode-mcp --base ~/.code-mode
+
+  # Explicit storage + tools
+  py-code-mode-mcp --storage ./data --tools ./project/tools
 
   # Redis storage
   py-code-mode-mcp --redis redis://localhost:6379 --prefix my-agent
 
   # Add to Claude Code
-  claude mcp add py-code-mode -- py-code-mode-mcp --storage ~/.code-mode
+  claude mcp add py-code-mode -- py-code-mode-mcp --base ~/.code-mode
         """,
+    )
+
+    # Base directory (convenience: auto-discovers tools/, skills/, artifacts/)
+    parser.add_argument(
+        "--base",
+        help="Base directory with tools/, skills/, artifacts/ subdirs (convenience shorthand)",
     )
 
     # File storage option
     parser.add_argument(
         "--storage",
-        help="Path to storage directory (contains tools/, skills/, artifacts/)",
+        help="Path to storage directory (contains skills/, artifacts/)",
+    )
+
+    # Tools path (separate from storage since tools are executor-owned)
+    parser.add_argument(
+        "--tools",
+        help="Path to tools directory containing YAML tool definitions",
     )
 
     # Redis storage options
@@ -360,9 +392,19 @@ Examples:
 
     args = parser.parse_args()
 
-    # Validate: need either --storage or --redis
+    # Handle --base convenience flag
+    if args.base:
+        base_path = Path(args.base)
+        # --base sets storage to base dir, tools to base/tools if it exists
+        if not args.storage:
+            args.storage = str(base_path)
+        tools_subdir = base_path / "tools"
+        if not args.tools and tools_subdir.is_dir():
+            args.tools = str(tools_subdir)
+
+    # Validate: need either --storage, --base, or --redis
     if not args.storage and not args.redis:
-        parser.error("Either --storage or --redis is required")
+        parser.error("Either --base, --storage, or --redis is required")
 
     # Conditionally register add_dep tool based on --no-runtime-deps flag
     no_runtime_deps = getattr(args, "no_runtime_deps", False)

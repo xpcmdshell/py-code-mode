@@ -143,6 +143,7 @@ Wrap REST APIs (defined in Python):
 
 ```python
 from py_code_mode.tools.adapters import HTTPAdapter, Endpoint
+from py_code_mode.tools import ToolRegistry
 
 # Create adapter
 adapter = HTTPAdapter(base_url="https://api.github.com")
@@ -162,9 +163,11 @@ adapter.add_endpoint(Endpoint(
     description="List repository issues"
 ))
 
-# Register with session's tool registry
-registry = storage.get_tool_registry()
+# Create registry and add adapter
+registry = ToolRegistry()
 registry.add_adapter(adapter)
+
+# Registry is passed to executor (typically via custom integration)
 ```
 
 ### Agent Usage
@@ -199,35 +202,41 @@ curl_recipes = tools.curl.list()
 # Returns: [{"name": "get", "description": "...", "params": {...}}, ...]
 ```
 
-## Registering Tools at Runtime
+## Registering Tools
 
-### Python API
+### Via Executor Config (Recommended)
+
+Tools are loaded from the `tools_path` configured on the executor:
 
 ```python
-from py_code_mode.tools.adapters import CLIAdapter
+from pathlib import Path
+from py_code_mode import Session, FileStorage
+from py_code_mode.execution import InProcessConfig, InProcessExecutor
 
-# Load CLI tools from YAML files
-cli_adapter = CLIAdapter.from_directory(Path("./tools"))
+# Storage for skills and artifacts
+storage = FileStorage(base_path=Path("./storage"))
 
-# Register with session
-registry = storage.get_tool_registry()
-registry.add_adapter(cli_adapter)
+# Executor loads tools from tools_path
+config = InProcessConfig(tools_path=Path("./tools"))
+executor = InProcessExecutor(config=config)
+
+async with Session(storage=storage, executor=executor) as session:
+    # Tools are available from config.tools_path
+    result = await session.run('tools.curl.get(url="...")')
 ```
 
-### File-based (MCP Server)
+### File Layout
 
-When using the MCP server, drop YAML files into the storage directory:
+Place YAML tool definitions in your tools directory:
 
-```bash
-# Global installation
-~/.code-mode/tools/curl.yaml
-~/.code-mode/tools/jq.yaml
-
-# Project installation
-./.code-mode/tools/curl.yaml
+```
+./tools/
+  curl.yaml
+  jq.yaml
+  nmap.yaml
 ```
 
-Restart the MCP server to pick up new tools.
+Each YAML file defines one tool with its schema and recipes.
 
 ## Best Practices
 

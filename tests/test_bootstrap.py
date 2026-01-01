@@ -966,23 +966,6 @@ class TestRedisStorageLazyConnection:
         # Library should be usable
         assert library is not None
 
-    @pytest.mark.asyncio
-    async def test_get_tool_registry_triggers_connection(self, mock_redis: MockRedisClient) -> None:
-        """get_tool_registry() triggers Redis connection/usage.
-
-        Contract: Lazy connection should happen on first actual use
-        Breaks when: Connection happens too early or not at all.
-        """
-        from py_code_mode.storage import RedisStorage
-
-        storage = RedisStorage(redis=mock_redis, prefix="test")
-
-        # This should create the registry (lazy initialization)
-        registry = await storage.get_tool_registry()
-
-        # Registry should be usable
-        assert registry is not None
-
 
 # =============================================================================
 # FileStorage Lazy Initialization Tests

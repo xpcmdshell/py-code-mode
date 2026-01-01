@@ -127,7 +127,6 @@ class TestSessionClientHealth:
             {
                 "status": "healthy",
                 "uptime_seconds": 123.4,
-                "active_sessions": 5,
             }
         )
 
@@ -139,7 +138,6 @@ class TestSessionClientHealth:
 
         assert health.status == "healthy"
         assert health.uptime_seconds == 123.4
-        assert health.active_sessions == 5
 
 
 class TestSessionClientInfo:

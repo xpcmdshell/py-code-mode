@@ -36,7 +36,7 @@ claude mcp add -s project py-code-mode \
 claude mcp list
 ```
 
-The storage directory will contain `tools/`, `skills/`, and `artifacts/` subdirectories.
+The storage directory will contain `skills/` and `artifacts/` subdirectories.
 
 ## Your First Session
 
@@ -45,12 +45,17 @@ The storage directory will contain `tools/`, `skills/`, and `artifacts/` subdire
 ```python
 from pathlib import Path
 from py_code_mode import Session, FileStorage
+from py_code_mode.execution import InProcessConfig, InProcessExecutor
 
-# Create storage backend
+# Create storage backend for skills and artifacts
 storage = FileStorage(base_path=Path("./data"))
 
+# Configure executor with tools path
+config = InProcessConfig(tools_path=Path("./tools"))
+executor = InProcessExecutor(config=config)
+
 # Create a session
-async with Session(storage=storage) as session:
+async with Session(storage=storage, executor=executor) as session:
     # Run agent code
     result = await session.run('''
 # Search for existing skills
