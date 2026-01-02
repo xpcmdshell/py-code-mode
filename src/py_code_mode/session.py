@@ -118,10 +118,12 @@ class Session:
         from py_code_mode.storage import FileStorage
 
         base = Path(base_path).expanduser().resolve()
-        storage = FileStorage(base_path=base)
+        base.mkdir(parents=True, exist_ok=True)
 
-        tools_path = base / "tools"
-        tools_dir = tools_path if tools_path.is_dir() else None
+        tools_dir = base / "tools"
+        tools_dir.mkdir(exist_ok=True)
+
+        storage = FileStorage(base_path=base)
 
         deps_file = base / "requirements.txt"
         deps_file_resolved = deps_file if deps_file.is_file() else None
@@ -177,10 +179,12 @@ class Session:
         from py_code_mode.storage import FileStorage
 
         base = Path(base_path).expanduser().resolve()
-        storage = FileStorage(base_path=base)
+        base.mkdir(parents=True, exist_ok=True)
 
-        tools_path = base / "tools"
-        tools_dir = tools_path if tools_path.is_dir() else None
+        tools_dir = base / "tools"
+        tools_dir.mkdir(exist_ok=True)
+
+        storage = FileStorage(base_path=base)
 
         deps_file = base / "requirements.txt"
         deps_file_resolved = deps_file if deps_file.is_file() else None
@@ -224,10 +228,12 @@ class Session:
         from py_code_mode.storage import FileStorage
 
         base = Path(base_path).expanduser().resolve()
-        storage = FileStorage(base_path=base)
+        base.mkdir(parents=True, exist_ok=True)
 
-        tools_path = base / "tools"
-        tools_dir = tools_path if tools_path.is_dir() else None
+        tools_dir = base / "tools"
+        tools_dir.mkdir(exist_ok=True)
+
+        storage = FileStorage(base_path=base)
 
         deps_file = base / "requirements.txt"
         deps_file_resolved = deps_file if deps_file.is_file() else None

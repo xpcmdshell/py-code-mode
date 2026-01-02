@@ -59,7 +59,25 @@ async with Session.subprocess("~/.code-mode") as session:
     ...
 ```
 
-**Need Docker isolation?** Use the explicit constructor with ContainerExecutor (see [Executors docs](./docs/executors.md)).
+**Full control?** The convenience methods above are shortcuts. For production deployments, custom storage backends, or container isolation, use the component APIs directly:
+
+```python
+from py_code_mode import Session, FileStorage, RedisStorage
+from py_code_mode import SubprocessExecutor, SubprocessConfig, ContainerExecutor, ContainerConfig
+
+# Custom storage
+storage = RedisStorage(url="redis://localhost:6379", prefix="myapp")
+
+# Custom executor  
+config = SubprocessConfig(tools_path="./tools", python_version="3.11", cache_venv=True)
+executor = SubprocessExecutor(config=config)
+
+# Full control
+async with Session(storage=storage, executor=executor) as session:
+    ...
+```
+
+See [Session API](./docs/session-api.md) and [Executors](./docs/executors.md) for complete documentation.
 
 **Also ships as an MCP server for Claude Code:**
 
