@@ -66,13 +66,23 @@ skills.create(
 claude mcp add py-code-mode -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.9.0 py-code-mode-mcp
 ```
 
-## Three Namespaces
+## Features
 
-When agents write code, three namespaces are available:
+- **Skill persistence** - Save working code as reusable skills, invoke later without re-planning
+- **Semantic search** - Find relevant skills and tools by natural language description
+- **Tool integration** - Wrap CLI commands, MCP servers, and HTTP APIs as callable functions
+- **Process isolation** - SubprocessExecutor runs code in a separate process with clean venv
+- **Multiple storage backends** - FileStorage for local dev, RedisStorage for distributed deployments
+- **Runtime dependency management** - Install packages on-demand or pre-configure for lockdown
+
+## Four Namespaces
+
+When agents write code, four namespaces are available:
 
 **tools**: CLI commands, MCP servers, and REST APIs wrapped as callable functions
 **skills**: Reusable Python workflows with semantic search
 **artifacts**: Persistent data storage across sessions
+**deps**: Runtime Python package management
 
 ```python
 # Tools: external capabilities
@@ -90,6 +100,10 @@ def run(repos: list) -> dict:
 # Artifacts: persistent storage
 artifacts.save("results", data)
 cached = artifacts.load("results")
+
+# Deps: runtime package management
+deps.add("pandas>=2.0")
+deps.list()
 ```
 
 For programmatic access without code strings, Session also provides facade methods:
