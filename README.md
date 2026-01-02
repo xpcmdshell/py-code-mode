@@ -28,10 +28,15 @@ Over time, agents build a library of reliable capabilities. Simple skills become
 ```python
 from pathlib import Path
 from py_code_mode import Session, FileStorage
+from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
 
 storage = FileStorage(base_path=Path("./data"))
 
-async with Session(storage=storage) as session:
+# SubprocessExecutor provides process isolation (recommended)
+config = SubprocessConfig(tools_path=Path("./tools"))
+executor = SubprocessExecutor(config=config)
+
+async with Session(storage=storage, executor=executor) as session:
     # Agent writes code with tools, skills, and artifacts available
     result = await session.run('''
 # Search for existing skills
@@ -61,13 +66,23 @@ skills.create(
 claude mcp add py-code-mode -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.9.0 py-code-mode-mcp
 ```
 
-## Three Namespaces
+## Features
 
-When agents write code, three namespaces are available:
+- **Skill persistence** - Save working code as reusable skills, invoke later without re-planning
+- **Semantic search** - Find relevant skills and tools by natural language description
+- **Tool integration** - Wrap CLI commands, MCP servers, and HTTP APIs as callable functions
+- **Process isolation** - SubprocessExecutor runs code in a separate process with clean venv
+- **Multiple storage backends** - FileStorage for local dev, RedisStorage for distributed deployments
+- **Runtime dependency management** - Install packages on-demand or pre-configure for lockdown
+
+## Four Namespaces
+
+When agents write code, four namespaces are available:
 
 **tools**: CLI commands, MCP servers, and REST APIs wrapped as callable functions
 **skills**: Reusable Python workflows with semantic search
 **artifacts**: Persistent data storage across sessions
+**deps**: Runtime Python package management
 
 ```python
 # Tools: external capabilities
@@ -85,6 +100,10 @@ def run(repos: list) -> dict:
 # Artifacts: persistent storage
 artifacts.save("results", data)
 cached = artifacts.load("results")
+
+# Deps: runtime package management
+deps.add("pandas>=2.0")
+deps.list()
 ```
 
 For programmatic access without code strings, Session also provides facade methods:
@@ -106,21 +125,31 @@ For MCP server installation, see [Getting Started](./docs/getting-started.md).
 
 ## Documentation
 
+**Getting Started:**
 - **[Getting Started](./docs/getting-started.md)** - Installation, first session, basic usage
+- **[Session API](./docs/session-api.md)** - Complete Session method reference
+- **[CLI Reference](./docs/cli-reference.md)** - MCP server and store CLI commands
+
+**Core Concepts:**
 - **[Tools](./docs/tools.md)** - CLI, MCP, and REST API adapters
 - **[Skills](./docs/skills.md)** - Creating, composing, and managing workflows
 - **[Artifacts](./docs/artifacts.md)** - Persistent data storage patterns
 - **[Dependencies](./docs/dependencies.md)** - Managing Python packages
-- **[Executors](./docs/executors.md)** - InProcess, Subprocess, Container execution
+
+**Deployment:**
+- **[Executors](./docs/executors.md)** - Subprocess, Container, InProcess execution
 - **[Storage](./docs/storage.md)** - File vs Redis storage backends
+- **[Integrations](./docs/integrations.md)** - Framework integration patterns
 - **[Production](./docs/production.md)** - Deployment and scaling patterns
+
+**Reference:**
 - **[Architecture](./docs/ARCHITECTURE.md)** - System design and separation of concerns
 
 ## Examples
 
 - **[minimal/](./examples/minimal/)** - Simple agent implementation (~100 lines)
 - **[subprocess/](./examples/subprocess/)** - Process isolation without Docker
-- **[autogen-direct/](./examples/autogen-direct/)** - AutoGen framework integration
+- **[deps/](./examples/deps/)** - Dependency management patterns
 - **[azure-container-apps/](./examples/azure-container-apps/)** - Production deployment
 
 ## License

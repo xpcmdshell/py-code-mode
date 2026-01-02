@@ -2,6 +2,23 @@
 
 This document explains how tools, skills, and artifacts interact across different deployment scenarios.
 
+## Quick Reference
+
+**Recommended executor for most users:** SubprocessExecutor
+- Process isolation, crash recovery, no Docker required
+- Used by the MCP server
+
+**Storage decision:**
+- Local development: FileStorage
+- Distributed/production: RedisStorage
+
+**Executor decision:**
+- Default/Development: SubprocessExecutor (recommended)
+- Untrusted code/Production: ContainerExecutor
+- Trusted code + max speed: InProcessExecutor
+
+---
+
 ## Core Concepts
 
 | Component | Purpose | Format |
@@ -669,9 +686,9 @@ Choose storage backend (for skills and artifacts):
 
 Choose executor (with tools_path):
     |
-    +-- Same-process execution?     -> InProcessExecutor(config=InProcessConfig(tools_path=...))
+    +-- Default (recommended)       -> SubprocessExecutor(config=SubprocessConfig(tools_path=...))
     +-- Docker isolation?           -> ContainerExecutor(config=ContainerConfig(tools_path=...))
-    +-- Subprocess isolation?       -> SubprocessExecutor(config=SubprocessConfig(tools_path=...))
+    +-- Trusted code + max speed?   -> InProcessExecutor(config=InProcessConfig(tools_path=...))
 
 Combine:
     Session(storage=storage, executor=executor)
@@ -1036,12 +1053,12 @@ recipes:                          # Named presets
 
 ## Deployment Checklist
 
-### Local Development (Session + FileStorage + InProcessExecutor)
+### Local Development (Session + FileStorage + SubprocessExecutor)
 - [ ] Create base storage directory for skills and artifacts
 - [ ] Add YAML tool definitions to separate tools directory
 - [ ] Add Python skill files to `<base_path>/skills/`
-- [ ] Configure executor: `InProcessConfig(tools_path=Path("./tools"))`
-- [ ] Use `Session(storage=FileStorage(base_path=...), executor=InProcessExecutor(config))`
+- [ ] Configure executor: `SubprocessConfig(tools_path=Path("./tools"))`
+- [ ] Use `Session(storage=FileStorage(base_path=...), executor=SubprocessExecutor(config))`
 
 ### Local with Container Isolation (Container + File)
 - [ ] Build Docker image with py-code-mode installed
@@ -1050,12 +1067,12 @@ recipes:                          # Named presets
 - [ ] Set `auth_disabled=True` for local development
 - [ ] Use `Session(storage=FileStorage(...), executor=ContainerExecutor(config))`
 
-### Production (Session + RedisStorage)
+### Production (Session + RedisStorage + SubprocessExecutor)
 - [ ] Provision Redis instance
 - [ ] Bootstrap skills: `python -m py_code_mode.store bootstrap --target redis://... --prefix myapp:skills`
 - [ ] Tools stay on filesystem (via executor config)
 - [ ] Create storage: `RedisStorage(url="redis://...", prefix="myapp")`
-- [ ] Configure executor: `InProcessConfig(tools_path=Path("./tools"))`
+- [ ] Configure executor: `SubprocessConfig(tools_path=Path("./tools"))`
 - [ ] Use `Session(storage=storage, executor=executor)`
 
 ### Production with Container Isolation

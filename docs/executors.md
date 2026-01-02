@@ -1,70 +1,53 @@
 # Executors
 
-Executors determine where and how agent code runs. Three backends available: InProcess, Subprocess, and Container.
+Executors determine where and how agent code runs. Three backends are available: Subprocess, Container, and InProcess.
 
-## InProcessExecutor (Default)
+## Quick Decision Guide
 
-Code runs in the same Python process as your application. Fastest option, no isolation.
+```
+Which executor should I use?
 
-```python
-from py_code_mode import Session, FileStorage
-from pathlib import Path
+Start here: SubprocessExecutor (recommended default)
+  - Process isolation, crash recovery, clean environments
+  - No Docker required
+  - Used by the MCP server
 
-storage = FileStorage(base_path=Path("./data"))
+Need stronger isolation? → ContainerExecutor
+  - Untrusted code, production, multi-tenant
+  - Filesystem and network isolation
+  - Requires Docker
 
-# InProcessExecutor is the default
-async with Session(storage=storage) as session:
-    result = await session.run(agent_code)
+Need maximum speed AND trust the code completely? → InProcessExecutor
+  - No isolation (runs in your process)
+  - Only for trusted code you control
 ```
 
-### Configuration
-
-```python
-from pathlib import Path
-from py_code_mode.execution import InProcessExecutor, InProcessConfig
-
-config = InProcessConfig(
-    tools_path=Path("./tools"),  # Path to YAML tool definitions
-    deps=["pandas>=2.0", "numpy"],  # Pre-configured dependencies
-    default_timeout=30.0,  # Default execution timeout in seconds
-    allow_runtime_deps=True  # Allow agents to install packages at runtime
-)
-
-executor = InProcessExecutor(config=config)
-
-async with Session(storage=storage, executor=executor) as session:
-    result = await session.run(agent_code)
-```
-
-### When to Use
-
-- ✓ Development and prototyping
-- ✓ Trusted agent code
-- ✓ Performance-critical applications
-- ✓ Simple deployment requirements
-
-### When NOT to Use
-
-- ✗ Untrusted agent code
-- ✗ Need process isolation
-- ✗ Multi-tenant environments
-- ✗ Resource limiting requirements
+| Requirement | Subprocess | Container | InProcess |
+|-------------|------------|-----------|-----------|
+| **Recommended for most users** | **Yes** | | |
+| Process isolation | Yes | Yes | No |
+| Crash recovery | Yes | Yes | No |
+| Container isolation | No | Yes | No |
+| No Docker required | Yes | No | Yes |
+| Resource limits | Partial | Full | No |
+| Untrusted code | No | Yes | No |
 
 ---
 
-## SubprocessExecutor
+## SubprocessExecutor (Recommended)
 
-Code runs in a Jupyter kernel subprocess. Process-level isolation without Docker overhead.
+Code runs in a Jupyter kernel subprocess. Process-level isolation without Docker overhead. **This is the recommended starting point for most users.**
 
 ```python
 from pathlib import Path
+from py_code_mode import Session, FileStorage
 from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
+
+storage = FileStorage(base_path=Path("./data"))
 
 config = SubprocessConfig(
     tools_path=Path("./tools"),  # Path to YAML tool definitions
-    python_version="3.11",  # Python version for the subprocess
-    default_timeout=120.0,  # Execution timeout
-    allow_runtime_deps=False  # Lock down dependency installation
+    default_timeout=120.0,       # Execution timeout
 )
 
 executor = SubprocessExecutor(config)
@@ -73,12 +56,13 @@ async with Session(storage=storage, executor=executor) as session:
     result = await session.run(agent_code)
 ```
 
-### Features
+### Why SubprocessExecutor is the Default Choice
 
-- **Process isolation** - Agent code runs in separate process
-- **Clean environment** - Fresh venv created for each executor
-- **Crash recovery** - Main process unaffected by agent crashes
-- **Resource separation** - Subprocess can be monitored/limited separately
+- **Crash recovery** - If agent code crashes, your main process continues running
+- **Clean environment** - Fresh virtual environment for predictable behavior
+- **Process isolation** - Agent code can't interfere with your application state
+- **No Docker required** - Works everywhere Python runs
+- **Production-ready** - Used by the MCP server for Claude Code integration
 
 ### Configuration Options
 
@@ -95,10 +79,10 @@ SubprocessConfig(
 
 ### When to Use
 
-- ✓ Need isolation without Docker complexity
-- ✓ Development on systems without Docker
-- ✓ Moderate trust in agent code
-- ✓ Want crash recovery without containers
+- **Development and prototyping** - Isolated environment prevents accidents
+- **MCP server deployments** - Default for Claude Code integration
+- **CI/CD pipelines** - No Docker dependency
+- **Any situation where you want safety without complexity**
 
 ### Limitations
 
@@ -111,18 +95,22 @@ SubprocessConfig(
 
 ## ContainerExecutor
 
-Code runs in a Docker container. Full isolation for untrusted code.
+Code runs in a Docker container. Full isolation for untrusted code and production deployments.
 
 ```python
 from pathlib import Path
+import os
+from py_code_mode import Session, FileStorage
 from py_code_mode.execution import ContainerExecutor, ContainerConfig
+
+storage = FileStorage(base_path=Path("./data"))
 
 config = ContainerConfig(
     tools_path=Path("./tools"),  # Path to YAML tool definitions (mounted into container)
-    deps=["requests"],  # Pre-configured dependencies
-    timeout=60.0,  # Execution timeout
-    allow_runtime_deps=False,  # Lock down deps for security
-    auth_token="your-secret-token",  # API authentication (required for production)
+    deps=["requests"],           # Pre-configured dependencies
+    timeout=60.0,                # Execution timeout
+    allow_runtime_deps=False,    # Lock down deps for security
+    auth_token=os.getenv("CONTAINER_AUTH_TOKEN"),  # Required for production
 )
 
 executor = ContainerExecutor(config)
@@ -135,6 +123,7 @@ For local development, you can disable auth:
 
 ```python
 config = ContainerConfig(
+    tools_path=Path("./tools"),
     auth_disabled=True,  # Only for local development!
 )
 ```
@@ -151,14 +140,14 @@ config = ContainerConfig(
 ```python
 ContainerConfig(
     tools_path=Path("./tools"),  # Path to YAML tool definitions (mounted)
-    deps=["requests"],          # Pre-configured dependencies
-    timeout=60.0,               # Execution timeout
-    allow_runtime_deps=False,   # Lock down package installation
-    auth_token="secret",        # Bearer token for API auth (production)
-    auth_disabled=False,        # Set True for local dev only (no auth)
-    network_disabled=False,     # Disable container network access
-    memory_limit="512m",        # Container memory limit
-    cpu_quota=None              # CPU quota (default: no limit)
+    deps=["requests"],           # Pre-configured dependencies
+    timeout=60.0,                # Execution timeout
+    allow_runtime_deps=False,    # Lock down package installation
+    auth_token="secret",         # Bearer token for API auth (production)
+    auth_disabled=False,         # Set True for local dev only (no auth)
+    network_disabled=False,      # Disable container network access
+    memory_limit="512m",         # Container memory limit
+    cpu_quota=None               # CPU quota (default: no limit)
 )
 ```
 
@@ -188,11 +177,10 @@ docker build -t py-code-mode:tools -f docker/Dockerfile.tools .
 
 ### When to Use
 
-- ✓ Untrusted agent code
-- ✓ Production deployments
-- ✓ Multi-tenant environments
-- ✓ Need resource isolation
-- ✓ Compliance/security requirements
+- **Untrusted agent code** - Users you don't control
+- **Production deployments** - Maximum security
+- **Multi-tenant environments** - Tenant isolation
+- **Compliance requirements** - Audit-friendly isolation
 
 ### Limitations
 
@@ -203,44 +191,100 @@ docker build -t py-code-mode:tools -f docker/Dockerfile.tools .
 
 ---
 
-## Choosing an Executor
+## InProcessExecutor
 
-| Requirement | InProcess | Subprocess | Container |
-|-------------|-----------|------------|-----------|
-| Fastest execution | ✓ | | |
-| Process isolation | | ✓ | ✓ |
-| Container isolation | | | ✓ |
-| No Docker required | ✓ | ✓ | |
-| Crash recovery | | ✓ | ✓ |
-| Resource limits | | Partial | ✓ |
-| Untrusted code | | | ✓ |
-| Simple deployment | ✓ | ✓ | |
+Code runs in the same Python process as your application. Fastest option, but provides **no isolation**.
+
+> **Warning:** InProcessExecutor runs agent code directly in your process. A crash in agent code crashes your application. Only use this when you fully trust the code and need maximum performance.
+
+```python
+from pathlib import Path
+from py_code_mode import Session, FileStorage
+from py_code_mode.execution import InProcessExecutor, InProcessConfig
+
+storage = FileStorage(base_path=Path("./data"))
+
+config = InProcessConfig(
+    tools_path=Path("./tools"),  # Path to YAML tool definitions
+    deps=["pandas>=2.0", "numpy"],  # Pre-configured dependencies
+    default_timeout=30.0,        # Default execution timeout in seconds
+    allow_runtime_deps=True      # Allow agents to install packages at runtime
+)
+
+executor = InProcessExecutor(config)
+
+async with Session(storage=storage, executor=executor) as session:
+    result = await session.run(agent_code)
+```
+
+### Configuration Options
+
+```python
+InProcessConfig(
+    tools_path=Path("./tools"),  # Path to YAML tool definitions
+    deps=["pandas>=2.0", "numpy"],  # Pre-configured dependencies
+    default_timeout=30.0,        # Default execution timeout in seconds
+    allow_runtime_deps=True      # Allow agents to install packages at runtime
+)
+```
+
+### When to Use
+
+- **Trusted code only** - Code you wrote or fully control
+- **Performance-critical** - When subprocess overhead matters
+- **Debugging** - Easier to debug in single process
+- **Simple scripts** - Quick experiments where isolation doesn't matter
+
+### When NOT to Use
+
+- **Untrusted agent code** - Use ContainerExecutor instead
+- **Production with user-generated code** - Use ContainerExecutor
+- **Long-running services** - Crashes take down your app
+- **Multi-tenant** - No isolation between tenants
+
+### Risks
+
+| Risk | Consequence |
+|------|-------------|
+| Agent code crashes | Your entire application crashes |
+| Agent code hangs | Your application may hang |
+| Agent installs malicious package | Package runs in your process |
+| Agent modifies global state | Affects your application state |
+
+---
 
 ## Switching Executors
 
-Executors are interchangeable - same code works with any executor:
+Executors are interchangeable - the same Session code works with any executor:
 
 ```python
 from pathlib import Path
 import os
+from py_code_mode import Session, FileStorage
+from py_code_mode.execution import (
+    SubprocessExecutor, SubprocessConfig,
+    ContainerExecutor, ContainerConfig,
+    InProcessExecutor, InProcessConfig,
+)
 
+storage = FileStorage(base_path=Path("./data"))
 tools_path = Path("./tools")
 
-# Development: InProcess for speed
-config = InProcessConfig(tools_path=tools_path)
-executor = InProcessExecutor(config)
-async with Session(storage=storage, executor=executor) as session:
-    result = await session.run(code)
-
-# Testing: Subprocess for isolation
+# Development: Subprocess for safety (recommended)
 config = SubprocessConfig(tools_path=tools_path)
 executor = SubprocessExecutor(config)
 async with Session(storage=storage, executor=executor) as session:
     result = await session.run(code)
 
-# Production: Container for security (with auth)
+# Production: Container for maximum security
 config = ContainerConfig(tools_path=tools_path, auth_token=os.getenv("AUTH_TOKEN"))
 executor = ContainerExecutor(config)
+async with Session(storage=storage, executor=executor) as session:
+    result = await session.run(code)
+
+# Trusted code only: InProcess for speed
+config = InProcessConfig(tools_path=tools_path)
+executor = InProcessExecutor(config)
 async with Session(storage=storage, executor=executor) as session:
     result = await session.run(code)
 ```
@@ -270,16 +314,16 @@ For ContainerExecutor and SubprocessExecutor, cleanup includes:
 ## Best Practices
 
 **Development:**
-- Use InProcessExecutor for fast iteration
-- Switch to SubprocessExecutor when testing isolation
+- Use SubprocessExecutor for safe iteration with crash recovery
+- Switch to InProcessExecutor only if debugging requires it
 
 **Production:**
 - Use ContainerExecutor for untrusted code
+- Use SubprocessExecutor for trusted internal agents
 - Pre-configure dependencies with `allow_runtime_deps=False`
 - Set appropriate timeouts based on expected workload
 - Monitor executor health and resource usage
 
 **Testing:**
-- Test with all executors to ensure compatibility
-- Use SubprocessExecutor for integration tests
+- Test with SubprocessExecutor to catch isolation issues early
 - Use ContainerExecutor to validate production behavior
