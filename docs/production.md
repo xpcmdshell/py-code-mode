@@ -18,19 +18,14 @@ from py_code_mode.execution import ContainerExecutor, ContainerConfig
 # Shared skill library
 storage = RedisStorage(url=os.getenv("REDIS_URL"), prefix="production")
 
-# Isolated execution with authentication
+# Isolated execution with authentication and pre-configured deps
 config = ContainerConfig(
     timeout=60.0,
     allow_runtime_deps=False,  # Lock down package installation
     auth_token=os.getenv("CONTAINER_AUTH_TOKEN"),  # Required for production
+    deps=["pandas>=2.0", "numpy", "requests"],  # Pre-configured dependencies
 )
 executor = ContainerExecutor(config)
-
-# Pre-configure dependencies once
-deps_store = storage.get_deps_store()
-deps_store.add("pandas>=2.0")
-deps_store.add("numpy")
-deps_store.add("requests")
 
 async with Session(storage=storage, executor=executor, sync_deps_on_start=True) as session:
     result = await session.run(agent_code)
@@ -63,13 +58,9 @@ Prevent agents from installing arbitrary packages:
 
 ```python
 config = ContainerConfig(
-    allow_runtime_deps=False  # Block runtime installation
+    allow_runtime_deps=False,  # Block runtime installation
+    deps=["pandas>=2.0", "requests>=2.28.0"],  # Pre-configure allowed packages
 )
-
-# Pre-configure allowed packages via storage
-deps_store = storage.get_deps_store()
-deps_store.add("pandas>=2.0")
-deps_store.add("requests>=2.28.0")
 ```
 
 ### 3. Use Container Isolation

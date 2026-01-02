@@ -45,14 +45,14 @@ The storage directory will contain `skills/` and `artifacts/` subdirectories.
 ```python
 from pathlib import Path
 from py_code_mode import Session, FileStorage
-from py_code_mode.execution import InProcessConfig, InProcessExecutor
+from py_code_mode.execution import SubprocessConfig, SubprocessExecutor
 
 # Create storage backend for skills and artifacts
 storage = FileStorage(base_path=Path("./data"))
 
-# Configure executor with tools path
-config = InProcessConfig(tools_path=Path("./tools"))
-executor = InProcessExecutor(config=config)
+# Configure executor with tools path (SubprocessExecutor recommended for most use cases)
+config = SubprocessConfig(tools_path=Path("./tools"))
+executor = SubprocessExecutor(config=config)
 
 # Create a session
 async with Session(storage=storage, executor=executor) as session:

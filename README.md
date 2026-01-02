@@ -28,10 +28,15 @@ Over time, agents build a library of reliable capabilities. Simple skills become
 ```python
 from pathlib import Path
 from py_code_mode import Session, FileStorage
+from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
 
 storage = FileStorage(base_path=Path("./data"))
 
-async with Session(storage=storage) as session:
+# SubprocessExecutor provides process isolation (recommended)
+config = SubprocessConfig(tools_path=Path("./tools"))
+executor = SubprocessExecutor(config=config)
+
+async with Session(storage=storage, executor=executor) as session:
     # Agent writes code with tools, skills, and artifacts available
     result = await session.run('''
 # Search for existing skills
@@ -111,7 +116,7 @@ For MCP server installation, see [Getting Started](./docs/getting-started.md).
 - **[Skills](./docs/skills.md)** - Creating, composing, and managing workflows
 - **[Artifacts](./docs/artifacts.md)** - Persistent data storage patterns
 - **[Dependencies](./docs/dependencies.md)** - Managing Python packages
-- **[Executors](./docs/executors.md)** - InProcess, Subprocess, Container execution
+- **[Executors](./docs/executors.md)** - Subprocess, Container, InProcess execution
 - **[Storage](./docs/storage.md)** - File vs Redis storage backends
 - **[Production](./docs/production.md)** - Deployment and scaling patterns
 - **[Architecture](./docs/ARCHITECTURE.md)** - System design and separation of concerns

@@ -129,42 +129,24 @@ tenant_b_storage = RedisStorage(url="redis://localhost:6379", prefix="tenant-b")
 
 ## Migrating Between Storage Backends
 
+Use the CLI tools for migration (recommended):
+
 ### File to Redis
 
-```python
-from pathlib import Path
-from py_code_mode import FileStorage, RedisStorage
-
-# Load from file storage
-file_storage = FileStorage(base_path=Path("./data"))
-file_skill_store = file_storage.get_skill_store()
-skills = file_skill_store.list_all()
-
-# Save to Redis storage
-redis_storage = RedisStorage(url="redis://localhost:6379", prefix="production")
-redis_skill_store = redis_storage.get_skill_store()
-
-for skill in skills:
-    redis_skill_store.save(skill)
+```bash
+python -m py_code_mode.store bootstrap \
+  --source ./skills \
+  --target redis://localhost:6379 \
+  --prefix production
 ```
 
 ### Redis to File
 
-```python
-from pathlib import Path
-from py_code_mode import FileStorage, RedisStorage
-
-# Load from Redis
-redis_storage = RedisStorage(url="redis://localhost:6379", prefix="production")
-redis_skill_store = redis_storage.get_skill_store()
-skills = redis_skill_store.list_all()
-
-# Save to file storage
-file_storage = FileStorage(base_path=Path("./backup"))
-file_skill_store = file_storage.get_skill_store()
-
-for skill in skills:
-    file_skill_store.save(skill)
+```bash
+python -m py_code_mode.store pull \
+  --target redis://localhost:6379 \
+  --prefix production \
+  --dest ./skills-backup
 ```
 
 ---
@@ -244,7 +226,7 @@ Storage backends implement a common protocol, making them interchangeable:
 ```python
 from pathlib import Path
 from py_code_mode import Session, FileStorage, RedisStorage
-from py_code_mode.execution import InProcessConfig, InProcessExecutor
+from py_code_mode.execution import SubprocessConfig, SubprocessExecutor
 
 def create_session(storage_type: str, tools_path: Path):
     # Choose storage based on environment
@@ -254,8 +236,8 @@ def create_session(storage_type: str, tools_path: Path):
         storage = RedisStorage(url="redis://localhost:6379", prefix="app")
 
     # Executor config is the same for both storage types
-    config = InProcessConfig(tools_path=tools_path)
-    executor = InProcessExecutor(config=config)
+    config = SubprocessConfig(tools_path=tools_path)
+    executor = SubprocessExecutor(config=config)
 
     return Session(storage=storage, executor=executor)
 ```

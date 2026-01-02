@@ -286,21 +286,17 @@ async with Session(storage=storage) as session:
     )
 ```
 
-For host-side skill management without a session, use `PythonSkill.from_source()`:
+For advanced use cases where you need to create skills outside of agent code execution, use `session.add_skill()`:
 
 ```python
-from py_code_mode.skills import PythonSkill
-
-skill = PythonSkill.from_source(
-    name="greet",
-    source='''def run(name: str = "World") -> str:
+async with Session(storage=storage, executor=executor) as session:
+    await session.add_skill(
+        name="greet",
+        source='''def run(name: str = "World") -> str:
     return f"Hello, {name}!"
 ''',
-    description="Generate a greeting message"
-)
-
-skill_store = storage.get_skill_store()
-skill_store.save(skill)
+        description="Generate a greeting message"
+    )
 ```
 
 ## Best Practices

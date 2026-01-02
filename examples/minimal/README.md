@@ -7,7 +7,7 @@ A simple Claude-powered agent with CLI tool execution. Shows the core py-code-mo
 The agent can:
 1. Receive a task from you
 2. Write Python code to accomplish it
-3. Execute code with access to CLI tools via `tools.call()`
+3. Execute code with access to CLI tools via `tools.<name>(...)`
 4. Iterate on results until it has an answer
 
 ## Prerequisites
@@ -62,30 +62,37 @@ description: HTTP client for making requests
 args: "-s {url}"
 ```
 
-### 2. Storage + Session
+### 2. Storage + Executor + Session
 
-Tools and skills are loaded via storage abstraction:
+Storage handles skills and artifacts. Tools come from executor config:
 
 ```python
 from pathlib import Path
 from py_code_mode import Session, FileStorage
+from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
 
-# File-based storage
+# File-based storage for skills and artifacts
 storage = FileStorage(base_path=Path("./configs"))
 
-# Create session (defaults to in-process execution)
-async with Session(storage=storage) as session:
+# Executor config loads tools from tools_path
+config = SubprocessConfig(tools_path=Path("./configs/tools"))
+executor = SubprocessExecutor(config=config)
+
+async with Session(storage=storage, executor=executor) as session:
     result = await session.run('tools.curl(url="...")')
 ```
 
-Or with Redis:
+Or with Redis storage:
 
 ```python
 from py_code_mode import Session, RedisStorage
+from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
 
 storage = RedisStorage(url="redis://localhost:6379", prefix="myapp")
+config = SubprocessConfig(tools_path=Path("./tools"))
+executor = SubprocessExecutor(config=config)
 
-async with Session(storage=storage) as session:
+async with Session(storage=storage, executor=executor) as session:
     result = await session.run('tools.curl(url="...")')
 ```
 
@@ -94,11 +101,11 @@ async with Session(storage=storage) as session:
 When the agent writes code, it has access to `tools`:
 
 ```python
-# Pythonic style (recommended)
+# Call tools with keyword arguments
 response = tools.curl(url="https://api.example.com")
 
-# Or dict-based style
-response = tools.call("curl", {"url": "https://api.example.com"})
+# Or use recipes for common patterns
+response = tools.curl.get(url="https://api.example.com")
 
 import json
 data = json.loads(response)

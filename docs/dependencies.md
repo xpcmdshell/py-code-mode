@@ -20,22 +20,24 @@ deps.sync()
 
 ## Pre-configuring Dependencies
 
-Configure dependencies before session creation for predictable environments:
+Configure dependencies via executor config for predictable environments:
 
 ```python
 from pathlib import Path
 from py_code_mode import Session, FileStorage
+from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
 
 storage = FileStorage(base_path=Path("./data"))
 
-# Pre-configure before session
-deps_store = storage.get_deps_store()
-deps_store.add("pandas>=2.0")
-deps_store.add("numpy")
-deps_store.add("requests")
+# Pre-configure deps in executor config
+config = SubprocessConfig(
+    tools_path=Path("./tools"),
+    deps=["pandas>=2.0", "numpy", "requests"],  # Pre-configured dependencies
+)
+executor = SubprocessExecutor(config=config)
 
-# Auto-sync on session start
-async with Session(storage=storage, sync_deps_on_start=True) as session:
+# Auto-sync on session start installs pre-configured deps
+async with Session(storage=storage, executor=executor, sync_deps_on_start=True) as session:
     # All pre-configured packages are installed
     result = await session.run("import pandas; print(pandas.__version__)")
 ```
@@ -45,11 +47,11 @@ async with Session(storage=storage, sync_deps_on_start=True) as session:
 For security-sensitive environments, disable runtime package installation:
 
 ```python
-from py_code_mode.execution import InProcessExecutor, InProcessConfig
+from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
 
 # Lock down deps - no runtime installation allowed
-config = InProcessConfig(allow_runtime_deps=False)
-executor = InProcessExecutor(config=config)
+config = SubprocessConfig(allow_runtime_deps=False)
+executor = SubprocessExecutor(config=config)
 
 async with Session(storage=storage, executor=executor) as session:
     # deps.add() and deps.remove() will raise RuntimeDepsDisabledError
@@ -59,7 +61,7 @@ async with Session(storage=storage, executor=executor) as session:
 ```
 
 This pattern allows you to:
-1. Pre-configure allowed dependencies via storage
+1. Pre-configure allowed dependencies via executor config (`deps=[...]`)
 2. Start session with `sync_deps_on_start=True` to install them
 3. Lock down runtime modifications to prevent agent from installing arbitrary packages
 
@@ -128,16 +130,17 @@ This prevents agents from:
 
 **Pre-configure for production:**
 ```python
-# Production: pre-configure deps, disable runtime changes
-deps_store.add("pandas>=2.0")
-deps_store.add("numpy")
-config = ContainerConfig(allow_runtime_deps=False)
+# Production: pre-configure deps via config, disable runtime changes
+config = ContainerConfig(
+    deps=["pandas>=2.0", "numpy"],
+    allow_runtime_deps=False
+)
 ```
 
 **Allow runtime for development:**
 ```python
 # Development: let agent install as needed
-config = InProcessConfig(allow_runtime_deps=True)
+config = SubprocessConfig(allow_runtime_deps=True)
 ```
 
 **Version pinning:**
@@ -183,5 +186,5 @@ Different executors handle dependencies differently:
 - Check network connectivity (for downloading packages)
 
 **Runtime deps disabled errors:**
-- Pre-configure dependencies via `storage.get_deps_store()`
-- Or enable runtime deps in executor config
+- Pre-configure dependencies via executor config: `config = SubprocessConfig(deps=["package"])`
+- Or enable runtime deps: `config = SubprocessConfig(allow_runtime_deps=True)`
