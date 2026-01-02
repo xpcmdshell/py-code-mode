@@ -7,21 +7,138 @@ Complete reference for the Session class - the primary interface for py-code-mod
 Session wraps a storage backend and executor, providing a unified API for code execution with tools, skills, and artifacts.
 
 ```python
-from pathlib import Path
-from py_code_mode import Session, FileStorage
-from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
+from py_code_mode import Session
 
-storage = FileStorage(base_path=Path("./data"))
-config = SubprocessConfig(tools_path=Path("./tools"))
-executor = SubprocessExecutor(config=config)
-
-async with Session(storage=storage, executor=executor) as session:
+# Simplest: auto-discovers tools/, skills/, artifacts/, requirements.txt
+async with Session.from_base("./.code-mode") as session:
     result = await session.run("tools.curl.get(url='https://api.github.com')")
 ```
 
 ---
 
-## Constructor
+## Convenience Constructors
+
+### from_base()
+
+One-liner for local development. Auto-discovers resources from a workspace directory.
+
+```python
+Session.from_base(
+    base: str | Path,
+    *,
+    timeout: float | None = 30.0,
+    extra_deps: tuple[str, ...] | None = None,
+    allow_runtime_deps: bool = True,
+    sync_deps_on_start: bool = False,
+) -> Session
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `base` | `str \| Path` | Workspace directory path. |
+| `timeout` | `float \| None` | Execution timeout in seconds. None = unlimited. |
+| `extra_deps` | `tuple[str, ...]` | Additional packages beyond requirements.txt. |
+| `allow_runtime_deps` | `bool` | Allow deps.add()/remove() at runtime. |
+| `sync_deps_on_start` | `bool` | Install configured deps when session starts. |
+
+**Auto-discovers:**
+- `{base}/tools/` - Tool definitions (YAML files)
+- `{base}/skills/` - Skill files (Python)
+- `{base}/artifacts/` - Persistent data storage
+- `{base}/requirements.txt` - Pre-configured dependencies
+
+**Example:**
+
+```python
+async with Session.from_base("./.code-mode") as session:
+    await session.run("tools.list()")
+```
+
+### subprocess()
+
+Process isolation via subprocess with dedicated virtualenv.
+
+```python
+Session.subprocess(
+    storage: StorageBackend | None = None,
+    storage_path: str | Path | None = None,
+    tools_path: str | Path | None = None,
+    sync_deps_on_start: bool = False,
+    python_version: str | None = None,
+    default_timeout: float | None = 60.0,
+    startup_timeout: float = 30.0,
+    allow_runtime_deps: bool = True,
+    deps: tuple[str, ...] | None = None,
+    deps_file: str | Path | None = None,
+    cache_venv: bool = True,
+) -> Session
+```
+
+**Example:**
+
+```python
+async with Session.subprocess(
+    storage_path="./data",
+    tools_path="./tools",
+    deps=("pandas", "numpy"),
+) as session:
+    await session.run("import pandas; pandas.__version__")
+```
+
+### in_process()
+
+Fastest execution, no isolation. Use when you trust the code completely.
+
+```python
+Session.in_process(
+    storage: StorageBackend | None = None,
+    storage_path: str | Path | None = None,
+    tools_path: str | Path | None = None,
+    sync_deps_on_start: bool = False,
+    default_timeout: float | None = 30.0,
+    allow_runtime_deps: bool = True,
+    deps: tuple[str, ...] | None = None,
+    deps_file: str | Path | None = None,
+) -> Session
+```
+
+### container()
+
+Docker isolation. Most secure, recommended for untrusted code.
+
+```python
+Session.container(
+    storage: StorageBackend | None = None,
+    storage_path: str | Path | None = None,
+    tools_path: str | Path | None = None,
+    sync_deps_on_start: bool = False,
+    image: str = "py-code-mode-tools:latest",
+    timeout: float = 30.0,
+    startup_timeout: float = 60.0,
+    allow_runtime_deps: bool = True,
+    deps: tuple[str, ...] | None = None,
+    deps_file: str | Path | None = None,
+    remote_url: str | None = None,
+    auth_token: str | None = None,
+    auth_disabled: bool = False,
+) -> Session
+```
+
+**Example:**
+
+```python
+async with Session.container(
+    storage_path="./data",
+    image="my-secure-image:latest",
+) as session:
+    await session.run("import os; os.getcwd()")
+```
+
+---
+
+## Direct Constructor
+
+For full control, use the constructor directly with explicit storage and executor.
 
 ```python
 Session(
@@ -34,8 +151,21 @@ Session(
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `storage` | `StorageBackend` | Required. FileStorage or RedisStorage instance. |
-| `executor` | `Executor` | Optional. Defaults to SubprocessExecutor if not provided. |
+| `executor` | `Executor` | Optional. Defaults to InProcessExecutor. |
 | `sync_deps_on_start` | `bool` | If True, install pre-configured deps when session starts. |
+
+**Example:**
+
+```python
+from py_code_mode import Session, FileStorage, SubprocessExecutor, SubprocessConfig
+
+storage = FileStorage(base_path=Path("./data"))
+config = SubprocessConfig(tools_path=Path("./tools"))
+executor = SubprocessExecutor(config=config)
+
+async with Session(storage=storage, executor=executor) as session:
+    ...
+```
 
 ---
 

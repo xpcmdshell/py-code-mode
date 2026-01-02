@@ -43,20 +43,10 @@ The storage directory will contain `skills/` and `artifacts/` subdirectories.
 ### As a Python Library
 
 ```python
-from pathlib import Path
-from py_code_mode import Session, FileStorage
-from py_code_mode.execution import SubprocessConfig, SubprocessExecutor
+from py_code_mode import Session
 
-# Create storage backend for skills and artifacts
-storage = FileStorage(base_path=Path("./data"))
-
-# Configure executor with tools path (SubprocessExecutor recommended for most use cases)
-config = SubprocessConfig(tools_path=Path("./tools"))
-executor = SubprocessExecutor(config=config)
-
-# Create a session
-async with Session(storage=storage, executor=executor) as session:
-    # Run agent code
+# One line setup - auto-discovers tools/, skills/, artifacts/, requirements.txt
+async with Session.from_base("./data") as session:
     result = await session.run('''
 # Search for existing skills
 results = skills.search("data processing")
@@ -79,6 +69,18 @@ print(greeting)
 ''')
 
     print(f"Result: {result.value}")
+```
+
+**Need more control?** Use explicit constructors:
+
+```python
+# Process isolation (recommended for untrusted code)
+async with Session.subprocess(storage_path="./data", tools_path="./tools") as session:
+    ...
+
+# Docker isolation (most secure)
+async with Session.container(storage_path="./data", image="my-image") as session:
+    ...
 ```
 
 ### With Claude Code (MCP)
