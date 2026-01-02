@@ -82,7 +82,7 @@ See [Session API](./docs/session-api.md) and [Executors](./docs/executors.md) fo
 **Also ships as an MCP server for Claude Code:**
 
 ```bash
-claude mcp add py-code-mode -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.9.0 py-code-mode-mcp
+claude mcp add py-code-mode -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.9.0 py-code-mode-mcp --base ~/.code-mode
 ```
 
 ## Features
