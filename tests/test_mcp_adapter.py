@@ -429,10 +429,10 @@ class TestMCPAdapterNamespacing:
     @pytest.mark.asyncio
     async def test_connect_stdio_with_namespace(self) -> None:
         """connect_stdio accepts namespace parameter."""
-        from py_code_mode.tools.adapters.mcp import MCPAdapter
-
         # Verify the method signature accepts namespace
         import inspect
+
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         sig = inspect.signature(MCPAdapter.connect_stdio)
         assert "namespace" in sig.parameters
@@ -440,10 +440,10 @@ class TestMCPAdapterNamespacing:
     @pytest.mark.asyncio
     async def test_connect_sse_with_namespace(self) -> None:
         """connect_sse accepts namespace parameter."""
-        from py_code_mode.tools.adapters.mcp import MCPAdapter
-
         # Verify the method signature accepts namespace
         import inspect
+
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         sig = inspect.signature(MCPAdapter.connect_sse)
         assert "namespace" in sig.parameters
