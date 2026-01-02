@@ -111,21 +111,31 @@ For MCP server installation, see [Getting Started](./docs/getting-started.md).
 
 ## Documentation
 
+**Getting Started:**
 - **[Getting Started](./docs/getting-started.md)** - Installation, first session, basic usage
+- **[Session API](./docs/session-api.md)** - Complete Session method reference
+- **[CLI Reference](./docs/cli-reference.md)** - MCP server and store CLI commands
+
+**Core Concepts:**
 - **[Tools](./docs/tools.md)** - CLI, MCP, and REST API adapters
 - **[Skills](./docs/skills.md)** - Creating, composing, and managing workflows
 - **[Artifacts](./docs/artifacts.md)** - Persistent data storage patterns
 - **[Dependencies](./docs/dependencies.md)** - Managing Python packages
+
+**Deployment:**
 - **[Executors](./docs/executors.md)** - Subprocess, Container, InProcess execution
 - **[Storage](./docs/storage.md)** - File vs Redis storage backends
+- **[Integrations](./docs/integrations.md)** - Framework integration patterns
 - **[Production](./docs/production.md)** - Deployment and scaling patterns
+
+**Reference:**
 - **[Architecture](./docs/ARCHITECTURE.md)** - System design and separation of concerns
 
 ## Examples
 
 - **[minimal/](./examples/minimal/)** - Simple agent implementation (~100 lines)
 - **[subprocess/](./examples/subprocess/)** - Process isolation without Docker
-- **[autogen-direct/](./examples/autogen-direct/)** - AutoGen framework integration
+- **[deps/](./examples/deps/)** - Dependency management patterns
 - **[azure-container-apps/](./examples/azure-container-apps/)** - Production deployment
 
 ## License
