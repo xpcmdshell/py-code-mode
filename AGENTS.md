@@ -1,5 +1,30 @@
 # Agent Instructions
 
+## Agent-Managed Beads (User Preference)
+
+**The user does NOT interact with bd directly.** Agent handles all issue tracking automatically.
+
+### On session start:
+1. Run `bd ready` to check available tasks
+2. Present options to user in plain language
+3. If no tasks exist, ask what to work on and create issues
+
+### During work:
+- Create parent issues for features: `bd create "Feature: X" -p 0`
+- Create sub-tasks: `bd create "Subtask" -p 1 --parent <id>`
+- Link blockers: `bd dep add <blocked-id> <blocker-id>`
+- Claim work: `bd update <id> --status in_progress`
+
+### On task completion:
+- Close finished work: `bd close <id>`
+- Run `bd ready` to suggest next task
+- Present next options to user
+
+### Key principle:
+User says what they want in plain English. Agent translates to bd commands, executes them, and reports back in plain English.
+
+---
+
 ## Branch Policy
 
 **The `main` branch is protected.** You cannot push directly to main.
