@@ -26,18 +26,10 @@ Over time, agents build a library of reliable capabilities. Simple skills become
 ## Quick Start
 
 ```python
-from pathlib import Path
-from py_code_mode import Session, FileStorage
-from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
+from py_code_mode import Session
 
-storage = FileStorage(base_path=Path("./data"))
-
-# SubprocessExecutor provides process isolation (recommended)
-config = SubprocessConfig(tools_path=Path("./tools"))
-executor = SubprocessExecutor(config=config)
-
-async with Session(storage=storage, executor=executor) as session:
-    # Agent writes code with tools, skills, and artifacts available
+# One line setup - auto-discovers tools/, skills/, artifacts/, requirements.txt
+async with Session.from_base("./.code-mode") as session:
     result = await session.run('''
 # Search for existing skills
 results = skills.search("github analysis")
@@ -59,6 +51,33 @@ skills.create(
 )
 ''')
 ```
+
+**Need process isolation?** Use subprocess:
+
+```python
+async with Session.subprocess("~/.code-mode") as session:
+    ...
+```
+
+**Full control?** The convenience methods above are shortcuts. For production deployments, custom storage backends, or container isolation, use the component APIs directly:
+
+```python
+from py_code_mode import Session, FileStorage, RedisStorage
+from py_code_mode import SubprocessExecutor, SubprocessConfig, ContainerExecutor, ContainerConfig
+
+# Custom storage
+storage = RedisStorage(url="redis://localhost:6379", prefix="myapp")
+
+# Custom executor  
+config = SubprocessConfig(tools_path="./tools", python_version="3.11", cache_venv=True)
+executor = SubprocessExecutor(config=config)
+
+# Full control
+async with Session(storage=storage, executor=executor) as session:
+    ...
+```
+
+See [Session API](./docs/session-api.md) and [Executors](./docs/executors.md) for complete documentation.
 
 **Also ships as an MCP server for Claude Code:**
 

@@ -7,6 +7,7 @@ into the executor's runtime environment.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from py_code_mode.execution import Executor
@@ -33,27 +34,30 @@ class Session:
 
     def __init__(
         self,
-        storage: StorageBackend | None = None,
+        storage: StorageBackend,
         executor: Executor | None = None,
         sync_deps_on_start: bool = False,
     ) -> None:
         """Initialize session.
 
         Args:
-            storage: Storage backend (FileStorage or RedisStorage).
-                    Required (cannot be None).
-            executor: Executor instance (InProcessExecutor, ContainerExecutor).
-                     Default: InProcessExecutor()
+            storage: Storage backend (FileStorage or RedisStorage). Required.
+            executor: Executor instance (InProcessExecutor, SubprocessExecutor,
+                     ContainerExecutor). Default: InProcessExecutor()
             sync_deps_on_start: If True, install all configured dependencies
                                when session starts. Default: False.
 
         Raises:
-            TypeError: If executor is a string (unsupported).
-            ValueError: If storage is None.
+            TypeError: If executor is a string (unsupported) or wrong type.
+
+        For convenience, use class methods instead of __init__ directly:
+            - Session.from_base(path) - auto-discover tools/skills/artifacts
+            - Session.subprocess(...) - subprocess isolation (recommended)
+            - Session.in_process(...) - same process (fastest, no isolation)
+            - Session.container(...) - Docker isolation (most secure)
         """
-        # Validate storage
         if storage is None:
-            raise ValueError("storage parameter is required and cannot be None")
+            raise TypeError("storage is required (use FileStorage or RedisStorage)")
 
         # Reject string-based executor selection
         if isinstance(executor, str):
@@ -61,6 +65,7 @@ class Session:
                 f"String-based executor selection is no longer supported. "
                 f"Use typed executor instances instead:\n"
                 f"  Session(storage=storage, executor=InProcessExecutor())\n"
+                f"  Session(storage=storage, executor=SubprocessExecutor(config))\n"
                 f"  Session(storage=storage, executor=ContainerExecutor(config))\n"
                 f"Got: executor={executor!r}"
             )
@@ -77,6 +82,191 @@ class Session:
         self._started = False
         self._closed = False
         self._sync_deps_on_start = sync_deps_on_start
+
+    @classmethod
+    def from_base(
+        cls,
+        base_path: str | Path,
+        *,
+        timeout: float | None = 30.0,
+        extra_deps: tuple[str, ...] | None = None,
+        allow_runtime_deps: bool = True,
+        sync_deps_on_start: bool = False,
+    ) -> Session:
+        """Convenience constructor for local development.
+
+        Auto-discovers from workspace directory:
+        - tools/ for tool definitions
+        - skills/ for skill files
+        - artifacts/ for persistent data
+        - requirements.txt for pre-configured dependencies
+
+        Uses InProcessExecutor for simplicity. For process isolation use
+        Session.subprocess().
+
+        Args:
+            base_path: Workspace directory (e.g., "~/.code-mode").
+            timeout: Execution timeout in seconds (None = unlimited).
+            extra_deps: Additional packages beyond requirements.txt.
+            allow_runtime_deps: Allow deps.add()/remove() at runtime.
+            sync_deps_on_start: Install configured deps on start.
+
+        Example:
+            async with Session.from_base("~/.code-mode") as session:
+                await session.run("tools.list()")
+        """
+        from py_code_mode.storage import FileStorage
+
+        base = Path(base_path).expanduser().resolve()
+        base.mkdir(parents=True, exist_ok=True)
+
+        tools_dir = base / "tools"
+        tools_dir.mkdir(exist_ok=True)
+
+        storage = FileStorage(base_path=base)
+
+        deps_file = base / "requirements.txt"
+        deps_file_resolved = deps_file if deps_file.is_file() else None
+
+        executor = cls._create_in_process_executor(
+            tools_path=tools_dir,
+            timeout=timeout,
+            deps=extra_deps,
+            deps_file=deps_file_resolved,
+            allow_runtime_deps=allow_runtime_deps,
+        )
+
+        return cls(storage=storage, executor=executor, sync_deps_on_start=sync_deps_on_start)
+
+    @classmethod
+    def subprocess(
+        cls,
+        base_path: str | Path,
+        *,
+        timeout: float | None = 60.0,
+        extra_deps: tuple[str, ...] | None = None,
+        allow_runtime_deps: bool = True,
+        sync_deps_on_start: bool = False,
+        python_version: str | None = None,
+        cache_venv: bool = True,
+    ) -> Session:
+        """Create session with SubprocessExecutor (process isolation).
+
+        Auto-discovers from base_path like from_base(), but uses subprocess
+        for process isolation via a dedicated virtualenv.
+
+        Args:
+            base_path: Workspace directory (e.g., "~/.code-mode").
+            timeout: Execution timeout in seconds (None = unlimited).
+            extra_deps: Additional packages beyond requirements.txt.
+            allow_runtime_deps: Allow deps.add()/remove() at runtime.
+            sync_deps_on_start: Install configured deps on start.
+            python_version: Python version for venv (e.g., "3.11").
+            cache_venv: Reuse cached venv across runs.
+
+        Raises:
+            ImportError: If jupyter_client/ipykernel not installed.
+        """
+        from py_code_mode.execution import SUBPROCESS_AVAILABLE
+
+        if not SUBPROCESS_AVAILABLE:
+            raise ImportError(
+                "SubprocessExecutor requires jupyter_client and ipykernel. "
+                "Install with: pip install jupyter_client ipykernel"
+            )
+
+        from py_code_mode.execution import SubprocessConfig, SubprocessExecutor
+        from py_code_mode.storage import FileStorage
+
+        base = Path(base_path).expanduser().resolve()
+        base.mkdir(parents=True, exist_ok=True)
+
+        tools_dir = base / "tools"
+        tools_dir.mkdir(exist_ok=True)
+
+        storage = FileStorage(base_path=base)
+
+        deps_file = base / "requirements.txt"
+        deps_file_resolved = deps_file if deps_file.is_file() else None
+
+        config = SubprocessConfig(
+            tools_path=tools_dir,
+            default_timeout=timeout,
+            deps=extra_deps,
+            deps_file=deps_file_resolved,
+            allow_runtime_deps=allow_runtime_deps,
+            python_version=python_version,
+            cache_venv=cache_venv,
+        )
+        executor = SubprocessExecutor(config=config)
+
+        return cls(storage=storage, executor=executor, sync_deps_on_start=sync_deps_on_start)
+
+    @classmethod
+    def inprocess(
+        cls,
+        base_path: str | Path,
+        *,
+        timeout: float | None = 30.0,
+        extra_deps: tuple[str, ...] | None = None,
+        allow_runtime_deps: bool = True,
+        sync_deps_on_start: bool = False,
+    ) -> Session:
+        """Create session with InProcessExecutor (fastest, no isolation).
+
+        Auto-discovers from base_path like from_base(). Runs code directly
+        in the same process - fast but no isolation.
+
+        Args:
+            base_path: Workspace directory (e.g., "~/.code-mode").
+            timeout: Execution timeout in seconds (None = unlimited).
+            extra_deps: Additional packages beyond requirements.txt.
+            allow_runtime_deps: Allow deps.add()/remove() at runtime.
+            sync_deps_on_start: Install configured deps on start.
+        """
+        from py_code_mode.execution import InProcessConfig, InProcessExecutor
+        from py_code_mode.storage import FileStorage
+
+        base = Path(base_path).expanduser().resolve()
+        base.mkdir(parents=True, exist_ok=True)
+
+        tools_dir = base / "tools"
+        tools_dir.mkdir(exist_ok=True)
+
+        storage = FileStorage(base_path=base)
+
+        deps_file = base / "requirements.txt"
+        deps_file_resolved = deps_file if deps_file.is_file() else None
+
+        config = InProcessConfig(
+            tools_path=tools_dir,
+            default_timeout=timeout,
+            deps=extra_deps,
+            deps_file=deps_file_resolved,
+            allow_runtime_deps=allow_runtime_deps,
+        )
+        executor = InProcessExecutor(config=config)
+
+        return cls(storage=storage, executor=executor, sync_deps_on_start=sync_deps_on_start)
+
+    @staticmethod
+    def _create_in_process_executor(
+        tools_path: Path | None = None,
+        timeout: float | None = 30.0,
+        deps: tuple[str, ...] | None = None,
+        deps_file: Path | None = None,
+        allow_runtime_deps: bool = True,
+    ) -> Executor:
+        from py_code_mode.execution import InProcessConfig, InProcessExecutor
+
+        config = InProcessConfig(
+            tools_path=tools_path,
+            default_timeout=timeout,
+            deps=deps,
+            deps_file=deps_file,
+            allow_runtime_deps=allow_runtime_deps,
+        )
+        return InProcessExecutor(config=config)
 
     @property
     def storage(self) -> StorageBackend:
