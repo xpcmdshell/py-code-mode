@@ -12,7 +12,7 @@ def run(count: int = 10) -> list[str]:
     import re
 
     # Fetch the HackerNews front page with enough content to get all headlines
-    html_content = tools.fetch(url="https://news.ycombinator.com/", raw=True, max_length=20000)
+    html_content = tools.web.fetch(url="https://news.ycombinator.com/", raw=True, max_length=20000)
 
     # Extract the HTML content (remove any prefix text)
     html_start = html_content.find("<html")

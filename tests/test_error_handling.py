@@ -656,7 +656,7 @@ class TestMCPAdapterCloseExceptionHandling:
 
         mock_exit_stack.aclose = raise_keyboard_interrupt
 
-        adapter = MCPAdapter(session=mock_session, exit_stack=mock_exit_stack)
+        adapter = MCPAdapter(session=mock_session, namespace="test", exit_stack=mock_exit_stack)
 
         # After fix: KeyboardInterrupt should propagate
         # Currently it's caught by `except BaseException: pass`
@@ -683,7 +683,7 @@ class TestMCPAdapterCloseExceptionHandling:
 
         mock_exit_stack.aclose = raise_runtime_error
 
-        adapter = MCPAdapter(session=mock_session, exit_stack=mock_exit_stack)
+        adapter = MCPAdapter(session=mock_session, namespace="test", exit_stack=mock_exit_stack)
 
         # Regular exceptions should be caught (don't crash on cleanup)
         await adapter.close()  # Should not raise

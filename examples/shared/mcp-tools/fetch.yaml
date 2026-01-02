@@ -1,4 +1,4 @@
-name: fetch
+name: web
 type: mcp
 transport: stdio
 command: uvx

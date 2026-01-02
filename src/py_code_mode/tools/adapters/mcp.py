@@ -39,15 +39,16 @@ class MCPAdapter:
     """Adapter for MCP (Model Context Protocol) servers.
 
     Connects to an MCP server and exposes its tools through the ToolAdapter interface.
+    All MCP tools are grouped under a single namespace.
 
     Usage:
         # With existing session
-        adapter = MCPAdapter(session=client_session)
+        adapter = MCPAdapter(session=client_session, namespace="time")
 
         # Or connect via stdio
-        adapter = await MCPAdapter.connect_stdio("python", ["server.py"])
+        adapter = await MCPAdapter.connect_stdio("python", ["server.py"], namespace="time")
 
-        # Use through registry
+        # Use through registry - tools accessible as tools.time.get_current_time()
         registry = ToolRegistry()
         await registry.register_adapter(adapter)
     """
@@ -55,15 +56,18 @@ class MCPAdapter:
     def __init__(
         self,
         session: MCPSession,
+        namespace: str,
         exit_stack: AsyncExitStack | None = None,
     ) -> None:
         """Initialize adapter with MCP session.
 
         Args:
             session: MCP ClientSession instance.
+            namespace: Name for the tool namespace (e.g., "time", "web").
             exit_stack: Optional AsyncExitStack for resource management.
         """
         self._session = session
+        self._namespace = namespace
         self._exit_stack = exit_stack
         self._tools_cache: list[Tool] | None = None
 
@@ -73,6 +77,8 @@ class MCPAdapter:
         command: str,
         args: list[str] | None = None,
         env: dict[str, str] | None = None,
+        *,
+        namespace: str,
     ) -> MCPAdapter:
         """Connect to an MCP server via stdio transport.
 
@@ -80,6 +86,7 @@ class MCPAdapter:
             command: Command to run (e.g., "python", "node").
             args: Command arguments (e.g., ["server.py"]).
             env: Optional environment variables.
+            namespace: Name for the tool namespace (e.g., "time", "web").
 
         Returns:
             Connected MCPAdapter instance.
@@ -112,7 +119,7 @@ class MCPAdapter:
 
         await session.initialize()
 
-        return cls(session=session, exit_stack=exit_stack)
+        return cls(session=session, namespace=namespace, exit_stack=exit_stack)
 
     @classmethod
     async def connect_sse(
@@ -121,6 +128,8 @@ class MCPAdapter:
         headers: dict[str, str] | None = None,
         timeout: float = 5.0,
         sse_read_timeout: float = 300.0,
+        *,
+        namespace: str,
     ) -> MCPAdapter:
         """Connect to an MCP server via SSE transport.
 
@@ -129,6 +138,7 @@ class MCPAdapter:
             headers: Optional HTTP headers (e.g., for authentication).
             timeout: Connection timeout in seconds.
             sse_read_timeout: Read timeout for SSE events in seconds.
+            namespace: Name for the tool namespace (e.g., "time", "web").
 
         Returns:
             Connected MCPAdapter instance.
@@ -157,7 +167,7 @@ class MCPAdapter:
 
         await session.initialize()
 
-        return cls(session=session, exit_stack=exit_stack)
+        return cls(session=session, namespace=namespace, exit_stack=exit_stack)
 
     def list_tools(self) -> list[Tool]:
         """List all tools from the MCP server.
@@ -176,32 +186,38 @@ class MCPAdapter:
     async def _refresh_tools(self) -> list[Tool]:
         """Fetch tools from MCP server and update cache.
 
+        Returns a single Tool named after the namespace, with all MCP tools
+        as callables on that Tool.
+
         Returns:
-            List of Tool objects.
+            List containing one Tool with namespace as name.
         """
         response = await self._session.list_tools()
 
-        tools = []
+        callables = []
+        descriptions = []
         for mcp_tool in response.tools:
-            # Build parameters from MCP input schema
             params = self._extract_parameters(mcp_tool.inputSchema)
 
-            # Create a single callable for the tool (MCP tools don't have recipes)
             callable_obj = ToolCallable(
                 name=mcp_tool.name,
                 description=mcp_tool.description or "",
                 parameters=tuple(params),
             )
+            callables.append(callable_obj)
+            if mcp_tool.description:
+                descriptions.append(f"{mcp_tool.name}: {mcp_tool.description}")
 
-            tool = Tool(
-                name=mcp_tool.name,
-                description=mcp_tool.description or "",
-                callables=(callable_obj,),
-            )
-            tools.append(tool)
+        namespace_tool = Tool(
+            name=self._namespace,
+            description="; ".join(descriptions)
+            if descriptions
+            else f"MCP tools under {self._namespace}",
+            callables=tuple(callables),
+        )
 
-        self._tools_cache = tools
-        return tools
+        self._tools_cache = [namespace_tool]
+        return self._tools_cache
 
     def _extract_parameters(self, schema: dict[str, Any]) -> list[ToolParameter]:
         """Extract ToolParameter list from MCP input schema."""
@@ -231,8 +247,8 @@ class MCPAdapter:
         """Call a tool on the MCP server.
 
         Args:
-            name: Tool name.
-            callable_name: Ignored for MCP (no recipes). Kept for interface compatibility.
+            name: Namespace name (e.g., "time").
+            callable_name: The actual MCP tool name to call (e.g., "get_current_time").
             args: Tool arguments.
 
         Returns:
@@ -242,9 +258,9 @@ class MCPAdapter:
             ToolNotFoundError: If tool not found.
             ToolCallError: If tool execution fails.
         """
-        # MCP tools don't have recipes - callable_name is ignored
+        mcp_tool_name = callable_name if callable_name else name
         try:
-            result = await self._session.call_tool(name, args)
+            result = await self._session.call_tool(mcp_tool_name, args)
         except Exception as e:
             # MCP SDK errors, I/O errors, and timeouts from tool execution
             error_msg = str(e).lower()
@@ -273,9 +289,9 @@ class MCPAdapter:
         tools = self.list_tools()
         for tool in tools:
             if tool.name == tool_name:
-                # MCP tools have one callable with same name as tool
                 for c in tool.callables:
-                    return {p.name: p.description for p in c.parameters}
+                    if c.name == callable_name:
+                        return {p.name: p.description for p in c.parameters}
         return {}
 
     def _extract_text(self, result: Any) -> str:

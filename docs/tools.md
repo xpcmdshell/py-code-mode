@@ -130,12 +130,14 @@ description: Fetch web pages with full content extraction
 
 ### Agent Usage
 
-MCP tools expose their server-defined interface:
+MCP tools are namespaced by their YAML `name` field:
 
 ```python
 # Use tools as defined by the MCP server
-content = tools.fetch(url="https://example.com")
+content = tools.web.fetch(url="https://example.com")
 ```
+
+**Namespace naming:** Choose names that describe the capability domain, not the tool name. For example, use `web` instead of `fetch` (avoids `tools.fetch.fetch()`), or `datetime` instead of `time`.
 
 ## HTTP Tools
 
