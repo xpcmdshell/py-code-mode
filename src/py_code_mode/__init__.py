@@ -21,6 +21,30 @@ from py_code_mode.errors import (
     ToolNotFoundError,
     ToolTimeoutError,
 )
+
+# Execution (commonly needed at top level)
+from py_code_mode.execution import (
+    CONTAINER_AVAILABLE,
+    SUBPROCESS_AVAILABLE,
+    Capability,
+    Executor,
+    InProcessConfig,
+    InProcessExecutor,
+)
+
+# Conditionally import optional executors
+if SUBPROCESS_AVAILABLE:
+    from py_code_mode.execution import SubprocessConfig, SubprocessExecutor
+else:
+    SubprocessConfig = None  # type: ignore[assignment, misc]
+    SubprocessExecutor = None  # type: ignore[assignment, misc]
+
+if CONTAINER_AVAILABLE:
+    from py_code_mode.execution import ContainerConfig, ContainerExecutor
+else:
+    ContainerConfig = None  # type: ignore[assignment, misc]
+    ContainerExecutor = None  # type: ignore[assignment, misc]
+
 from py_code_mode.session import Session
 
 # Storage backends (commonly needed at top level)
@@ -45,6 +69,17 @@ __all__ = [
     "StorageBackend",
     "FileStorage",
     "RedisStorage",
+    # Execution
+    "Executor",
+    "Capability",
+    "InProcessExecutor",
+    "InProcessConfig",
+    "SubprocessExecutor",
+    "SubprocessConfig",
+    "ContainerExecutor",
+    "ContainerConfig",
+    "SUBPROCESS_AVAILABLE",
+    "CONTAINER_AVAILABLE",
     # Errors
     "CodeModeError",
     "ToolNotFoundError",
