@@ -41,11 +41,13 @@ async def _load_mcp_adapter(
                 command=mcp_config["command"],
                 args=mcp_config.get("args", []),
                 env=mcp_config.get("env", {}),
+                namespace=tool_name,
             )
         elif transport == "sse":
             adapter = await MCPAdapter.connect_sse(
                 url=mcp_config["url"],
                 headers=mcp_config.get("headers"),
+                namespace=tool_name,
             )
         else:
             raise ValueError(f"Unknown MCP transport: {transport}")

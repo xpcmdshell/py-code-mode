@@ -758,15 +758,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         if _state.registry is None:
             return []
 
-        tools = _state.registry.get_all_tools()
-        return [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "tags": list(tool.tags) if tool.tags else [],
-            }
-            for tool in tools
-        ]
+        return [tool.to_dict() for tool in _state.registry.get_all_tools()]
 
     @app.get("/api/tools/search", dependencies=[Depends(require_auth)])
     async def api_search_tools(query: str, limit: int = 10) -> list[dict[str, Any]]:
@@ -783,14 +775,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
             get_description=lambda t: t.description,
             limit=limit,
         )
-        return [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "tags": list(tool.tags) if tool.tags else [],
-            }
-            for tool in tools
-        ]
+        return [tool.to_dict() for tool in tools]
 
     # ==========================================================================
     # Skills API Endpoints

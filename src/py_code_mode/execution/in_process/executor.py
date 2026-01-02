@@ -543,14 +543,11 @@ class InProcessExecutor:
         """List all available tools.
 
         Returns:
-            List of dicts with name, description, and tags for each tool.
+            List of dicts with name, description, tags, and callables for each tool.
         """
         if self._registry is None:
             return []
-        return [
-            {"name": t.name, "description": t.description or "", "tags": list(t.tags)}
-            for t in self._registry.list_tools()
-        ]
+        return [t.to_dict() for t in self._registry.list_tools()]
 
     async def search_tools(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search tools by name/description.
@@ -560,14 +557,11 @@ class InProcessExecutor:
             limit: Maximum number of results to return.
 
         Returns:
-            List of dicts with name, description, and tags for matching tools.
+            List of dicts with name, description, tags, and callables for matching tools.
         """
         if self._registry is None:
             return []
-        return [
-            {"name": t.name, "description": t.description or "", "tags": list(t.tags)}
-            for t in self._registry.search(query, limit=limit)
-        ]
+        return [t.to_dict() for t in self._registry.search(query, limit=limit)]
 
     async def __aenter__(self) -> InProcessExecutor:
         return self

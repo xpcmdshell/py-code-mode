@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,15 @@ class ToolParameter:
 
         return f"{self.name}: {self.type} | None = None"
 
+    def to_dict(self) -> dict[str, str | bool | None]:
+        return {
+            "name": self.name,
+            "type": self.type,
+            "required": self.required,
+            "default": self.default,
+            "description": self.description,
+        }
+
 
 @dataclass(frozen=True)
 class ToolCallable:
@@ -74,6 +84,13 @@ class ToolCallable:
         """Format as: signature: description"""
         return f"{self.signature()}: {self.description}"
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": [p.to_dict() for p in self.parameters],
+        }
+
 
 @dataclass(frozen=True)
 class Tool:
@@ -98,3 +115,11 @@ class Tool:
         for c in self.callables:
             lines.append(f"  {c!r}")
         return "\n".join(lines)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description or "",
+            "tags": list(self.tags),
+            "callables": [c.to_dict() for c in self.callables],
+        }

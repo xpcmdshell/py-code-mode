@@ -9,9 +9,9 @@
 #   - sse: Server runs remotely, communicates via Server-Sent Events
 #
 # Usage in agent code:
-#   tools.list()                    # Discover available tools
-#   tools.search("my-mcp")          # Find tools by name/description
-#   tools.my_tool(arg="value")      # Call a tool exposed by the server
+#   tools.list()                              # Discover available tools
+#   tools.search("my-mcp")                    # Find tools by name/description
+#   tools.my_mcp_server.my_tool(arg="value")  # Call a tool exposed by the server
 
 # --- STDIO Transport (most common) ---
 # Server runs as a child process. Command + args launch the server.
