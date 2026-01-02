@@ -21,6 +21,8 @@ Later:       Skill A + Skill B → Compose into Skill C
 
 Over time, agents build a library of reliable capabilities. Simple skills become building blocks for complex workflows.
 
+![py-code-mode Architecture](./docs/architecture.jpg)
+
 ## Quick Start
 
 ```python
