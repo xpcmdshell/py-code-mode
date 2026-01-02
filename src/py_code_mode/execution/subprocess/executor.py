@@ -140,30 +140,14 @@ class StorageResourceProvider:
         registry = self._get_tool_registry()
         if registry is None:
             return []
-        tools = registry.list_tools()
-        return [
-            {
-                "name": tool.name,
-                "description": tool.description or "",
-                "tags": list(tool.tags),
-            }
-            for tool in tools
-        ]
+        return [tool.to_dict() for tool in registry.list_tools()]
 
     async def search_tools(self, query: str, limit: int) -> list[dict[str, Any]]:
         """Search tools by query."""
         registry = self._get_tool_registry()
         if registry is None:
             return []
-        tools = registry.search(query, limit=limit)
-        return [
-            {
-                "name": tool.name,
-                "description": tool.description or "",
-                "tags": list(tool.tags),
-            }
-            for tool in tools
-        ]
+        return [tool.to_dict() for tool in registry.search(query, limit=limit)]
 
     async def list_tool_recipes(self, name: str) -> list[dict[str, Any]]:
         """List recipes for a specific tool."""
