@@ -2578,7 +2578,7 @@ wheels = [
 
 [[package]]
 name = "py-code-mode"
-version = "0.8.1"
+version = "0.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
