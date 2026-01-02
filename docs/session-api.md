@@ -56,20 +56,17 @@ async with Session.from_base("./.code-mode") as session:
 
 ### subprocess()
 
-Process isolation via subprocess with dedicated virtualenv.
+Process isolation via subprocess with dedicated virtualenv. Same auto-discovery as `from_base()`.
 
 ```python
 Session.subprocess(
-    storage: StorageBackend | None = None,
-    storage_path: str | Path | None = None,
-    tools_path: str | Path | None = None,
+    base_path: str | Path,
+    *,
+    timeout: float | None = 60.0,
+    extra_deps: tuple[str, ...] | None = None,
+    allow_runtime_deps: bool = True,
     sync_deps_on_start: bool = False,
     python_version: str | None = None,
-    default_timeout: float | None = 60.0,
-    startup_timeout: float = 30.0,
-    allow_runtime_deps: bool = True,
-    deps: tuple[str, ...] | None = None,
-    deps_file: str | Path | None = None,
     cache_venv: bool = True,
 ) -> Session
 ```
@@ -77,61 +74,30 @@ Session.subprocess(
 **Example:**
 
 ```python
-async with Session.subprocess(
-    storage_path="./data",
-    tools_path="./tools",
-    deps=("pandas", "numpy"),
-) as session:
+async with Session.subprocess("~/.code-mode") as session:
     await session.run("import pandas; pandas.__version__")
 ```
 
-### in_process()
+### inprocess()
 
-Fastest execution, no isolation. Use when you trust the code completely.
-
-```python
-Session.in_process(
-    storage: StorageBackend | None = None,
-    storage_path: str | Path | None = None,
-    tools_path: str | Path | None = None,
-    sync_deps_on_start: bool = False,
-    default_timeout: float | None = 30.0,
-    allow_runtime_deps: bool = True,
-    deps: tuple[str, ...] | None = None,
-    deps_file: str | Path | None = None,
-) -> Session
-```
-
-### container()
-
-Docker isolation. Most secure, recommended for untrusted code.
+Fastest execution, no isolation. Same auto-discovery as `from_base()`.
 
 ```python
-Session.container(
-    storage: StorageBackend | None = None,
-    storage_path: str | Path | None = None,
-    tools_path: str | Path | None = None,
-    sync_deps_on_start: bool = False,
-    image: str = "py-code-mode-tools:latest",
-    timeout: float = 30.0,
-    startup_timeout: float = 60.0,
+Session.inprocess(
+    base_path: str | Path,
+    *,
+    timeout: float | None = 30.0,
+    extra_deps: tuple[str, ...] | None = None,
     allow_runtime_deps: bool = True,
-    deps: tuple[str, ...] | None = None,
-    deps_file: str | Path | None = None,
-    remote_url: str | None = None,
-    auth_token: str | None = None,
-    auth_disabled: bool = False,
+    sync_deps_on_start: bool = False,
 ) -> Session
 ```
 
 **Example:**
 
 ```python
-async with Session.container(
-    storage_path="./data",
-    image="my-secure-image:latest",
-) as session:
-    await session.run("import os; os.getcwd()")
+async with Session.inprocess("~/.code-mode") as session:
+    await session.run("1 + 1")
 ```
 
 ---

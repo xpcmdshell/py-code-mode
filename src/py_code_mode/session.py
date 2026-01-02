@@ -86,7 +86,7 @@ class Session:
     @classmethod
     def from_base(
         cls,
-        base: str | Path,
+        base_path: str | Path,
         *,
         timeout: float | None = 30.0,
         extra_deps: tuple[str, ...] | None = None,
@@ -102,28 +102,28 @@ class Session:
         - requirements.txt for pre-configured dependencies
 
         Uses InProcessExecutor for simplicity. For process isolation use
-        Session.subprocess(), for Docker isolation use Session.container().
+        Session.subprocess().
 
         Args:
-            base: Workspace directory (e.g., "./.code-mode").
+            base_path: Workspace directory (e.g., "~/.code-mode").
             timeout: Execution timeout in seconds (None = unlimited).
-            extra_deps: Additional packages to install beyond requirements.txt.
+            extra_deps: Additional packages beyond requirements.txt.
             allow_runtime_deps: Allow deps.add()/remove() at runtime.
             sync_deps_on_start: Install configured deps on start.
 
         Example:
-            async with Session.from_base("./.code-mode") as session:
+            async with Session.from_base("~/.code-mode") as session:
                 await session.run("tools.list()")
         """
         from py_code_mode.storage import FileStorage
 
-        base_path = Path(base).expanduser().resolve()
-        storage = FileStorage(base_path=base_path)
+        base = Path(base_path).expanduser().resolve()
+        storage = FileStorage(base_path=base)
 
-        tools_path = base_path / "tools"
+        tools_path = base / "tools"
         tools_dir = tools_path if tools_path.is_dir() else None
 
-        deps_file = base_path / "requirements.txt"
+        deps_file = base / "requirements.txt"
         deps_file_resolved = deps_file if deps_file.is_file() else None
 
         executor = cls._create_in_process_executor(
@@ -139,42 +139,31 @@ class Session:
     @classmethod
     def subprocess(
         cls,
-        storage: StorageBackend | None = None,
-        storage_path: str | Path | None = None,
-        tools_path: str | Path | None = None,
+        base_path: str | Path,
+        *,
+        timeout: float | None = 60.0,
+        extra_deps: tuple[str, ...] | None = None,
+        allow_runtime_deps: bool = True,
         sync_deps_on_start: bool = False,
         python_version: str | None = None,
-        default_timeout: float | None = 60.0,
-        startup_timeout: float = 30.0,
-        allow_runtime_deps: bool = True,
-        deps: tuple[str, ...] | None = None,
-        deps_file: str | Path | None = None,
         cache_venv: bool = True,
     ) -> Session:
-        """Create session with SubprocessExecutor (recommended for most use cases).
+        """Create session with SubprocessExecutor (process isolation).
 
-        Runs code in an isolated subprocess with its own virtualenv.
-        Provides process isolation without Docker overhead.
+        Auto-discovers from base_path like from_base(), but uses subprocess
+        for process isolation via a dedicated virtualenv.
 
         Args:
-            storage: Storage backend. If None, creates FileStorage from storage_path.
-            storage_path: Path to storage directory (required if storage is None).
-            tools_path: Path to tools directory.
+            base_path: Workspace directory (e.g., "~/.code-mode").
+            timeout: Execution timeout in seconds (None = unlimited).
+            extra_deps: Additional packages beyond requirements.txt.
+            allow_runtime_deps: Allow deps.add()/remove() at runtime.
             sync_deps_on_start: Install configured deps on start.
-            python_version: Python version for venv (e.g., "3.11"). Defaults to current.
-            default_timeout: Execution timeout in seconds (None = unlimited).
-            startup_timeout: Kernel startup timeout in seconds.
-            allow_runtime_deps: Allow deps.add()/deps.remove() at runtime.
-            deps: Tuple of packages to pre-install.
-            deps_file: Path to requirements.txt-style file.
-            cache_venv: Reuse cached venv across runs (recommended).
-
-        Returns:
-            Configured Session with SubprocessExecutor.
+            python_version: Python version for venv (e.g., "3.11").
+            cache_venv: Reuse cached venv across runs.
 
         Raises:
-            ImportError: If subprocess executor dependencies not installed.
-            ValueError: If neither storage nor storage_path provided.
+            ImportError: If jupyter_client/ipykernel not installed.
         """
         from py_code_mode.execution import SUBPROCESS_AVAILABLE
 
@@ -185,22 +174,24 @@ class Session:
             )
 
         from py_code_mode.execution import SubprocessConfig, SubprocessExecutor
+        from py_code_mode.storage import FileStorage
 
-        if storage is None:
-            if storage_path is None:
-                raise ValueError("Either storage or storage_path must be provided")
-            from py_code_mode.storage import FileStorage
+        base = Path(base_path).expanduser().resolve()
+        storage = FileStorage(base_path=base)
 
-            storage = FileStorage(base_path=Path(storage_path).expanduser().resolve())
+        tools_path = base / "tools"
+        tools_dir = tools_path if tools_path.is_dir() else None
+
+        deps_file = base / "requirements.txt"
+        deps_file_resolved = deps_file if deps_file.is_file() else None
 
         config = SubprocessConfig(
-            tools_path=Path(tools_path).expanduser().resolve() if tools_path else None,
-            python_version=python_version,
-            default_timeout=default_timeout,
-            startup_timeout=startup_timeout,
+            tools_path=tools_dir,
+            default_timeout=timeout,
+            deps=extra_deps,
+            deps_file=deps_file_resolved,
             allow_runtime_deps=allow_runtime_deps,
-            deps=deps,
-            deps_file=Path(deps_file).expanduser().resolve() if deps_file else None,
+            python_version=python_version,
             cache_venv=cache_venv,
         )
         executor = SubprocessExecutor(config=config)
@@ -208,131 +199,47 @@ class Session:
         return cls(storage=storage, executor=executor, sync_deps_on_start=sync_deps_on_start)
 
     @classmethod
-    def in_process(
+    def inprocess(
         cls,
-        storage: StorageBackend | None = None,
-        storage_path: str | Path | None = None,
-        tools_path: str | Path | None = None,
-        sync_deps_on_start: bool = False,
-        default_timeout: float | None = 30.0,
+        base_path: str | Path,
+        *,
+        timeout: float | None = 30.0,
+        extra_deps: tuple[str, ...] | None = None,
         allow_runtime_deps: bool = True,
-        deps: tuple[str, ...] | None = None,
-        deps_file: str | Path | None = None,
+        sync_deps_on_start: bool = False,
     ) -> Session:
         """Create session with InProcessExecutor (fastest, no isolation).
 
-        Runs code directly in the same process. Fast but provides no isolation.
-        Use when you trust the code completely and need maximum performance.
+        Auto-discovers from base_path like from_base(). Runs code directly
+        in the same process - fast but no isolation.
 
         Args:
-            storage: Storage backend. If None, creates FileStorage from storage_path.
-            storage_path: Path to storage directory (required if storage is None).
-            tools_path: Path to tools directory.
+            base_path: Workspace directory (e.g., "~/.code-mode").
+            timeout: Execution timeout in seconds (None = unlimited).
+            extra_deps: Additional packages beyond requirements.txt.
+            allow_runtime_deps: Allow deps.add()/remove() at runtime.
             sync_deps_on_start: Install configured deps on start.
-            default_timeout: Execution timeout in seconds (None = unlimited).
-            allow_runtime_deps: Allow deps.add()/deps.remove() at runtime.
-            deps: Tuple of packages to pre-install.
-            deps_file: Path to requirements.txt-style file.
-
-        Returns:
-            Configured Session with InProcessExecutor.
-
-        Raises:
-            ValueError: If neither storage nor storage_path provided.
         """
         from py_code_mode.execution import InProcessConfig, InProcessExecutor
+        from py_code_mode.storage import FileStorage
 
-        if storage is None:
-            if storage_path is None:
-                raise ValueError("Either storage or storage_path must be provided")
-            from py_code_mode.storage import FileStorage
+        base = Path(base_path).expanduser().resolve()
+        storage = FileStorage(base_path=base)
 
-            storage = FileStorage(base_path=Path(storage_path).expanduser().resolve())
+        tools_path = base / "tools"
+        tools_dir = tools_path if tools_path.is_dir() else None
+
+        deps_file = base / "requirements.txt"
+        deps_file_resolved = deps_file if deps_file.is_file() else None
 
         config = InProcessConfig(
-            tools_path=Path(tools_path).expanduser().resolve() if tools_path else None,
-            default_timeout=default_timeout,
+            tools_path=tools_dir,
+            default_timeout=timeout,
+            deps=extra_deps,
+            deps_file=deps_file_resolved,
             allow_runtime_deps=allow_runtime_deps,
-            deps=deps,
-            deps_file=Path(deps_file).expanduser().resolve() if deps_file else None,
         )
         executor = InProcessExecutor(config=config)
-
-        return cls(storage=storage, executor=executor, sync_deps_on_start=sync_deps_on_start)
-
-    @classmethod
-    def container(
-        cls,
-        storage: StorageBackend | None = None,
-        storage_path: str | Path | None = None,
-        tools_path: str | Path | None = None,
-        sync_deps_on_start: bool = False,
-        image: str = "py-code-mode-tools:latest",
-        timeout: float = 30.0,
-        startup_timeout: float = 60.0,
-        allow_runtime_deps: bool = True,
-        deps: tuple[str, ...] | None = None,
-        deps_file: str | Path | None = None,
-        remote_url: str | None = None,
-        auth_token: str | None = None,
-        auth_disabled: bool = False,
-    ) -> Session:
-        """Create session with ContainerExecutor (Docker isolation).
-
-        Runs code in an isolated Docker container. Most secure option.
-        Use for untrusted code or production deployments.
-
-        Args:
-            storage: Storage backend. If None, creates FileStorage from storage_path.
-            storage_path: Path to storage directory (required if storage is None).
-            tools_path: Path to tools directory.
-            sync_deps_on_start: Install configured deps on start.
-            image: Docker image to use.
-            timeout: Execution timeout in seconds.
-            startup_timeout: Container startup timeout in seconds.
-            allow_runtime_deps: Allow deps.add()/deps.remove() at runtime.
-            deps: Tuple of packages to pre-install.
-            deps_file: Path to requirements.txt-style file.
-            remote_url: URL of remote session server (skips Docker).
-            auth_token: Authentication token for container API.
-            auth_disabled: Disable authentication (local dev only).
-
-        Returns:
-            Configured Session with ContainerExecutor.
-
-        Raises:
-            ImportError: If Docker SDK not installed.
-            ValueError: If neither storage nor storage_path provided.
-        """
-        from py_code_mode.execution import CONTAINER_AVAILABLE
-
-        if not CONTAINER_AVAILABLE:
-            raise ImportError(
-                "ContainerExecutor requires Docker SDK. Install with: pip install docker"
-            )
-
-        from py_code_mode.execution import ContainerConfig, ContainerExecutor
-
-        if storage is None:
-            if storage_path is None:
-                raise ValueError("Either storage or storage_path must be provided")
-            from py_code_mode.storage import FileStorage
-
-            storage = FileStorage(base_path=Path(storage_path).expanduser().resolve())
-
-        config = ContainerConfig(
-            image=image,
-            timeout=timeout,
-            startup_timeout=startup_timeout,
-            allow_runtime_deps=allow_runtime_deps,
-            tools_path=Path(tools_path).expanduser().resolve() if tools_path else None,
-            deps=deps,
-            deps_file=Path(deps_file).expanduser().resolve() if deps_file else None,
-            remote_url=remote_url,
-            auth_token=auth_token,
-            auth_disabled=auth_disabled,
-        )
-        executor = ContainerExecutor(config=config)
 
         return cls(storage=storage, executor=executor, sync_deps_on_start=sync_deps_on_start)
 

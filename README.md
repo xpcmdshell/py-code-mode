@@ -52,17 +52,14 @@ skills.create(
 ''')
 ```
 
-**Need more control?** Use explicit constructors:
+**Need process isolation?** Use subprocess:
 
 ```python
-# Process isolation (recommended for untrusted code)
-async with Session.subprocess(storage_path="./data", tools_path="./tools") as session:
-    ...
-
-# Docker isolation (most secure)
-async with Session.container(storage_path="./data", image="my-image") as session:
+async with Session.subprocess("~/.code-mode") as session:
     ...
 ```
+
+**Need Docker isolation?** Use the explicit constructor with ContainerExecutor (see [Executors docs](./docs/executors.md)).
 
 **Also ships as an MCP server for Claude Code:**
 
