@@ -94,10 +94,10 @@ When using py-code-mode as an MCP server, dependency tools are available:
 
 ```bash
 # Start with runtime deps enabled (default)
-py-code-mode-mcp --storage ~/.code-mode
+py-code-mode-mcp --base ~/.code-mode
 
 # Start with runtime deps disabled
-py-code-mode-mcp --storage ~/.code-mode --no-runtime-deps
+py-code-mode-mcp --base ~/.code-mode --no-runtime-deps
 ```
 
 **Available MCP tools:**
