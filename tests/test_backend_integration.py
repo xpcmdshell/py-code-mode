@@ -61,7 +61,7 @@ recipes:
         (skills / "double.py").write_text(
             '''"""Double a number."""
 
-def run(n: int) -> int:
+async def run(n: int) -> int:
     return n * 2
 '''
         )
@@ -305,7 +305,7 @@ class TestBackendSkills:
         # Create a test skill using from_source
         skill = PythonSkill.from_source(
             name="double",
-            source='def run(n: int) -> int:\n    """Double a number."""\n    return n * 2',
+            source='async def run(n: int) -> int:\n    """Double a number."""\n    return n * 2',
             description="Double a number",
         )
 
@@ -341,7 +341,7 @@ class TestBackendSkills:
         skills_path.mkdir()
 
         source = (
-            'def run(name: str = "World") -> str:\n'
+            'async def run(name: str = "World") -> str:\n'
             '    """Greet someone."""\n'
             '    return f"Hello, {name}!"'
         )

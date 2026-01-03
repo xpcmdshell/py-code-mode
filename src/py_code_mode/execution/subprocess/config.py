@@ -49,7 +49,7 @@ class SubprocessConfig:
         deps_file: Path to requirements.txt-style file for pre-configured deps.
             None means no deps file.
         ipc_timeout: Timeout for IPC queries (tool/skill/artifact) in seconds.
-            Default: 30.0.
+            None means unlimited (default).
     """
 
     python_version: str | None = None
@@ -63,7 +63,7 @@ class SubprocessConfig:
     tools_path: Path | None = None
     deps: tuple[str, ...] | None = None
     deps_file: Path | None = None
-    ipc_timeout: float = 30.0
+    ipc_timeout: float | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration values."""

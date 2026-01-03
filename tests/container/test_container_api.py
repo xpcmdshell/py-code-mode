@@ -164,7 +164,7 @@ class TestSkillsAPI:
             "/api/skills",
             json={
                 "name": "test_skill",
-                "source": "def run(x: int) -> int:\n    return x * 2",
+                "source": "async def run(x: int) -> int:\n    return x * 2",
                 "description": "Doubles a number",
             },
             headers={"Authorization": f"Bearer {token}"},
@@ -182,7 +182,7 @@ class TestSkillsAPI:
             "/api/skills",
             json={
                 "name": "test_skill",
-                "source": "def run(): pass",
+                "source": "async def run(): pass",
                 "description": "Test",
             },
         )
@@ -242,7 +242,7 @@ class TestSkillsAPI:
             "/api/skills",
             json={
                 "name": "lifecycle_skill",
-                "source": 'def run(n: int) -> int:\n    """Square a number."""\n    return n ** 2',
+                "source": 'async def run(n: int) -> int:\n    """Square a number."""\n    return n ** 2',
                 "description": "Squares a number",
             },
             headers=headers,

@@ -149,15 +149,19 @@ class PythonSkill:
         except SyntaxError as e:
             raise SyntaxError(f"Syntax error in skill code: {e}")
 
-        # Check for run() function definition
-        has_run_func = False
+        has_async_run = False
+        has_sync_run = False
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == "run":
-                has_run_func = True
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "run":
+                has_async_run = True
                 break
+            if isinstance(node, ast.FunctionDef) and node.name == "run":
+                has_sync_run = True
 
-        if not has_run_func:
-            raise ValueError("Skill must define a run() function")
+        if has_sync_run and not has_async_run:
+            raise ValueError("Skill must define 'async def run()', not 'def run()'")
+        if not has_async_run:
+            raise ValueError("Skill must define an 'async def run()' function")
 
         # Compile and execute to get the function
         namespace: dict[str, Any] = {}
@@ -234,12 +238,17 @@ class PythonSkill:
             ),
         )
 
-    def invoke(self, **kwargs: Any) -> Any:
+    async def invoke(self, **kwargs: Any) -> Any:
         """Invoke the skill with given parameters.
 
-        Calls the run() function directly.
+        Calls the run() function and awaits if async.
         """
-        return self._func(**kwargs)
+        import asyncio
+
+        result = self._func(**kwargs)
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
 
     @property
     def tags(self) -> frozenset[str]:

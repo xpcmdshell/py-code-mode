@@ -158,10 +158,12 @@ class InProcessExecutor:
 
         timeout = timeout if timeout is not None else self._default_timeout
 
-        # Store loop reference for tool calls from thread context
+        # Store loop reference for tool/skill calls from thread context
         loop = asyncio.get_running_loop()
         if "tools" in self._namespace:
             self._namespace["tools"].set_loop(loop)
+        if "skills" in self._namespace:
+            self._namespace["skills"].set_loop(loop)
 
         # Run in thread to allow timeout cancellation
         try:

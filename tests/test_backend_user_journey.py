@@ -132,7 +132,7 @@ class TestAgentFullWorkflow:
 skills.create(
     name="shout",
     description="Echo text in uppercase",
-    source="def run(text: str) -> str:\\n    return text.upper()"
+    source="async def run(text: str) -> str:\\n    return text.upper()"
 )
 """)
             assert result.is_ok, f"skills.create() failed: {result.error}"
@@ -187,7 +187,7 @@ skills.create(
 skills.create(
     name="container_shout",
     description="Echo text in uppercase",
-    source="def run(text: str) -> str:\\n    return text.upper()"
+    source="async def run(text: str) -> str:\\n    return text.upper()"
 )
 """)
             assert result.is_ok, f"skills.create() failed: {result.error}"
@@ -290,7 +290,7 @@ class TestContainerSkillsLifecycle:
 skills.create(
     name="add_numbers",
     description="Add two numbers",
-    source="def run(a: int, b: int) -> int:\\n    return a + b"
+    source="async def run(a: int, b: int) -> int:\\n    return a + b"
 )
 """)
             assert result.is_ok, f"skills.create() failed: {result.error}"
@@ -333,7 +333,7 @@ skills.create(
 skills.create(
     name="loud_echo",
     description="Echo text and uppercase it",
-    source="""def run(text: str) -> str:
+    source="""async def run(text: str) -> str:
     result = tools.echo.echo(text=text)
     return result.strip().upper()
 """
@@ -369,7 +369,7 @@ class TestContainerSessionPersistence:
 skills.create(
     name="persistent_skill",
     description="Should persist",
-    source="def run() -> str:\\n    return 'persisted'"
+    source="async def run() -> str:\\n    return 'persisted'"
 )
 """)
             assert result.is_ok
@@ -443,7 +443,7 @@ class TestRedisContainerIntegration:
 skills.create(
     name="redis_skill",
     description="Test skill in Redis",
-    source="def run(x: int) -> int:\\n    return x * 2"
+    source="async def run(x: int) -> int:\\n    return x * 2"
 )
 """)
             assert result.is_ok, f"skills.create() failed: {result.error}"
@@ -479,7 +479,7 @@ skills.create(
 skills.create(
     name="redis_persistent",
     description="Should persist in Redis",
-    source="def run() -> str:\\n    return 'from redis'"
+    source="async def run() -> str:\\n    return 'from redis'"
 )
 """)
             assert result.is_ok
@@ -512,7 +512,7 @@ skills.create(
 skills.create(
     name="port_scanner",
     description="Scan network ports to find open services",
-    source="def run(host: str) -> list:\\n    return ['port scanning', host]"
+    source="async def run(host: str) -> list:\\n    return ['port scanning', host]"
 )
 """)
             assert result.is_ok, f"skills.create() failed: {result.error}"
@@ -539,7 +539,7 @@ skills.create(
             # 1. Create a skill using facade method
             await session.add_skill(
                 name="web_scraper",
-                source="def run(url: str) -> str:\n    return f'scraped {url}'",
+                source="async def run(url: str) -> str:\n    return f'scraped {url}'",
                 description="Scrape web pages and extract content",
             )
 
@@ -603,7 +603,7 @@ class TestRedisStackIntegration:
             # 1. Create a skill
             await session.add_skill(
                 name="data_analyzer",
-                source="def run(data: list) -> dict:\n    return {'count': len(data)}",
+                source="async def run(data: list) -> dict:\n    return {'count': len(data)}",
                 description="Analyze data and return statistics",
             )
 
@@ -674,7 +674,7 @@ class TestContainerNegativeCases:
 skills.create(
     name="bad_skill",
     description="Invalid syntax",
-    source="def run( broken"
+    source="async def run( broken"
 )
 """)
             assert not result.is_ok, "Expected error for invalid syntax"

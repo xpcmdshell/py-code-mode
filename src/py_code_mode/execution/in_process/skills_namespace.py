@@ -6,7 +6,9 @@ invoke, create, and delete skills during code execution.
 
 from __future__ import annotations
 
+import asyncio
 import builtins
+import inspect
 from typing import TYPE_CHECKING, Any
 
 from py_code_mode.skills import SkillLibrary
@@ -44,6 +46,15 @@ class SkillsNamespace:
 
         self._library = library
         self._namespace = namespace
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Set the event loop to use for async skill invocations.
+
+        When code runs in a thread (via asyncio.to_thread), we need a reference
+        to the main event loop to execute async skills via run_coroutine_threadsafe.
+        """
+        self._loop = loop
 
     @property
     def library(self) -> SkillLibrary:
@@ -143,8 +154,6 @@ class SkillsNamespace:
         if skill is None:
             raise ValueError(f"Skill not found: {skill_name}")
 
-        # Execute skill source fresh, same as regular code execution
-        # Create isolated namespace with copies of tools/skills/artifacts refs
         skill_namespace = {
             "tools": self._namespace.get("tools"),
             "skills": self._namespace.get("skills"),
@@ -152,4 +161,12 @@ class SkillsNamespace:
         }
         code = compile(skill.source, f"<skill:{skill_name}>", "exec")
         _run_code(code, skill_namespace)
-        return skill_namespace["run"](**kwargs)
+        result = skill_namespace["run"](**kwargs)
+
+        if inspect.iscoroutine(result):
+            if self._loop is not None:
+                future = asyncio.run_coroutine_threadsafe(result, self._loop)
+                return future.result()
+            return asyncio.run(result)
+
+        return result

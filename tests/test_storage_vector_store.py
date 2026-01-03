@@ -153,7 +153,7 @@ class TestFileStorageSkillLibraryVectorStoreIntegration:
         # Add a skill with distinctive description
         skill = PythonSkill.from_source(
             name="calculate_total",
-            source="def run(numbers): return sum(numbers)",
+            source="async def run(numbers): return sum(numbers)",
             description="Add up all numbers in a list",
         )
         library.add(skill)
@@ -328,14 +328,14 @@ class TestStorageVectorStoreIntegration:
         library.add(
             PythonSkill.from_source(
                 name="http_get",
-                source="def run(url): import requests; return requests.get(url)",
+                source="async def run(url): import requests; return requests.get(url)",
                 description="Fetch data from a URL using HTTP GET request",
             )
         )
         library.add(
             PythonSkill.from_source(
                 name="parse_json",
-                source="def run(text): import json; return json.loads(text)",
+                source="async def run(text): import json; return json.loads(text)",
                 description="Parse JSON string into Python object",
             )
         )
@@ -361,7 +361,7 @@ class TestStorageVectorStoreIntegration:
         library1.add(
             PythonSkill.from_source(
                 name="test_skill",
-                source="def run(): return 1",
+                source="async def run(): return 1",
                 description="A test skill for persistence",
             )
         )
@@ -417,7 +417,7 @@ class TestVectorStoreEdgeCases:
         # Should still work for basic operations
         skill = PythonSkill.from_source(
             name="basic",
-            source="def run(): return 1",
+            source="async def run(): return 1",
             description="Basic skill",
         )
         library.add(skill)
@@ -454,7 +454,7 @@ class TestVectorStoreEdgeCases:
             library.add(
                 PythonSkill.from_source(
                     name=f"skill_{i}",
-                    source="def run(): return 1",
+                    source="async def run(): return 1",
                     description=f"Skill number {i}",
                 )
             )

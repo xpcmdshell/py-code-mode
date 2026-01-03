@@ -52,7 +52,7 @@ class TestPythonSkill:
             A friendly greeting skill.
             """
 
-            def run(target_name: str, enthusiasm: int = 1) -> str:
+            async def run(target_name: str, enthusiasm: int = 1) -> str:
                 """Generate a greeting.
 
                 Args:
@@ -96,31 +96,34 @@ class TestPythonSkill:
         skill = PythonSkill.from_file(skill_file)
 
         assert skill.source is not None
-        assert "def run(" in skill.source
+        assert "async def run(" in skill.source
         assert "Hello, {target_name}" in skill.source
 
-    def test_invoke_calls_function(self, skill_file: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_invoke_calls_function(self, skill_file: Path) -> None:
         """Invoking skill calls the run() function."""
         skill = PythonSkill.from_file(skill_file)
 
-        result = skill.invoke(target_name="Alice")
+        result = await skill.invoke(target_name="Alice")
 
         assert result == "Hello, Alice!"
 
-    def test_invoke_with_defaults(self, skill_file: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_invoke_with_defaults(self, skill_file: Path) -> None:
         """Invoke uses default parameter values."""
         skill = PythonSkill.from_file(skill_file)
 
-        result = skill.invoke(target_name="Bob", enthusiasm=3)
+        result = await skill.invoke(target_name="Bob", enthusiasm=3)
 
         assert result == "Hello, Bob!!!"
 
-    def test_invoke_validates_required_params(self, skill_file: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_invoke_validates_required_params(self, skill_file: Path) -> None:
         """Invoke fails if required params missing."""
         skill = PythonSkill.from_file(skill_file)
 
         with pytest.raises(TypeError):
-            skill.invoke()  # Missing target_name
+            await skill.invoke()
 
     def test_skill_with_tools_access(self, tmp_path: Path) -> None:
         """Skill can reference tools in its code."""
@@ -129,7 +132,7 @@ class TestPythonSkill:
             dedent('''
             """Scan a network target."""
 
-            def run(target: str, tools) -> str:
+            async def run(target: str, tools) -> str:
                 """Run a scan using tools.
 
                 Args:
@@ -157,7 +160,7 @@ class TestPythonSkillFromSource:
         source = dedent('''
             """Add two numbers."""
 
-            def run(a: int, b: int) -> int:
+            async def run(a: int, b: int) -> int:
                 return a + b
         ''').strip()
 
@@ -171,7 +174,7 @@ class TestPythonSkillFromSource:
         """Description parameter overrides docstring."""
         source = dedent('''
             """Original description."""
-            def run() -> str:
+            async def run() -> str:
                 return "hello"
         ''').strip()
 
@@ -186,7 +189,7 @@ class TestPythonSkillFromSource:
     def test_from_source_validates_syntax(self) -> None:
         """Invalid syntax raises SyntaxError."""
         with pytest.raises(SyntaxError):
-            PythonSkill.from_source(name="bad", source="def run( broken")
+            PythonSkill.from_source(name="bad", source="async def run( broken")
 
     def test_from_source_requires_run_function(self) -> None:
         """Must have run() function."""
@@ -201,20 +204,21 @@ class TestPythonSkillFromSource:
 
     def test_from_source_validates_name(self) -> None:
         """Name must be valid Python identifier."""
-        source = "def run(): pass"
+        source = "async def run(): pass"
 
         with pytest.raises(ValueError, match="identifier"):
             PythonSkill.from_source(name="invalid-name", source=source)
 
-    def test_invoke_from_source_skill(self) -> None:
+    @pytest.mark.asyncio
+    async def test_invoke_from_source_skill(self) -> None:
         """Can invoke skill created from source."""
         source = dedent('''
             """Multiply numbers."""
-            def run(x: int, y: int) -> int:
+            async def run(x: int, y: int) -> int:
                 return x * y
         ''').strip()
 
         skill = PythonSkill.from_source(name="multiply", source=source)
-        result = skill.invoke(x=3, y=4)
+        result = await skill.invoke(x=3, y=4)
 
         assert result == 12

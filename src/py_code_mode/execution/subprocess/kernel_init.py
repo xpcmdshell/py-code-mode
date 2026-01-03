@@ -12,7 +12,7 @@ process isolation.
 from __future__ import annotations
 
 
-def get_kernel_init_code(ipc_timeout: float = 30.0) -> str:
+def get_kernel_init_code(ipc_timeout: float | None = None) -> str:
     """Generate kernel initialization code with configurable timeout.
 
     Args:
@@ -236,12 +236,11 @@ def _rpc_call(method: str, **params) -> Any:
             ident=parent_ident,
         )
 
-        # Wait for response with timeout
-        timeout_seconds = _RPC_TIMEOUT
+        # Wait for response (with optional timeout)
         elapsed = 0.0
         poll_interval = 0.01
 
-        while elapsed < timeout_seconds:
+        while _RPC_TIMEOUT is None or elapsed < _RPC_TIMEOUT:
             try:
                 rlist, _, xlist = zmq.select(
                     [kernel.stdin_socket], [], [kernel.stdin_socket], poll_interval
@@ -256,7 +255,7 @@ def _rpc_call(method: str, **params) -> Any:
                 pass  # Timeout or socket error, continue polling
             elapsed += poll_interval
         else:
-            raise TimeoutError(f"RPC call {{method}} timed out after {{timeout_seconds}}s")
+            raise TimeoutError(f"RPC call {{method}} timed out after {{_RPC_TIMEOUT}}s")
 
         # Parse response
         try:
@@ -419,6 +418,7 @@ class SkillsProxy:
 
         Gets skill source from host and executes it locally in the kernel.
         This ensures skills can import packages installed at runtime.
+        Handles async skills by running them with asyncio.run().
 
         Args:
             skill_name: Name of the skill to invoke.
@@ -427,7 +427,8 @@ class SkillsProxy:
         Note: Uses skill_name (not name) to avoid collision with skills
         that have a 'name' parameter.
         """
-        # Get skill source from host (storage access)
+        import asyncio
+
         skill = _rpc_call("skills.get", name=skill_name)
         if skill is None:
             raise ValueError(f"Skill not found: {{skill_name}}")
@@ -436,7 +437,6 @@ class SkillsProxy:
         if not source:
             raise ValueError(f"Skill has no source: {{skill_name}}")
 
-        # Execute skill locally in kernel with access to namespaces
         skill_namespace = {{
             "tools": tools,
             "skills": skills,
@@ -446,12 +446,25 @@ class SkillsProxy:
         code = compile(source, f"<skill:{{skill_name}}>", "exec")
         exec(code, skill_namespace)
 
-        # Call the run function
         run_func = skill_namespace.get("run")
         if not callable(run_func):
             raise ValueError(f"Skill {{skill_name}} has no run() function")
 
-        return run_func(**kwargs)
+        result = run_func(**kwargs)
+        if asyncio.iscoroutine(result):
+            try:
+                asyncio.get_running_loop()
+                has_loop = True
+            except RuntimeError:
+                has_loop = False
+
+            if has_loop:
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, result)
+                    return future.result()
+            return asyncio.run(result)
+        return result
 
     def search(self, query: str, limit: int = 5) -> list[Skill]:
         """Search for skills matching query.
@@ -650,4 +663,4 @@ print("RPC initialized: tools, skills, artifacts, deps are available (via stdin 
 
 
 # For backward compatibility, provide the raw code string
-KERNEL_INIT_CODE = get_kernel_init_code(ipc_timeout=30.0)
+KERNEL_INIT_CODE = get_kernel_init_code(ipc_timeout=None)

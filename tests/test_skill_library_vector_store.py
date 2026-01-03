@@ -18,7 +18,7 @@ from py_code_mode.skills.vector_store import ModelInfo, SearchResult, VectorStor
 
 def _make_skill(name: str, description: str, code: str) -> PythonSkill:
     """Helper to create a PythonSkill from minimal info."""
-    source = f'"""{description}"""\n\ndef run():\n    {code}'
+    source = f'"""{description}"""\n\nasync def run():\n    {code}'
     return PythonSkill.from_source(name=name, source=source, description=description)
 
 

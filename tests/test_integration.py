@@ -382,7 +382,7 @@ class TestSkillsIntegration:
         # Create a simple skill
         (skills_path / "double.py").write_text('''"""Double a number."""
 
-def run(n: int) -> int:
+async def run(n: int) -> int:
     return n * 2
 ''')
 

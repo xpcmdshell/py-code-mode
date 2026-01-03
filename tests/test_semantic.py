@@ -9,7 +9,7 @@ from py_code_mode.skills import PythonSkill
 
 def _make_skill(name: str, description: str, code: str) -> PythonSkill:
     """Helper to create a PythonSkill from minimal info."""
-    source = f'"""{description}"""\n\ndef run():\n    {code}'
+    source = f'"""{description}"""\n\nasync def run():\n    {code}'
     return PythonSkill.from_source(name=name, source=source, description=description)
 
 
@@ -128,7 +128,7 @@ class TestSkillLibrary:
         source = dedent('''
             """Calculate sum of numbers."""
 
-            def run(numbers: list[int]) -> int:
+            async def run(numbers: list[int]) -> int:
                 return sum(numbers)
         ''').strip()
         return PythonSkill.from_source(name="sum_numbers", source=source)

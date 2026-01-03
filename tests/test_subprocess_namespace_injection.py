@@ -129,7 +129,7 @@ class TestE2EUserJourneys:
 skills.create(
     name="greet",
     source="""
-def run(name: str) -> str:
+async def run(name: str) -> str:
     result = tools.echo.run(text=f"Hello, {name}!")
     return result
 """,
@@ -165,7 +165,7 @@ def run(name: str) -> str:
 skills.create(
     name="echo_wrapper",
     source="""
-def run(message: str) -> str:
+async def run(message: str) -> str:
     return tools.echo.run(text=message)
 """,
     description="Wrapper around echo tool"
@@ -262,7 +262,7 @@ class TestSkillsNamespaceContract:
         create_code = """
 skills.create(
     name="add",
-    source="def run(a: int, b: int) -> int: return a + b",
+    source="async def run(a: int, b: int) -> int: return a + b",
     description="Add two numbers"
 )
 """
@@ -284,7 +284,7 @@ skills.create(
         create_code = """
 skills.create(
     name="calculate_sum",
-    source="def run(numbers: list) -> int: return sum(numbers)",
+    source="async def run(numbers: list) -> int: return sum(numbers)",
     description="Calculate the total of a list of numbers"
 )
 """
@@ -306,7 +306,7 @@ skills.create(
         create_code = """
 skills.create(
     name="multiply",
-    source="def run(a: int, b: int) -> int: return a * b",
+    source="async def run(a: int, b: int) -> int: return a * b",
     description="Multiply two numbers"
 )
 """
@@ -331,7 +331,7 @@ skills.create(
         create_code = """
 skills.create(
     name="square",
-    source="def run(n: int) -> int: return n * n",
+    source="async def run(n: int) -> int: return n * n",
     description="Square a number"
 )
 """
@@ -353,7 +353,7 @@ skills.create(
         create_code = """
 skills.create(
     name="triple",
-    source="def run(n: int) -> int: return n * 3",
+    source="async def run(n: int) -> int: return n * 3",
     description="Triple a number"
 )
 """
@@ -381,7 +381,7 @@ skills.create(
 skills.create(
     name="ascii_art_test",
     source='''
-def run(text: str) -> str:
+async def run(text: str) -> str:
     import art
     return art.text2art(text, font="block")
 ''',
@@ -541,7 +541,7 @@ class TestStorageAccessIntegration:
         create_code = """
 skills.create(
     name="counter",
-    source="def run(): return 'counted'",
+    source="async def run(): return 'counted'",
     description="Simple counter"
 )
 """
@@ -580,7 +580,7 @@ skills.create(
 
             # Create skill and artifact before reset
             await executor.run(
-                'skills.create(name="persist", source="def run(): return 1", description="test")'
+                'skills.create(name="persist", source="async def run(): return 1", description="test")'
             )
             await executor.run('artifacts.save("persist_artifact", "value")')
 
@@ -714,7 +714,7 @@ class TestNamespaceErrors:
         result = await executor_empty_storage.run(
             """skills.create(
                 name="broken",
-                source="def run( this is not valid python {{{{",
+                source="async def run( this is not valid python {{{{",
                 description="Broken skill"
             )"""
         )
