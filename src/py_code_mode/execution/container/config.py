@@ -305,6 +305,8 @@ class ContainerConfig:
 
         # Deps configuration
         config["environment"]["ALLOW_RUNTIME_DEPS"] = "true" if self.allow_runtime_deps else "false"
+        if self.deps:
+            config["environment"]["CONTAINER_DEPS"] = ",".join(self.deps)
 
         # Authentication configuration (auth ENABLED by default, explicit opt-out)
         # - With token: auth enabled, server validates requests

@@ -180,10 +180,10 @@ class ContainerExecutor:
             List of package specifications.
         """
         deps: list[str] = []
-        if self._config.deps:
-            deps.extend(self._config.deps)
-        if self._config.deps_file and self._config.deps_file.exists():
-            file_deps = self._config.deps_file.read_text().strip().splitlines()
+        if self.config.deps:
+            deps.extend(self.config.deps)
+        if self.config.deps_file and self.config.deps_file.exists():
+            file_deps = self.config.deps_file.read_text().strip().splitlines()
             for line in file_deps:
                 stripped = line.strip()
                 if stripped and not stripped.startswith("#"):

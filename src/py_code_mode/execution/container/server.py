@@ -468,6 +468,15 @@ async def initialize_server(config: SessionConfig) -> None:
             logger.info("  Deps in file store (derived): initialized")
         deps_installer = PackageInstaller()
 
+        # Pre-populate deps store with CONTAINER_DEPS if set
+        container_deps = os.environ.get("CONTAINER_DEPS")
+        if container_deps and deps_store is not None:
+            for dep in container_deps.split(","):
+                dep = dep.strip()
+                if dep:
+                    deps_store.add(dep)
+            logger.info("  Pre-configured deps: %s", container_deps)
+
         _state = ServerState(
             config=config,
             registry=registry,
