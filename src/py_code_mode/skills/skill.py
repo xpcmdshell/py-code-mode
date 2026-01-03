@@ -198,12 +198,31 @@ class PythonSkill:
     def from_file(cls, path: Path) -> PythonSkill:
         """Load a Python skill from a .py file.
 
-        The file must have a run() function as entrypoint.
+        The file must have an async def run() function as entrypoint.
         Parameters are extracted from the function signature.
         Description comes from the module or function docstring.
         """
-        # Read source for agent inspection
         source = path.read_text()
+
+        # Validate async def run() requirement
+        try:
+            tree = ast.parse(source)
+        except SyntaxError as e:
+            raise SyntaxError(f"Syntax error in skill {path}: {e}")
+
+        has_async_run = False
+        has_sync_run = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "run":
+                has_async_run = True
+                break
+            if isinstance(node, ast.FunctionDef) and node.name == "run":
+                has_sync_run = True
+
+        if has_sync_run and not has_async_run:
+            raise ValueError(f"Skill {path} must define 'async def run()', not 'def run()'")
+        if not has_async_run:
+            raise ValueError(f"Skill {path} must define an 'async def run()' function")
 
         # Load module dynamically
         spec = importlib.util.spec_from_file_location(path.stem, path)
@@ -212,10 +231,6 @@ class PythonSkill:
 
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-
-        # Get run() function
-        if not hasattr(module, "run"):
-            raise ValueError(f"Skill {path} must have a run() function")
 
         func = module.run
 
@@ -241,14 +256,9 @@ class PythonSkill:
     async def invoke(self, **kwargs: Any) -> Any:
         """Invoke the skill with given parameters.
 
-        Calls the run() function and awaits if async.
+        Awaits the async run() function.
         """
-        import asyncio
-
-        result = self._func(**kwargs)
-        if asyncio.iscoroutine(result):
-            return await result
-        return result
+        return await self._func(**kwargs)
 
     @property
     def tags(self) -> frozenset[str]:
