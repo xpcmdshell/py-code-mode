@@ -10,13 +10,13 @@ Over time, the skill library grows. Simple skills become building blocks for mor
 
 ## Creating Skills
 
-Skills are Python functions with a `run()` entry point:
+Skills are async Python functions with an `async def run()` entry point:
 
 ```python
 # skills/fetch_json.py
 """Fetch and parse JSON from a URL."""
 
-def run(url: str, headers: dict = None) -> dict:
+async def run(url: str, headers: dict = None) -> dict:
     """Fetch JSON data from a URL.
 
     Args:
@@ -37,6 +37,8 @@ def run(url: str, headers: dict = None) -> dict:
         raise RuntimeError(f"Invalid JSON from {url}: {e}") from e
 ```
 
+> **Note:** All skills must use `async def run()`. Synchronous `def run()` is not supported.
+
 ### Runtime Creation
 
 Agents can create skills dynamically:
@@ -44,7 +46,7 @@ Agents can create skills dynamically:
 ```python
 skills.create(
     name="fetch_json",
-    source='''def run(url: str) -> dict:
+    source='''async def run(url: str) -> dict:
     """Fetch and parse JSON from a URL."""
     import json
     response = tools.curl.get(url=url)
@@ -94,7 +96,7 @@ Skills can invoke other skills, enabling layered workflows:
 
 ```python
 # skills/fetch_json.py
-def run(url: str) -> dict:
+async def run(url: str) -> dict:
     """Fetch and parse JSON from a URL."""
     import json
     response = tools.curl.get(url=url)
@@ -105,7 +107,7 @@ def run(url: str) -> dict:
 
 ```python
 # skills/get_repo_metadata.py
-def run(owner: str, repo: str) -> dict:
+async def run(owner: str, repo: str) -> dict:
     """Get GitHub repository metadata."""
     # Uses the fetch_json skill
     data = skills.invoke("fetch_json",
@@ -123,7 +125,7 @@ def run(owner: str, repo: str) -> dict:
 
 ```python
 # skills/analyze_multiple_repos.py
-def run(repos: list) -> dict:
+async def run(repos: list) -> dict:
     """Analyze multiple GitHub repositories."""
     summaries = []
     for repo in repos:
@@ -154,11 +156,11 @@ Skills should follow these standards for reliability and maintainability:
 
 ```python
 # Good: Full type hints
-def run(url: str, timeout: int = 30) -> dict:
+async def run(url: str, timeout: int = 30) -> dict:
     ...
 
 # Bad: No type hints
-def run(url, timeout=30):
+async def run(url, timeout=30):
     ...
 ```
 
@@ -166,7 +168,7 @@ def run(url, timeout=30):
 
 ```python
 # Good: Complete docstring
-def run(owner: str, repo: str) -> dict:
+async def run(owner: str, repo: str) -> dict:
     """Get GitHub repository metadata.
 
     Args:
@@ -182,7 +184,7 @@ def run(owner: str, repo: str) -> dict:
     ...
 
 # Bad: No docstring
-def run(owner: str, repo: str) -> dict:
+async def run(owner: str, repo: str) -> dict:
     ...
 ```
 
@@ -190,7 +192,7 @@ def run(owner: str, repo: str) -> dict:
 
 ```python
 # Good: Explicit error handling
-def run(url: str) -> dict:
+async def run(url: str) -> dict:
     import json
     try:
         response = tools.curl.get(url=url)
@@ -201,7 +203,7 @@ def run(url: str) -> dict:
         raise RuntimeError(f"Failed to fetch {url}: {e}") from e
 
 # Bad: Silent failure
-def run(url: str) -> dict:
+async def run(url: str) -> dict:
     try:
         response = tools.curl.get(url=url)
         return json.loads(response)
@@ -213,11 +215,11 @@ def run(url: str) -> dict:
 
 ```python
 # Good: Descriptive names
-def run(repository_url: str, include_contributors: bool = False) -> dict:
+async def run(repository_url: str, include_contributors: bool = False) -> dict:
     ...
 
 # Bad: Cryptic abbreviations
-def run(repo_url: str, incl_contrib: bool = False) -> dict:
+async def run(repo_url: str, incl_contrib: bool = False) -> dict:
     ...
 ```
 
@@ -261,7 +263,7 @@ Create `.py` files in the skills directory:
 # skills/fetch_and_summarize.py
 """Fetch a URL and extract key information."""
 
-def run(url: str) -> dict:
+async def run(url: str) -> dict:
     content = tools.fetch(url=url)
     paragraphs = [p for p in content.split("\n\n") if p.strip()]
     return {
@@ -279,7 +281,7 @@ Use `session.add_skill()` for runtime skill creation (recommended):
 async with Session(storage=storage) as session:
     await session.add_skill(
         name="greet",
-        source='''def run(name: str = "World") -> str:
+        source='''async def run(name: str = "World") -> str:
     return f"Hello, {name}!"
 ''',
         description="Generate a greeting message"
@@ -292,7 +294,7 @@ For advanced use cases where you need to create skills outside of agent code exe
 async with Session(storage=storage, executor=executor) as session:
     await session.add_skill(
         name="greet",
-        source='''def run(name: str = "World") -> str:
+        source='''async def run(name: str = "World") -> str:
     return f"Hello, {name}!"
 ''',
         description="Generate a greeting message"
