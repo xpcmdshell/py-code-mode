@@ -578,9 +578,11 @@ skills.create(
         try:
             await executor.start(storage=storage)
 
-            # Create skill and artifact before reset
             await executor.run(
-                'skills.create(name="persist", source="async def run(): return 1", description="test")'
+                "skills.create("
+                'name="persist", '
+                'source="async def run(): return 1", '
+                'description="test")'
             )
             await executor.run('artifacts.save("persist_artifact", "value")')
 

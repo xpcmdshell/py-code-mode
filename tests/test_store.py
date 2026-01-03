@@ -248,10 +248,10 @@ class TestDiff:
         """Diff identifies skills with different content."""
         from py_code_mode.cli.store import diff
 
-        # Local skill
         local = tmp_path / "local"
         local.mkdir()
-        (local / "shared_skill.py").write_text('"""Local version."""\nasync def run(): return "local"')
+        local_skill = '"""Local version."""\nasync def run(): return "local"'
+        (local / "shared_skill.py").write_text(local_skill)
 
         # Remote has different version
         mock_store = MagicMock()

@@ -238,11 +238,14 @@ class TestSkillsAPI:
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create
+        skill_source = (
+            'async def run(n: int) -> int:\n    """Square a number."""\n    return n ** 2'
+        )
         response = client.post(
             "/api/skills",
             json={
                 "name": "lifecycle_skill",
-                "source": 'async def run(n: int) -> int:\n    """Square a number."""\n    return n ** 2',
+                "source": skill_source,
                 "description": "Squares a number",
             },
             headers=headers,

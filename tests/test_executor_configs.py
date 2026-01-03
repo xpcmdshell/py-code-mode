@@ -464,24 +464,15 @@ class TestAllConfigsHaveNewFields:
     def test_all_configs_have_ipc_timeout(self) -> None:
         """All executor configs have ipc_timeout field.
 
-        Contract: Consistent API across all executors.
-        Breaks when: Any config missing the field.
-        """
-        from py_code_mode.execution import ContainerConfig, InProcessConfig, SubprocessConfig
-
-        assert hasattr(InProcessConfig(), "ipc_timeout")
-        assert hasattr(SubprocessConfig(), "ipc_timeout")
-        assert hasattr(ContainerConfig(), "ipc_timeout")
-
-    def test_all_configs_have_ipc_timeout(self) -> None:
-        """All executor configs have ipc_timeout field.
-
         Contract: All configs support ipc_timeout.
         Breaks when: Any config missing ipc_timeout.
         Note: SubprocessConfig defaults to None (unlimited), others to 30.0.
         """
         from py_code_mode.execution import ContainerConfig, InProcessConfig, SubprocessConfig
 
+        assert hasattr(InProcessConfig(), "ipc_timeout")
+        assert hasattr(SubprocessConfig(), "ipc_timeout")
+        assert hasattr(ContainerConfig(), "ipc_timeout")
         assert InProcessConfig().ipc_timeout == 30.0
         assert SubprocessConfig().ipc_timeout is None
         assert ContainerConfig().ipc_timeout == 30.0

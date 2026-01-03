@@ -695,7 +695,9 @@ class TestFileStorageBootstrapConfig:
         storage = FileStorage(tmp_path)
         (tmp_path / "skills").mkdir(exist_ok=True)
         skill_file = tmp_path / "skills" / "greet.py"
-        skill_content = '"""Greet."""\nasync def run(name: str) -> str:\n    return f"Hello, {name}!"'
+        skill_content = (
+            '"""Greet."""\nasync def run(name: str) -> str:\n    return f"Hello, {name}!"'
+        )
         skill_file.write_text(skill_content)
 
         # Serialize
@@ -1117,7 +1119,8 @@ class TestBootstrapUserJourney:
         storage = FileStorage(tmp_path)
         (tmp_path / "skills").mkdir(exist_ok=True)
         skill_file = tmp_path / "skills" / "double.py"
-        skill_file.write_text('"""Double a number."""\nasync def run(n: int) -> int:\n    return n * 2')
+        skill_content = '"""Double a number."""\nasync def run(n: int) -> int:\n    return n * 2'
+        skill_file.write_text(skill_content)
 
         (tmp_path / "artifacts").mkdir(exist_ok=True)
 
