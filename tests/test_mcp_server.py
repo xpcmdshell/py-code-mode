@@ -90,13 +90,13 @@ recipes:
 
     # Simple skill for basic testing
     (skills_dir / "double.py").write_text('''"""Double a number."""
-def run(n: int) -> int:
+async def run(n: int) -> int:
     return n * 2
 ''')
 
     # Skill that calls tools (for cross-namespace testing)
     (skills_dir / "fetch_title.py").write_text('''"""Fetch a URL and extract title."""
-def run(url: str) -> str:
+async def run(url: str) -> str:
     import re
     content = tools.curl.get(url=url)
     match = re.search(r'<title>([^<]+)</title>', content, re.I)
@@ -274,7 +274,7 @@ class TestMCPServerE2E:
 skills.create(
     name="add_numbers",
     source="""
-def run(a: int, b: int) -> int:
+async def run(a: int, b: int) -> int:
     return a + b
 """,
     description="Add two numbers together"
@@ -314,7 +314,7 @@ def run(a: int, b: int) -> int:
                         "code": """
 skills.create(
     name="triple",
-    source="def run(n: int) -> int:\\n    return n * 3",
+    source="async def run(n: int) -> int:\\n    return n * 3",
     description="Triple a number"
 )
 """
@@ -360,7 +360,7 @@ skills.create(
                         "code": """
 skills.create(
     name="temp_skill",
-    source="def run() -> str:\\n    return 'temporary'",
+    source="async def run() -> str:\\n    return 'temporary'",
     description="Temporary skill for deletion test"
 )
 """
@@ -598,7 +598,7 @@ result is None
 skills.create(
     name="shout",
     source="""
-def run(message: str) -> str:
+async def run(message: str) -> str:
     return tools.echo(text=message.upper())
 """,
     description="Echo message in uppercase"
@@ -667,7 +667,7 @@ def run(message: str) -> str:
 skills.create(
     name="quadruple",
     source="""
-def run(n: int) -> int:
+async def run(n: int) -> int:
     doubled = skills.invoke("double", n=n)
     return skills.invoke("double", n=doubled)
 """,
@@ -851,7 +851,7 @@ def run(n: int) -> int:
                 await session.initialize()
 
                 # Create skill via dedicated MCP tool (not run_code)
-                skill_source = "def run(x: int, y: int) -> int:\n    return x + y\n"
+                skill_source = "async def run(x: int, y: int) -> int:\n    return x + y\n"
                 result = await session.call_tool(
                     "create_skill",
                     {
@@ -892,7 +892,7 @@ def run(n: int) -> int:
                 await session.initialize()
 
                 # Create skill via dedicated MCP tool
-                skill_source = "def run(text: str) -> str:\n    return text.upper()\n"
+                skill_source = "async def run(text: str) -> str:\n    return text.upper()\n"
                 await session.call_tool(
                     "create_skill",
                     {
@@ -934,7 +934,7 @@ def run(n: int) -> int:
                 await session.initialize()
 
                 # Create a skill via MCP tool
-                skill_source = "def run() -> str:\n    return 'I exist'\n"
+                skill_source = "async def run() -> str:\n    return 'I exist'\n"
                 await session.call_tool(
                     "create_skill",
                     {
@@ -1042,7 +1042,7 @@ skills.create(
     name="sum_csv",
     source="""
 import re
-def run(text: str) -> int:
+async def run(text: str) -> int:
     numbers = [int(x) for x in re.findall(r'\\\\d+', text)]
     return sum(numbers)
 """,

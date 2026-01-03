@@ -170,7 +170,7 @@ class TestSessionSkillsNamespace:
         (skills_dir / "double.py").write_text(
             '''"""Double a number."""
 
-def run(n: int) -> int:
+async def run(n: int) -> int:
     return n * 2
 '''
         )
@@ -217,7 +217,7 @@ def run(n: int) -> int:
 skills.create(
     name="triple",
     description="Triple a number",
-    source="def run(n: int) -> int:\\n    return n * 3"
+    source="async def run(n: int) -> int:\\n    return n * 3"
 )
 """
             )
@@ -593,7 +593,7 @@ class TestStorageAccessWiring:
         (skills_dir / "double.py").write_text(
             '''"""Double a number."""
 
-def run(n: int) -> int:
+async def run(n: int) -> int:
     return n * 2
 '''
         )
@@ -908,7 +908,7 @@ class TestSessionWithSubprocessExecutor:
         (skills_dir / "add_numbers.py").write_text(
             '''"""Add two numbers together."""
 
-def run(a: int, b: int) -> int:
+async def run(a: int, b: int) -> int:
     return a + b
 '''
         )

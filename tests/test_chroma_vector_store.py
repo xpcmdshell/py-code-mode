@@ -141,7 +141,7 @@ class TestChromaVectorStoreModelValidation:
         store1.add(
             id="skill1",
             description="Test skill",
-            source="def run(): pass",
+            source="async def run(): pass",
             content_hash="abc123",
         )
         assert store1.count() == 1
@@ -166,7 +166,7 @@ class TestChromaVectorStoreModelValidation:
         store1.add(
             id="skill1",
             description="Test skill",
-            source="def run(): pass",
+            source="async def run(): pass",
             content_hash="abc123",
         )
         assert store1.count() == 1
@@ -200,7 +200,7 @@ class TestChromaVectorStoreModelValidation:
             store1.add(
                 id=f"skill{i}",
                 description=f"Skill {i}",
-                source=f"def run(): return {i}",
+                source=f"async def run(): return {i}",
                 content_hash=f"hash{i}",
             )
         assert store1.count() == 5
@@ -235,7 +235,7 @@ class TestChromaVectorStoreCRUD:
         store.add(
             id="port_scanner",
             description="Scan network ports using nmap",
-            source='def run(target: str):\n    return subprocess.run(["nmap", target])',
+            source='async def run(target: str):\n    return subprocess.run(["nmap", target])',
             content_hash="abc123def456",
         )
 
@@ -247,7 +247,7 @@ class TestChromaVectorStoreCRUD:
         store.add(
             id="skill1",
             description="Test skill",
-            source="def run(): pass",
+            source="async def run(): pass",
             content_hash="contenthash123",
         )
 
@@ -265,7 +265,7 @@ class TestChromaVectorStoreCRUD:
         store.add(
             id="skill1",
             description="Original description",
-            source="def run(): return 1",
+            source="async def run(): return 1",
             content_hash="hash1",
         )
         assert store.count() == 1
@@ -273,7 +273,7 @@ class TestChromaVectorStoreCRUD:
         store.add(
             id="skill1",
             description="Updated description",
-            source="def run(): return 2",
+            source="async def run(): return 2",
             content_hash="hash2",
         )
 
@@ -288,7 +288,7 @@ class TestChromaVectorStoreCRUD:
         store.add(
             id="skill1",
             description="Test",
-            source="def run(): pass",
+            source="async def run(): pass",
             content_hash="hash1",
         )
         assert store.count() == 1
@@ -527,7 +527,7 @@ class TestChromaVectorStoreContentHashInvalidation:
         store.add(
             id="skill1",
             description="Test skill",
-            source="def run(): pass",
+            source="async def run(): pass",
             content_hash="stable_hash",
         )
         initial_embed_count = embedder_with_call_tracking.embed_call_count
@@ -536,7 +536,7 @@ class TestChromaVectorStoreContentHashInvalidation:
         store.add(
             id="skill1",
             description="Test skill",
-            source="def run(): pass",
+            source="async def run(): pass",
             content_hash="stable_hash",
         )
 
@@ -556,7 +556,7 @@ class TestChromaVectorStoreContentHashInvalidation:
         store.add(
             id="skill1",
             description="Original description",
-            source="def run(): return 1",
+            source="async def run(): return 1",
             content_hash="hash_v1",
         )
         initial_embed_count = embedder_with_call_tracking.embed_call_count
@@ -565,7 +565,7 @@ class TestChromaVectorStoreContentHashInvalidation:
         store.add(
             id="skill1",
             description="Updated description",
-            source="def run(): return 2",
+            source="async def run(): return 2",
             content_hash="hash_v2",
         )
 

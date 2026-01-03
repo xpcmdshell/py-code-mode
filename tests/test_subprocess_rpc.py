@@ -237,9 +237,9 @@ class TestKernelInitCode:
         assert "_RPC_TIMEOUT = 60.0" in code
 
     def test_get_kernel_init_code_default_timeout(self) -> None:
-        """get_kernel_init_code uses default timeout of 30.0."""
+        """get_kernel_init_code uses unlimited timeout by default."""
         code = get_kernel_init_code()
-        assert "_RPC_TIMEOUT = 30.0" in code
+        assert "_RPC_TIMEOUT = None" in code
 
     def test_kernel_init_code_defines_rpc_call(self) -> None:
         """KERNEL_INIT_CODE defines _rpc_call function."""

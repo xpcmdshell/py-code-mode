@@ -99,7 +99,7 @@ description: Echo text back
     # Sample skill
     (skills_dir / "double.py").write_text('''"""Double a number."""
 
-def run(n: int) -> int:
+async def run(n: int) -> int:
     return n * 2
 ''')
 
@@ -182,7 +182,7 @@ class TestFromScratchScenario:
 skills.create(
     name="triple",
     description="Triple a number",
-    source="def run(n: int) -> int:\\n    return n * 3"
+    source="async def run(n: int) -> int:\\n    return n * 3"
 )
 """)
             assert result.is_ok, f"skills.create() failed: {result.error}"
@@ -239,7 +239,7 @@ skills.create(
 skills.create(
     name="quadruple",
     description="Multiply by 4",
-    source="def run(n: int) -> int:\\n    return n * 4"
+    source="async def run(n: int) -> int:\\n    return n * 4"
 )
 """)
             assert result.is_ok, f"skills.create() failed: {result.error}"
@@ -344,7 +344,7 @@ class TestDirectoryAutoCreation:
 skills.create(
     name="test_skill",
     description="Test",
-    source="def run() -> str:\\n    return 'ok'"
+    source="async def run() -> str:\\n    return 'ok'"
 )
 """)
             assert result.is_ok, f"Failed: {result.error}"
@@ -524,7 +524,7 @@ class TestPartialDirectoryConditions:
         (partial_dir_skills_only / "skills" / "add.py").write_text('''
 """Add two numbers."""
 
-def run(a: int, b: int) -> int:
+async def run(a: int, b: int) -> int:
     return a + b
 ''')
 
@@ -580,7 +580,7 @@ class TestRedisStorageFromScratch:
 skills.create(
     name="redis_skill",
     description="Test skill",
-    source="def run() -> str:\\n    return 'from redis'"
+    source="async def run() -> str:\\n    return 'from redis'"
 )
 """)
             assert result.is_ok, f"skills.create() failed: {result.error}"
@@ -730,7 +730,7 @@ class TestCompleteFeatureMatrix:
 skills.create(
     name="matrix_test",
     description="Matrix test skill",
-    source="def run() -> str:\\n    return 'matrix'"
+    source="async def run() -> str:\\n    return 'matrix'"
 )
 """)
             assert result.is_ok, f"skills.create() failed: {result.error}"

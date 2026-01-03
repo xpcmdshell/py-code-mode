@@ -743,7 +743,7 @@ def sample_skill_source() -> str:
     """Sample skill source code for testing."""
     return '''"""Double a number."""
 
-def run(n: int) -> int:
+async def run(n: int) -> int:
     return n * 2
 '''
 

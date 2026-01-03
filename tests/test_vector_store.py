@@ -189,7 +189,7 @@ class TestContentHashUtility:
 
         hash_value = compute_content_hash(
             description="Scan network ports",
-            source='def run(): return "nmap"',
+            source='async def run(): return "nmap"',
         )
 
         # Should return a string (hex digest)
@@ -199,7 +199,7 @@ class TestContentHashUtility:
         """Hash should be 16-character hex string (8 bytes)."""
         from py_code_mode.skills.vector_store import compute_content_hash
 
-        hash_value = compute_content_hash(description="test", source="def run(): pass")
+        hash_value = compute_content_hash(description="test", source="async def run(): pass")
 
         assert len(hash_value) == 16
         # Should be valid hex
@@ -210,7 +210,7 @@ class TestContentHashUtility:
         from py_code_mode.skills.vector_store import compute_content_hash
 
         description = "Scan network ports"
-        source = 'def run(target: str):\n    return f"nmap {target}"'
+        source = 'async def run(target: str):\n    return f"nmap {target}"'
 
         hash1 = compute_content_hash(description, source)
         hash2 = compute_content_hash(description, source)
@@ -221,7 +221,7 @@ class TestContentHashUtility:
         """Different description should change hash."""
         from py_code_mode.skills.vector_store import compute_content_hash
 
-        source = "def run(): pass"
+        source = "async def run(): pass"
 
         hash1 = compute_content_hash("Description A", source)
         hash2 = compute_content_hash("Description B", source)
@@ -234,8 +234,8 @@ class TestContentHashUtility:
 
         description = "Test skill"
 
-        hash1 = compute_content_hash(description, "def run(): return 1")
-        hash2 = compute_content_hash(description, "def run(): return 2")
+        hash1 = compute_content_hash(description, "async def run(): return 1")
+        hash2 = compute_content_hash(description, "async def run(): return 2")
 
         assert hash1 != hash2
 
@@ -244,8 +244,8 @@ class TestContentHashUtility:
         from py_code_mode.skills.vector_store import compute_content_hash
 
         description = "Test"
-        source1 = "def run(): pass"
-        source2 = "def run():  pass"  # Extra space
+        source1 = "async def run(): pass"
+        source2 = "async def run():  pass"  # Extra space
 
         hash1 = compute_content_hash(description, source1)
         hash2 = compute_content_hash(description, source2)
@@ -257,7 +257,7 @@ class TestContentHashUtility:
         from py_code_mode.skills.vector_store import compute_content_hash
 
         description = "Test description"
-        source = "def run(): pass"
+        source = "async def run(): pass"
 
         # Compute what the hash SHOULD be
         combined = f"{description}|||{source}"
@@ -331,7 +331,7 @@ class TestVectorStoreSignatures:
         store.add(
             id="test_skill",
             description="Test description",
-            source="def run(): pass",
+            source="async def run(): pass",
             content_hash="abcd1234",
         )
 

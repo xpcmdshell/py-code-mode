@@ -20,7 +20,7 @@ def sample_python_skill() -> PythonSkill:
     """A simple Python skill for testing."""
     return PythonSkill.from_source(
         name="greet",
-        source='def run(name: str) -> str:\n    return f"Hello, {name}!"',
+        source='async def run(name: str) -> str:\n    return f"Hello, {name}!"',
         description="Greet someone",
     )
 
@@ -30,7 +30,7 @@ def another_python_skill() -> PythonSkill:
     """Another Python skill for testing list operations."""
     return PythonSkill.from_source(
         name="farewell",
-        source='def run() -> str:\n    return "Goodbye!"',
+        source='async def run() -> str:\n    return "Goodbye!"',
         description="Say goodbye",
     )
 
@@ -139,7 +139,7 @@ class TestMemorySkillStore:
 
         updated = PythonSkill.from_source(
             name="greet",
-            source='def run(name: str) -> str:\n    return f"Hi, {name}!"',
+            source='async def run(name: str) -> str:\n    return f"Hi, {name}!"',
             description="Updated greeting",
         )
         memory_store.save(updated)
@@ -204,7 +204,7 @@ class TestFileSkillStore:
         # Create another skill
         another = PythonSkill.from_source(
             name="farewell",
-            source='def run() -> str:\n    return "Goodbye!"',
+            source='async def run() -> str:\n    return "Goodbye!"',
             description="Say goodbye",
         )
         file_store.save(another)
@@ -219,7 +219,7 @@ class TestFileSkillStore:
         """Should skip files starting with underscore."""
         # Create __init__.py
         (tmp_path / "__init__.py").write_text("")
-        (tmp_path / "_private.py").write_text("def run(): pass")
+        (tmp_path / "_private.py").write_text("async def run(): pass")
 
         skills = file_store.list_all()
         assert len(skills) == 0
@@ -313,7 +313,7 @@ class TestRedisSkillStore:
 
         another = PythonSkill.from_source(
             name="farewell",
-            source='def run() -> str:\n    return "Goodbye!"',
+            source='async def run() -> str:\n    return "Goodbye!"',
             description="Say goodbye",
         )
         redis_store.save(another)
@@ -353,7 +353,7 @@ def _make_skill_with_invalid_name(name: str) -> PythonSkill:
     # Create a valid skill first
     valid_skill = PythonSkill.from_source(
         name="temp_valid_name",
-        source="def run(): pass",
+        source="async def run(): pass",
         description="test",
     )
     # Replace the name with the invalid one for testing
@@ -431,7 +431,7 @@ class TestFileSkillStoreNameValidation:
         for name in ["my_skill", "skill123", "_private", "CamelCase", "__dunder__"]:
             skill = PythonSkill.from_source(
                 name=name,
-                source="def run(): pass",
+                source="async def run(): pass",
                 description="test",
             )
             store.save(skill)

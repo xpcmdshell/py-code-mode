@@ -211,16 +211,16 @@ class TestSubprocessConfig:
         config = SubprocessConfig(deps_file=deps_file)
         assert config.deps_file == deps_file
 
-    def test_ipc_timeout_default_is_30(self) -> None:
-        """ipc_timeout defaults to 30.0 seconds.
+    def test_ipc_timeout_default_is_none(self) -> None:
+        """ipc_timeout defaults to None (unlimited).
 
-        Contract: SubprocessConfig().ipc_timeout == 30.0
+        Contract: SubprocessConfig().ipc_timeout is None
         Breaks when: Default changed or field missing.
         """
         from py_code_mode.execution import SubprocessConfig
 
         config = SubprocessConfig()
-        assert config.ipc_timeout == 30.0
+        assert config.ipc_timeout is None
 
     def test_ipc_timeout_accepts_custom_value(self) -> None:
         """ipc_timeout accepts a custom value.
@@ -464,23 +464,15 @@ class TestAllConfigsHaveNewFields:
     def test_all_configs_have_ipc_timeout(self) -> None:
         """All executor configs have ipc_timeout field.
 
-        Contract: Consistent API across all executors.
-        Breaks when: Any config missing the field.
+        Contract: All configs support ipc_timeout.
+        Breaks when: Any config missing ipc_timeout.
+        Note: SubprocessConfig defaults to None (unlimited), others to 30.0.
         """
         from py_code_mode.execution import ContainerConfig, InProcessConfig, SubprocessConfig
 
         assert hasattr(InProcessConfig(), "ipc_timeout")
         assert hasattr(SubprocessConfig(), "ipc_timeout")
         assert hasattr(ContainerConfig(), "ipc_timeout")
-
-    def test_all_configs_ipc_timeout_default_30(self) -> None:
-        """All executor configs have ipc_timeout default of 30.0.
-
-        Contract: Consistent default across all executors.
-        Breaks when: Any config has different default.
-        """
-        from py_code_mode.execution import ContainerConfig, InProcessConfig, SubprocessConfig
-
         assert InProcessConfig().ipc_timeout == 30.0
-        assert SubprocessConfig().ipc_timeout == 30.0
+        assert SubprocessConfig().ipc_timeout is None
         assert ContainerConfig().ipc_timeout == 30.0

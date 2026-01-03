@@ -81,7 +81,7 @@ class TestSkillErrors:
         create_code = '''
 skills.create(
     "broken_skill",
-    """def run():
+    """async def run():
     import this_module_definitely_does_not_exist
     return "never reached"
 """,
@@ -233,7 +233,7 @@ class TestStructuredErrorFormat:
         create_code = '''
 skills.create(
     "value_error_skill",
-    """def run():
+    """async def run():
     raise ValueError("intentional value error")
 """,
     "A skill that raises ValueError"

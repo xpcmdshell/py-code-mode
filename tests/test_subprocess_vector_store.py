@@ -241,7 +241,7 @@ class TestSubprocessVectorStoreIntegration:
         library.add(
             PythonSkill.from_source(
                 name="fetch_url",
-                source="def run(url): import requests; return requests.get(url).text",
+                source="async def run(url): import requests; return requests.get(url).text",
                 description="Download content from a web URL using HTTP",
             )
         )
@@ -297,7 +297,7 @@ class TestSubprocessVectorStoreIntegration:
             create_code = """
 skills.create(
     name="test_skill",
-    source="def run(): return 1",
+    source="async def run(): return 1",
     description="Test skill for fallback"
 )
 """

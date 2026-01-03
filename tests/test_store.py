@@ -73,7 +73,7 @@ class TestSkillHash:
         """Same skill content produces same hash."""
         from py_code_mode.cli.store import _skill_hash
 
-        skill = _make_skill("test", "Test skill", "def run():\n    return 'hello'")
+        skill = _make_skill("test", "Test skill", "async def run():\n    return 'hello'")
 
         hash1 = _skill_hash(skill)
         hash2 = _skill_hash(skill)
@@ -83,8 +83,8 @@ class TestSkillHash:
         """Different skill content produces different hash."""
         from py_code_mode.cli.store import _skill_hash
 
-        skill1 = _make_skill("test", "Desc 1", "def run(): return 1")
-        skill2 = _make_skill("test", "Desc 2", "def run(): return 1")
+        skill1 = _make_skill("test", "Desc 1", "async def run(): return 1")
+        skill2 = _make_skill("test", "Desc 2", "async def run(): return 1")
 
         assert _skill_hash(skill1) != _skill_hash(skill2)
 
@@ -92,7 +92,7 @@ class TestSkillHash:
         """Hash is truncated to 12 characters."""
         from py_code_mode.cli.store import _skill_hash
 
-        skill = _make_skill("test", "desc", "def run(): pass")
+        skill = _make_skill("test", "desc", "async def run(): pass")
         assert len(_skill_hash(skill)) == 12
 
 
@@ -107,7 +107,7 @@ class TestBootstrap:
         skill_file = tmp_path / "my_skill.py"
         skill_file.write_text('''"""My test skill."""
 
-def run(x: int) -> int:
+async def run(x: int) -> int:
     """Double a number."""
     return x * 2
 ''')
@@ -129,11 +129,11 @@ def run(x: int) -> int:
 
         # Create test skill
         skill_file = tmp_path / "new_skill.py"
-        skill_file.write_text('"""New skill."""\ndef run() -> str:\n    return "new"')
+        skill_file.write_text('"""New skill."""\nasync def run() -> str:\n    return "new"')
 
         # Mock store with existing skill
         mock_store = MagicMock()
-        existing_skill = _make_skill("old_skill", "Old", "def run(): pass")
+        existing_skill = _make_skill("old_skill", "Old", "async def run(): pass")
         mock_store.list_all.return_value = [existing_skill]
 
         with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
@@ -147,8 +147,8 @@ def run(x: int) -> int:
         from py_code_mode.cli.store import bootstrap
 
         # Create multiple skills
-        (tmp_path / "skill1.py").write_text('"""S1."""\ndef run(): return 1')
-        (tmp_path / "skill2.py").write_text('"""S2."""\ndef run(): return 2')
+        (tmp_path / "skill1.py").write_text('"""S1."""\nasync def run(): return 1')
+        (tmp_path / "skill2.py").write_text('"""S2."""\nasync def run(): return 2')
 
         mock_store = MagicMock()
         mock_store.list_all.return_value = []
@@ -173,7 +173,7 @@ class TestPull:
         skill = MagicMock()
         skill.name = "skill1"
         skill.description = "First skill"
-        skill.source = '"""First skill."""\ndef run():\n    print("one")'
+        skill.source = '"""First skill."""\nasync def run():\n    print("one")'
         mock_store.list_all.return_value = [skill]
 
         with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
@@ -215,7 +215,7 @@ class TestDiff:
         remote_skill = MagicMock()
         remote_skill.name = "agent_created"
         remote_skill.description = "Created by agent"
-        remote_skill.source = '"""Created by agent."""\ndef run(): pass'
+        remote_skill.source = '"""Created by agent."""\nasync def run(): pass'
         mock_store.list_all.return_value = [remote_skill]
 
         with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
@@ -232,7 +232,7 @@ class TestDiff:
         # Local has a skill
         local = tmp_path / "local"
         local.mkdir()
-        (local / "local_only.py").write_text('"""Local skill."""\ndef run(): pass')
+        (local / "local_only.py").write_text('"""Local skill."""\nasync def run(): pass')
 
         # Remote is empty
         mock_store = MagicMock()
@@ -248,17 +248,17 @@ class TestDiff:
         """Diff identifies skills with different content."""
         from py_code_mode.cli.store import diff
 
-        # Local skill
         local = tmp_path / "local"
         local.mkdir()
-        (local / "shared_skill.py").write_text('"""Local version."""\ndef run(): return "local"')
+        local_skill = '"""Local version."""\nasync def run(): return "local"'
+        (local / "shared_skill.py").write_text(local_skill)
 
         # Remote has different version
         mock_store = MagicMock()
         remote_skill = MagicMock()
         remote_skill.name = "shared_skill"
         remote_skill.description = "Remote version"
-        remote_skill.source = '"""Remote version."""\ndef run(): return "remote"'
+        remote_skill.source = '"""Remote version."""\nasync def run(): return "remote"'
         mock_store.list_all.return_value = [remote_skill]
 
         with patch("py_code_mode.cli.store._get_store", return_value=mock_store):
@@ -273,7 +273,7 @@ class TestDiff:
         # Local skill
         local = tmp_path / "local"
         local.mkdir()
-        skill_content = '"""Same skill."""\ndef run(): return "same"'
+        skill_content = '"""Same skill."""\nasync def run(): return "same"'
         (local / "same_skill.py").write_text(skill_content)
 
         # Remote has same content

@@ -24,7 +24,7 @@ def skill_library() -> SkillLibrary:
     # Add a test skill that accesses tools
     skill = PythonSkill.from_source(
         name="use_tools",
-        source='def run(val: str) -> str:\n    return f"tools={tools}, val={val}"',
+        source='async def run(val: str) -> str:\n    return f"tools={tools}, val={val}"',
         description="A skill that uses tools from namespace",
     )
     library.add(skill)
@@ -91,7 +91,7 @@ class TestInvokeUsesNamespaceDirectly:
         # Create a skill that returns what tools it sees
         skill = PythonSkill.from_source(
             name="echo_tools",
-            source="def run() -> str:\n    return str(type(tools).__name__)",
+            source="async def run() -> str:\n    return str(type(tools).__name__)",
             description="Returns tools type",
         )
         skill_library.add(skill)
@@ -114,7 +114,7 @@ class TestInvokeUsesNamespaceDirectly:
         """Skill invocation can access artifacts from namespace dict."""
         skill = PythonSkill.from_source(
             name="use_artifacts",
-            source="def run() -> bool:\n    return artifacts is not None",
+            source="async def run() -> bool:\n    return artifacts is not None",
             description="Checks artifacts access",
         )
         skill_library.add(skill)
@@ -137,9 +137,11 @@ class TestNamespaceIsolation:
 
     def test_skill_cannot_modify_parent_namespace(self, skill_library: SkillLibrary) -> None:
         """Skill execution cannot add variables to parent namespace."""
-        # Skill that tries to pollute namespace
         polluter_source = (
-            'def run() -> str:\n    global pollution\n    pollution = "leaked"\n    return "done"'
+            "async def run() -> str:\n"
+            "    global pollution\n"
+            '    pollution = "leaked"\n'
+            '    return "done"'
         )
         skill = PythonSkill.from_source(
             name="polluter",
@@ -162,9 +164,12 @@ class TestNamespaceIsolation:
 
     def test_skill_cannot_modify_tools_reference(self, skill_library: SkillLibrary) -> None:
         """Skill cannot replace tools in parent namespace."""
+        replacer_source = (
+            'async def run() -> str:\n    global tools\n    tools = "replaced"\n    return "done"'
+        )
         skill = PythonSkill.from_source(
             name="replacer",
-            source='def run() -> str:\n    global tools\n    tools = "replaced"\n    return "done"',
+            source=replacer_source,
             description="Tries to replace tools",
         )
         skill_library.add(skill)

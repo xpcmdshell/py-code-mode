@@ -695,7 +695,9 @@ class TestFileStorageBootstrapConfig:
         storage = FileStorage(tmp_path)
         (tmp_path / "skills").mkdir(exist_ok=True)
         skill_file = tmp_path / "skills" / "greet.py"
-        skill_content = '"""Greet."""\ndef run(name: str) -> str:\n    return f"Hello, {name}!"'
+        skill_content = (
+            '"""Greet."""\nasync def run(name: str) -> str:\n    return f"Hello, {name}!"'
+        )
         skill_file.write_text(skill_content)
 
         # Serialize
@@ -852,7 +854,7 @@ class TestRedisStorageBootstrapConfig:
         skill_store = storage.get_skill_store()
         test_skill = PythonSkill.from_source(
             name="greet",
-            source='def run(name: str) -> str:\n    return f"Hello, {name}!"',
+            source='async def run(name: str) -> str:\n    return f"Hello, {name}!"',
             description="Greet a user",
         )
         skill_store.save(test_skill)
@@ -1117,7 +1119,8 @@ class TestBootstrapUserJourney:
         storage = FileStorage(tmp_path)
         (tmp_path / "skills").mkdir(exist_ok=True)
         skill_file = tmp_path / "skills" / "double.py"
-        skill_file.write_text('"""Double a number."""\ndef run(n: int) -> int:\n    return n * 2')
+        skill_content = '"""Double a number."""\nasync def run(n: int) -> int:\n    return n * 2'
+        skill_file.write_text(skill_content)
 
         (tmp_path / "artifacts").mkdir(exist_ok=True)
 
@@ -1166,7 +1169,7 @@ class TestBootstrapUserJourney:
         skill_store = storage.get_skill_store()
         skill = PythonSkill.from_source(
             name="triple",
-            source="def run(n: int) -> int:\n    return n * 3",
+            source="async def run(n: int) -> int:\n    return n * 3",
             description="Triple a number",
         )
         skill_store.save(skill)

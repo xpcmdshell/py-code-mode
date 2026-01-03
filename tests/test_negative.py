@@ -187,7 +187,7 @@ class TestSkillsNamespaceErrors:
         (skills_dir / "divide.py").write_text(
             '''"""Divide two numbers."""
 
-def run(a: int, b: int) -> float:
+async def run(a: int, b: int) -> float:
     return a / b
 '''
         )
@@ -235,7 +235,7 @@ def run(a: int, b: int) -> float:
 skills.create(
     name="bad",
     description="Invalid skill",
-    source="def run( INVALID SYNTAX"
+    source="async def run( INVALID SYNTAX"
 )
 """
             )
@@ -372,7 +372,7 @@ class TestFileStorageErrors:
         """FileStorage handles corrupted skill files."""
         skills_dir = tmp_path / "skills"
         skills_dir.mkdir()
-        (skills_dir / "bad.py").write_text("def run( INVALID")
+        (skills_dir / "bad.py").write_text("async def run( INVALID")
 
         storage = FileStorage(tmp_path)
 

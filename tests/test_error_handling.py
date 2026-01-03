@@ -88,14 +88,14 @@ def skills_dir_with_corruption(tmp_path: Path) -> Path:
     # Valid skill
     (skills_dir / "valid_skill.py").write_text('''"""A valid skill."""
 
-def run(x: int) -> int:
+async def run(x: int) -> int:
     return x * 2
 ''')
 
     # Corrupted Python (syntax error)
     (skills_dir / "syntax_error.py").write_text('''"""Skill with syntax error."""
 
-def run(x: int) -> int
+async def run(x: int) -> int
     return x * 2  # Missing colon above
 ''')
 
@@ -120,7 +120,7 @@ def mock_redis_with_corruption() -> MagicMock:
                     "valid": json.dumps(
                         {
                             "name": "valid",
-                            "source": "def run(): pass",
+                            "source": "async def run(): pass",
                             "description": "Valid skill",
                         }
                     ).encode(),
