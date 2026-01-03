@@ -40,7 +40,7 @@ The MCP server exposes these tools:
 #### Claude Code
 
 ```bash
-claude mcp add py-code-mode -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.9.0 py-code-mode-mcp --base ~/.code-mode
+claude mcp add py-code-mode -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.10.0 py-code-mode-mcp --base ~/.code-mode
 ```
 
 #### Generic MCP Client
