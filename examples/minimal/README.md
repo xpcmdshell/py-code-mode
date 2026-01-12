@@ -188,7 +188,7 @@ Skills are reusable code snippets the agent can invoke:
 
 ```python
 # configs/skills/fetch_json.py
-def run(url: str) -> dict:
+async def run(url: str) -> dict:
     """Fetch JSON from a URL and parse it."""
     import json
     response = tools.curl(url=url)

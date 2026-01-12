@@ -1,0 +1,15 @@
+# Default owners for everything in the repo
+* @xpcmdshell
+
+# Core library
+/src/py_code_mode/ @xpcmdshell
+
+# Tests
+/tests/ @xpcmdshell
+
+# Documentation
+/docs/ @xpcmdshell
+/*.md @xpcmdshell
+
+# CI/CD
+/.github/ @xpcmdshell
