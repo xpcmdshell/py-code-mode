@@ -53,8 +53,6 @@ from py_code_mode.storage import FileStorage, RedisStorage, StorageBackend
 # Core types (foundational, used everywhere)
 from py_code_mode.types import ExecutionResult, JsonSchema, ToolDefinition
 
-__version__ = "0.1.0"
-
 __all__ = [
     # Core
     "Session",

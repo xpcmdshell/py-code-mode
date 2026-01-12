@@ -41,7 +41,7 @@ artifacts.save("report", "Analysis results: ...")
 ### Caching API Responses
 
 ```python
-def run(owner: str, repo: str) -> dict:
+async def run(owner: str, repo: str) -> dict:
     cache_key = f"repo_{owner}_{repo}"
 
     # Check cache first
@@ -60,7 +60,7 @@ def run(owner: str, repo: str) -> dict:
 ### Maintaining State
 
 ```python
-def run(url: str) -> dict:
+async def run(url: str) -> dict:
     # Load previous crawl state
     state = artifacts.load("crawl_state") or {"visited": [], "queue": []}
 
@@ -80,13 +80,13 @@ def run(url: str) -> dict:
 
 ```python
 # Skill 1: Collect data
-def run(sources: list) -> dict:
+async def run(sources: list) -> dict:
     results = [fetch_source(s) for s in sources]
     artifacts.save("collected_data", results)
     return {"count": len(results)}
 
 # Skill 2: Analyze data
-def run() -> dict:
+async def run() -> dict:
     data = artifacts.load("collected_data")
     analysis = analyze(data)
     artifacts.save("analysis_report", analysis)

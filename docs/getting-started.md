@@ -57,7 +57,7 @@ all_tools = tools.list()
 # Create a simple skill
 skills.create(
     name="hello_world",
-    source="""def run(name: str = "World") -> str:
+    source="""async def run(name: str = "World") -> str:
     return f"Hello, {name}!"
     """,
     description="Simple greeting function"
@@ -119,7 +119,7 @@ else:
     # 4. Save as skill
     skills.create(
         name="fetch_json",
-        source='''def run(url: str) -> dict:
+        source='''async def run(url: str) -> dict:
     import json
     response = tools.curl.get(url=url)
     return json.loads(response)

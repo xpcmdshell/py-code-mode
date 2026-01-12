@@ -3,7 +3,7 @@
 import json
 
 
-def run(repo: str) -> dict:
+async def run(repo: str) -> dict:
     """Analyze a GitHub repository by combining multiple API calls.
 
     This skill demonstrates the value of prebaked workflows:

@@ -163,13 +163,13 @@ args: ["mcp-server-whatever"]
 
 ## Adding Skills
 
-Create a Python file in `../shared/skills/` with a `run()` function:
+Create a Python file in `../shared/skills/` with an `async def run()` function:
 
 ```python
 # skills/my_skill.py
 """What this skill does."""
 
-def run(param1: str, param2: int = 10) -> str:
+async def run(param1: str, param2: int = 10) -> str:
     result = tools.some_tool(input=param1)
     return f"Processed: {result}"
 ```

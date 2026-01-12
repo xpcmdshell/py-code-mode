@@ -93,7 +93,7 @@ async with Session(storage=redis_storage) as session:
     await session.run('''
 skills.create(
     name="analyze_sentiment",
-    source="""def run(text: str) -> dict:
+    source="""async def run(text: str) -> dict:
         # Implementation
         return {"sentiment": "positive", "score": 0.9}
     """,

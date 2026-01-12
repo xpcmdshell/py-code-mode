@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/xpcmdshell/py-code-mode/actions/workflows/ci.yml/badge.svg)](https://github.com/xpcmdshell/py-code-mode/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/github/v/tag/xpcmdshell/py-code-mode)](https://github.com/xpcmdshell/py-code-mode/tags)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Give your AI agents code execution with persistent skills and tool integration.
@@ -42,7 +42,7 @@ parsed = json.loads(repo_data)
 # Save successful workflows as skills
 skills.create(
     name="fetch_repo_stars",
-    source="""def run(owner: str, repo: str) -> int:
+    source="""async def run(owner: str, repo: str) -> int:
     import json
     data = tools.curl.get(url=f"https://api.github.com/repos/{owner}/{repo}")
     return json.loads(data)["stargazers_count"]
@@ -112,7 +112,7 @@ tools.jq.query(filter=".key", input=json_data)
 analysis = skills.invoke("analyze_repo", owner="anthropics", repo="anthropic-sdk-python")
 
 # Skills can build on other skills
-def run(repos: list) -> dict:
+async def run(repos: list) -> dict:
     summaries = [skills.invoke("analyze_repo", **parse_repo(r)) for r in repos]
     return {"total": len(summaries), "results": summaries}
 

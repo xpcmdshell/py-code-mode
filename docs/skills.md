@@ -243,7 +243,7 @@ skills.delete("fetch_json")
 # Create new version
 skills.create(
     name="fetch_json",
-    source='''def run(url: str, timeout: int = 30) -> dict:
+    source='''async def run(url: str, timeout: int = 30) -> dict:
     # Updated implementation with timeout
     ...
 ''',

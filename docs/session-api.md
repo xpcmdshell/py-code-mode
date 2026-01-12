@@ -369,7 +369,7 @@ async def add_skill(
 ```python
 await session.add_skill(
     name="fetch_json",
-    source='''def run(url: str) -> dict:
+    source='''async def run(url: str) -> dict:
     import json
     response = tools.curl.get(url=url)
     return json.loads(response)

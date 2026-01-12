@@ -220,7 +220,7 @@ recipes:
 
 ### Skill Definitions
 
-Skills are Python files with a `run()` function:
+Skills are Python files with an `async def run()` function:
 
 ```python
 # examples/shared/skills/analyze_repo.py
@@ -228,7 +228,7 @@ Skills are Python files with a `run()` function:
 
 import json
 
-def run(repo: str) -> dict:
+async def run(repo: str) -> dict:
     """Analyze a GitHub repository by combining multiple API calls.
 
     Args:
