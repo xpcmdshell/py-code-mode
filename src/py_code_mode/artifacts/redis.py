@@ -70,7 +70,7 @@ class RedisArtifactStore:
         data_type = "bytes" if isinstance(data, bytes) else "text"
         if isinstance(data, bytes):
             self._redis.set(data_key, data)
-        elif isinstance(data, (dict, list)):
+        elif isinstance(data, dict | list):
             self._redis.set(data_key, json.dumps(data))
             data_type = "json"
         else:
@@ -117,7 +117,7 @@ class RedisArtifactStore:
         data_type = None
         try:
             entry_json = self._redis.hget(self._index_key(), name)
-            if entry_json and isinstance(entry_json, (str, bytes)):
+            if entry_json and isinstance(entry_json, str | bytes):
                 entry = json.loads(entry_json)
                 data_type = entry.get("metadata", {}).get("_data_type")
         except (json.JSONDecodeError, TypeError):

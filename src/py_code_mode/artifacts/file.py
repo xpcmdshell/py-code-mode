@@ -99,7 +99,7 @@ class FileArtifactStore:
         data_type = "bytes" if isinstance(data, bytes) else "text"
         if isinstance(data, bytes):
             file_path.write_bytes(data)
-        elif isinstance(data, (dict, list)):
+        elif isinstance(data, dict | list):
             file_path.write_text(json.dumps(data, indent=2))
             data_type = "json"
         else:

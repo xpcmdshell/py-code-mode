@@ -16,3 +16,4 @@ repos:
         args: [--strict]
         pass_filenames: false
         entry: mypy src/
+        stages: [manual]

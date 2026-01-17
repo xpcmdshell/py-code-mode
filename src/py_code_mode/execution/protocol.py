@@ -63,7 +63,7 @@ def validate_storage_not_access(storage: Any, executor_name: str) -> None:
     Raises:
         TypeError: If storage is a StorageAccess type (old API)
     """
-    if isinstance(storage, (FileStorageAccess, RedisStorageAccess)):
+    if isinstance(storage, FileStorageAccess | RedisStorageAccess):
         raise TypeError(
             f"{executor_name}.start() accepts StorageBackend, not {type(storage).__name__}. "
             "Pass the storage backend directly."
