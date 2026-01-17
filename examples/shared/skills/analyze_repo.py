@@ -23,6 +23,7 @@ async def run(repo: str) -> dict:
 
     base_url = f"https://api.github.com/repos/{repo}"
     results = {}
+    tools = globals()["tools"]
 
     # Step 1: Fetch repo metadata
     repo_raw = tools.curl(url=base_url)

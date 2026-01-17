@@ -74,7 +74,7 @@ async def bootstrap_namespaces(config: dict[str, Any]) -> NamespaceBundle:
         raise ValueError(f"Unknown storage type: {storage_type!r}. Expected 'file' or 'redis'.")
 
 
-async def _load_tools_namespace(tools_path_str: str | None) -> "ToolsNamespace":
+async def _load_tools_namespace(tools_path_str: str | None) -> ToolsNamespace:
     """Load tools namespace from optional tools path."""
     from py_code_mode.tools import ToolRegistry, ToolsNamespace
 
@@ -89,9 +89,9 @@ async def _load_tools_namespace(tools_path_str: str | None) -> "ToolsNamespace":
 
 def _build_namespace_bundle(
     storage: Any,
-    tools_ns: "ToolsNamespace",
-    deps_ns: "DepsNamespace",
-    artifact_store: "ArtifactStoreProtocol",
+    tools_ns: ToolsNamespace,
+    deps_ns: DepsNamespace,
+    artifact_store: ArtifactStoreProtocol,
 ) -> NamespaceBundle:
     """Wire up namespaces into a NamespaceBundle."""
     from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace

@@ -46,8 +46,8 @@ SHARED = HERE.parent / "shared"
 
 def get_model_client():
     """Get Azure OpenAI model client."""
-    from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
     from autogen_core.models import ModelFamily, ModelInfo
+    from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
     from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
     # Use managed identity for Azure OpenAI auth
