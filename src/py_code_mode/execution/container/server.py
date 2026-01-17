@@ -76,11 +76,11 @@ def serialize_value(value: Any) -> Any:
     """
     if value is None:
         return None
-    if isinstance(value, (str, int, float, bool)):
+    if isinstance(value, str | int | float | bool):
         return value
     if isinstance(value, dict):
         return {k: serialize_value(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [serialize_value(v) for v in value]
     if isinstance(value, frozenset):
         return list(value)
