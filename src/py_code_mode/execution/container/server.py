@@ -64,7 +64,6 @@ from py_code_mode.execution.in_process import (  # noqa: E402
 )
 from py_code_mode.skills import FileSkillStore, SkillLibrary, create_skill_library  # noqa: E402
 from py_code_mode.tools import ToolRegistry  # noqa: E402
-from py_code_mode.tools.adapters.cli import CLIAdapter  # noqa: E402
 
 # Session expiration (seconds)
 SESSION_EXPIRY = 3600  # 1 hour
@@ -433,19 +432,7 @@ async def initialize_server(config: SessionConfig) -> None:
         tools_path = os.environ.get("TOOLS_PATH")
         if tools_path:
             logger.info("  Loading tools from directory: %s", tools_path)
-            tools_dir = Path(tools_path)
-
-            # Load CLI tools from YAML files
-            cli_adapter = CLIAdapter(tools_path=tools_dir)
-            registry = ToolRegistry()
-            if cli_adapter.list_tools():
-                registry.add_adapter(adapter=cli_adapter)
-
-            # Also load MCP tools from the same directory
-            mcp_registry = await ToolRegistry.from_dir(tools_path)
-            for adapter in mcp_registry.get_adapters():
-                registry.add_adapter(adapter=adapter)
-
+            registry = await ToolRegistry.from_dir(tools_path)
             logger.info("  Tools in directory: %d", len(registry.list_tools()))
         else:
             # No TOOLS_PATH - no tools available

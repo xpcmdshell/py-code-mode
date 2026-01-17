@@ -87,6 +87,7 @@ dev-dependencies = [
     "docker>=7.1.0",
     "pytest-xdist>=3.8.0",
     "testcontainers[redis]>=4.13.3",
+    "chromadb>=0.5",
 ]
 
 [tool.pytest.ini_options]

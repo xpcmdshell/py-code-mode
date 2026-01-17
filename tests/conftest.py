@@ -5,6 +5,11 @@ from __future__ import annotations
 import fnmatch
 import functools
 import os
+
+# Disable testcontainers Ryuk reaper by default in this test suite.
+# We run many dockerized processes (our own ContainerExecutor + testcontainers).
+# If Ryuk starts, it can race and reap non-testcontainers containers unexpectedly.
+os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -514,6 +519,12 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
     It ensures that any py-code-mode-tools containers that weren't properly
     cleaned up get stopped and removed.
     """
+    # When running with xdist, each worker triggers pytest_sessionfinish.
+    # Avoid cleaning in workers to prevent killing containers still in use
+    # by other workers.
+    if getattr(session.config, "workerinput", None) is not None:
+        return
+
     try:
         import logging  # noqa: PLC0415
 
@@ -532,15 +543,15 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
                 f"Found {len(containers)} orphaned py-code-mode-tools containers. Cleaning up..."
             )
 
-            for container in containers:
-                container_id = container.id[:12]
-                try:
-                    logger.info(f"Stopping container {container_id}")
-                    container.stop(timeout=5)
-                    logger.info(f"Removing container {container_id}")
-                    container.remove()
-                except Exception as e:
-                    logger.error(f"Failed to clean up container {container_id}: {e}")
+        for container in containers:
+            container_id = container.id[:12]
+            try:
+                logger.info(f"Stopping container {container_id}")
+                container.stop(timeout=5)
+                logger.info(f"Removing container {container_id}")
+                container.remove()
+            except Exception as e:
+                logger.error(f"Failed to clean up container {container_id}: {e}")
 
     except ImportError:
         # Docker not available, skip cleanup

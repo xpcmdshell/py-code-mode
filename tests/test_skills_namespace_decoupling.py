@@ -131,6 +131,28 @@ class TestInvokeUsesNamespaceDirectly:
 
         assert result is True
 
+    def test_invoke_uses_deps_from_namespace(self, skill_library: SkillLibrary) -> None:
+        """Skill invocation can access deps from namespace dict."""
+        skill = PythonSkill.from_source(
+            name="use_deps",
+            source="async def run() -> str:\n    return str(deps)",
+            description="Checks deps access",
+        )
+        skill_library.add(skill)
+
+        mock_deps = MagicMock(name="my_deps")
+        namespace = {
+            "tools": None,
+            "skills": None,
+            "artifacts": None,
+            "deps": mock_deps,
+        }
+
+        skills_ns = SkillsNamespace(skill_library, namespace)
+        result = skills_ns.invoke("use_deps")
+
+        assert "MagicMock" in result
+
 
 class TestNamespaceIsolation:
     """Skills cannot modify the parent namespace."""

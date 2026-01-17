@@ -169,6 +169,55 @@ class TestSessionServerWithTools:
             artifacts_path=tmp_path / "artifacts",
         )
 
+    @pytest.fixture
+    def client_with_tools(self, tmp_path, monkeypatch):
+        """Create test client with tools loaded via TOOLS_PATH."""
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            pytest.skip("FastAPI not installed")
+
+        from py_code_mode.execution.container.server import create_app
+
+        tools_dir = tmp_path / "tools"
+        tools_dir.mkdir()
+        tool_yaml = tools_dir / "echo.yaml"
+        tool_yaml.write_text(
+            """
+name: echo
+description: Echo text
+command: echo
+schema:
+  positional:
+    - name: text
+      type: string
+      required: true
+      description: Text to echo
+recipes:
+  say:
+    description: Echo text
+    params:
+      text: {}
+""".strip()
+        )
+
+        monkeypatch.setenv("TOOLS_PATH", str(tools_dir))
+
+        config = SessionConfig(artifacts_path=tmp_path / "artifacts", auth_disabled=True)
+        app = create_app(config)
+        with TestClient(app) as client:
+            yield client
+
+    def test_info_endpoint_includes_tools(self, client_with_tools) -> None:
+        """Info endpoint lists tools loaded from TOOLS_PATH."""
+        response = client_with_tools.get("/info")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "tools" in data
+        tool_names = {tool["name"] for tool in data["tools"]}
+        assert "echo" in tool_names
+
     def test_session_creates_artifact_store(self, config_with_artifacts) -> None:
         """Sessions have artifact store initialized."""
         import asyncio

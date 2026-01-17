@@ -11,6 +11,8 @@ def run(count: int = 10) -> list[str]:
     import html
     import re
 
+    tools = globals()["tools"]
+
     # Fetch the HackerNews front page with enough content to get all headlines
     html_content = tools.web.fetch(url="https://news.ycombinator.com/", raw=True, max_length=20000)
 

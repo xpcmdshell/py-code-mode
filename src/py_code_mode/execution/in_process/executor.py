@@ -22,6 +22,7 @@ from py_code_mode.deps import (
     DepsNamespace,
     FileDepsStore,
     PackageInstaller,
+    collect_configured_deps,
 )
 from py_code_mode.execution.in_process.config import InProcessConfig
 from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
@@ -128,16 +129,7 @@ class InProcessExecutor:
         Returns:
             List of package specifications.
         """
-        deps: list[str] = []
-        if self._config.deps:
-            deps.extend(self._config.deps)
-        if self._config.deps_file and self._config.deps_file.exists():
-            file_deps = self._config.deps_file.read_text().strip().splitlines()
-            for line in file_deps:
-                stripped = line.strip()
-                if stripped and not stripped.startswith("#"):
-                    deps.append(stripped)
-        return deps
+        return collect_configured_deps(self._config.deps, self._config.deps_file)
 
     async def run(self, code: str, timeout: float | None = None) -> ExecutionResult:
         """Run code and return result.
@@ -288,15 +280,7 @@ class InProcessExecutor:
 
         # Deps from executor config (NOT storage)
         # Collect deps from config.deps list and config.deps_file
-        initial_deps: list[str] = []
-        if self._config.deps:
-            initial_deps.extend(self._config.deps)
-        if self._config.deps_file and self._config.deps_file.exists():
-            file_deps = self._config.deps_file.read_text().strip().splitlines()
-            for line in file_deps:
-                stripped = line.strip()
-                if stripped and not stripped.startswith("#"):
-                    initial_deps.append(stripped)
+        initial_deps = collect_configured_deps(self._config.deps, self._config.deps_file)
 
         # Create deps namespace with initial deps from config
         if self._deps_namespace is None:

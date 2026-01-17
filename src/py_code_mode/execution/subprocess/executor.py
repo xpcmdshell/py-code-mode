@@ -19,7 +19,12 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from py_code_mode.storage.backends import StorageBackend
 
-from py_code_mode.deps import DepsStore, FileDepsStore, MemoryDepsStore
+from py_code_mode.deps import (
+    DepsStore,
+    FileDepsStore,
+    MemoryDepsStore,
+    collect_configured_deps,
+)
 from py_code_mode.execution.protocol import (
     Capability,
     StorageAccess,
@@ -441,16 +446,7 @@ class SubprocessExecutor:
         Returns:
             List of package specifications.
         """
-        deps: list[str] = []
-        if self._config.deps:
-            deps.extend(self._config.deps)
-        if self._config.deps_file and self._config.deps_file.exists():
-            file_deps = self._config.deps_file.read_text().strip().splitlines()
-            for line in file_deps:
-                stripped = line.strip()
-                if stripped and not stripped.startswith("#"):
-                    deps.append(stripped)
-        return deps
+        return collect_configured_deps(self._config.deps, self._config.deps_file)
 
     async def start(self, storage: StorageBackend | None = None) -> None:
         """Start kernel: create venv, start kernel, initialize RPC.
@@ -485,15 +481,7 @@ class SubprocessExecutor:
             self._tool_registry = await load_tools_from_path(self._config.tools_path)
 
         # 2. Create deps store from executor config (NOT storage)
-        initial_deps: list[str] = []
-        if self._config.deps:
-            initial_deps.extend(self._config.deps)
-        if self._config.deps_file and self._config.deps_file.exists():
-            file_deps = self._config.deps_file.read_text().strip().splitlines()
-            for line in file_deps:
-                stripped = line.strip()
-                if stripped and not stripped.startswith("#"):
-                    initial_deps.append(stripped)
+        initial_deps = collect_configured_deps(self._config.deps, self._config.deps_file)
 
         # Create deps store with initial deps from config
         if self._config.deps_file:
