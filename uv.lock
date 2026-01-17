@@ -2766,6 +2766,7 @@ redis = [
 [package.dev-dependencies]
 dev = [
     { name = "aiohttp" },
+    { name = "chromadb" },
     { name = "docker" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -2812,6 +2813,7 @@ provides-extras = ["dev", "jupyter", "chromadb", "redis", "mcp", "http", "contai
 [package.metadata.requires-dev]
 dev = [
     { name = "aiohttp", specifier = ">=3.13.2" },
+    { name = "chromadb", specifier = ">=0.5" },
     { name = "docker", specifier = ">=7.1.0" },
     { name = "fastapi", specifier = ">=0.124.4" },
     { name = "httpx", specifier = ">=0.28.1" },

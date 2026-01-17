@@ -45,6 +45,7 @@ except ImportError:
     HTTPX_AVAILABLE = False
     httpx = None  # type: ignore
 
+from py_code_mode.deps import collect_configured_deps
 from py_code_mode.execution.container.client import SessionClient
 from py_code_mode.execution.container.config import DEFAULT_IMAGE, ContainerConfig
 from py_code_mode.execution.protocol import (
@@ -179,16 +180,7 @@ class ContainerExecutor:
         Returns:
             List of package specifications.
         """
-        deps: list[str] = []
-        if self.config.deps:
-            deps.extend(self.config.deps)
-        if self.config.deps_file and self.config.deps_file.exists():
-            file_deps = self.config.deps_file.read_text().strip().splitlines()
-            for line in file_deps:
-                stripped = line.strip()
-                if stripped and not stripped.startswith("#"):
-                    deps.append(stripped)
-        return deps
+        return collect_configured_deps(self.config.deps, self.config.deps_file)
 
     async def __aenter__(self) -> ContainerExecutor:
         """Start container and connect."""
@@ -390,7 +382,9 @@ class ContainerExecutor:
                 tools_path = self.config.tools_path
                 skills_path = access.skills_path
                 artifacts_path = access.artifacts_path
-                deps_path = None  # Deps owned by executor, not storage
+                deps_path = None
+                if artifacts_path is not None:
+                    deps_path = artifacts_path.parent / "deps"
                 # Create directories on host before mounting
                 # Skills need to exist for volume mount
                 if skills_path:
@@ -398,6 +392,8 @@ class ContainerExecutor:
                 # Artifacts need to exist for volume mount
                 if artifacts_path:
                     artifacts_path.mkdir(parents=True, exist_ok=True)
+                if deps_path:
+                    deps_path.mkdir(parents=True, exist_ok=True)
             elif isinstance(access, RedisStorageAccess):
                 redis_url = access.redis_url
                 # Transform localhost URLs for Docker container access
@@ -890,6 +886,10 @@ class ContainerExecutor:
             except httpx.HTTPError as e:
                 # HTTP-level errors also expected during startup
                 logger.debug(f"Health check failed (HTTP error): {e}")
+                last_error = e
+            except Exception as e:  # pragma: no cover
+                # Unexpected errors - capture and continue retrying
+                logger.debug(f"Health check failed (unexpected error): {e}")
                 last_error = e
 
             await asyncio.sleep(self.config.health_check_interval)

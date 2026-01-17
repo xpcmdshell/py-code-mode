@@ -1095,7 +1095,7 @@ class TestSubprocessExecutorDepsConfigGaps:
 
 
 @pytest.mark.slow
-@pytest.mark.xdist_group("container")
+@pytest.mark.xdist_group("docker")
 class TestContainerExecutorDepsConfigGaps:
     """Tests for ContainerExecutor with deps configuration features.
 

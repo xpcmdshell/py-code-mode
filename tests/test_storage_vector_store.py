@@ -49,7 +49,6 @@ class TestFileStorageVectorStoreIntegration:
 
         Breaks when: Returns None despite chromadb being available.
         """
-        # Assume chromadb is installed in test environment
         storage = FileStorage(tmp_path)
 
         vector_store = storage.get_vector_store()

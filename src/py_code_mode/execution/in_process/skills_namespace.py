@@ -158,15 +158,17 @@ class SkillsNamespace:
             "tools": self._namespace.get("tools"),
             "skills": self._namespace.get("skills"),
             "artifacts": self._namespace.get("artifacts"),
+            "deps": self._namespace.get("deps"),
         }
         code = compile(skill.source, f"<skill:{skill_name}>", "exec")
         _run_code(code, skill_namespace)
         result = skill_namespace["run"](**kwargs)
 
         if inspect.iscoroutine(result):
-            if self._loop is not None:
-                future = asyncio.run_coroutine_threadsafe(result, self._loop)
-                return future.result()
-            return asyncio.run(result)
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return asyncio.run(result)
+            raise RuntimeError("Cannot invoke async skills from a running event loop")
 
         return result

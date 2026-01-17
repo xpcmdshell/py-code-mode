@@ -166,7 +166,11 @@ skills.create(
         """
         storage = FileStorage(tools_storage)
         executor = ContainerExecutor(
-            ContainerConfig(timeout=60.0, auth_disabled=True, tools_path=tools_dir)
+            ContainerConfig(
+                timeout=60.0,
+                auth_disabled=True,
+                tools_path=tools_dir,
+            )
         )
 
         async with Session(storage=storage, executor=executor) as session:

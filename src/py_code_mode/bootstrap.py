@@ -74,6 +74,44 @@ async def bootstrap_namespaces(config: dict[str, Any]) -> NamespaceBundle:
         raise ValueError(f"Unknown storage type: {storage_type!r}. Expected 'file' or 'redis'.")
 
 
+async def _load_tools_namespace(tools_path_str: str | None) -> "ToolsNamespace":
+    """Load tools namespace from optional tools path."""
+    from py_code_mode.tools import ToolRegistry, ToolsNamespace
+
+    if tools_path_str:
+        tools_path = Path(tools_path_str)
+        registry = ToolRegistry()
+        await registry.load_from_directory(tools_path)
+        return ToolsNamespace(registry)
+
+    return ToolsNamespace(ToolRegistry())
+
+
+def _build_namespace_bundle(
+    storage: Any,
+    tools_ns: "ToolsNamespace",
+    deps_ns: "DepsNamespace",
+    artifact_store: "ArtifactStoreProtocol",
+) -> NamespaceBundle:
+    """Wire up namespaces into a NamespaceBundle."""
+    from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
+
+    namespace_dict: dict[str, Any] = {}
+    skills_ns = SkillsNamespace(storage.get_skill_library(), namespace_dict)
+
+    namespace_dict["tools"] = tools_ns
+    namespace_dict["skills"] = skills_ns
+    namespace_dict["artifacts"] = artifact_store
+    namespace_dict["deps"] = deps_ns
+
+    return NamespaceBundle(
+        tools=tools_ns,
+        skills=skills_ns,
+        artifacts=artifact_store,
+        deps=deps_ns,
+    )
+
+
 async def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
     """Bootstrap namespaces from FileStorage config.
 
@@ -88,24 +126,12 @@ async def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
     """
     # Import lazily to avoid circular imports
     from py_code_mode.deps import DepsNamespace, FileDepsStore, PackageInstaller
-    from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
     from py_code_mode.storage import FileStorage
-    from py_code_mode.tools import ToolRegistry, ToolsNamespace
 
     base_path = Path(config["base_path"])
     storage = FileStorage(base_path)
 
-    # Tools are owned by executor, loaded from config if provided
-    tools_path_str = config.get("tools_path")
-    if tools_path_str:
-        tools_path = Path(tools_path_str)
-        registry = ToolRegistry()
-        await registry.load_from_directory(tools_path)
-        tools_ns = ToolsNamespace(registry)
-    else:
-        # Empty registry when no tools_path provided
-        tools_ns = ToolsNamespace(ToolRegistry())
-
+    tools_ns = await _load_tools_namespace(config.get("tools_path"))
     artifact_store = storage.get_artifact_store()
 
     # Create deps namespace
@@ -113,23 +139,7 @@ async def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
     installer = PackageInstaller()
     deps_ns = DepsNamespace(deps_store, installer)
 
-    # SkillsNamespace needs a namespace dict for skill execution
-    # Create the dict first, wire up after creation
-    namespace_dict: dict[str, Any] = {}
-    skills_ns = SkillsNamespace(storage.get_skill_library(), namespace_dict)
-
-    # Wire up circular references
-    namespace_dict["tools"] = tools_ns
-    namespace_dict["skills"] = skills_ns
-    namespace_dict["artifacts"] = artifact_store
-    namespace_dict["deps"] = deps_ns
-
-    return NamespaceBundle(
-        tools=tools_ns,
-        skills=skills_ns,
-        artifacts=artifact_store,
-        deps=deps_ns,
-    )
+    return _build_namespace_bundle(storage, tools_ns, deps_ns, artifact_store)
 
 
 async def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
@@ -146,9 +156,7 @@ async def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
     """
     # Import lazily to avoid circular imports
     from py_code_mode.deps import DepsNamespace, PackageInstaller, RedisDepsStore
-    from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
     from py_code_mode.storage import RedisStorage
-    from py_code_mode.tools import ToolRegistry, ToolsNamespace
 
     url = config["url"]
     prefix = config["prefix"]
@@ -156,17 +164,7 @@ async def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
     # Connect to Redis
     storage = RedisStorage(url=url, prefix=prefix)
 
-    # Tools are owned by executor, loaded from config if provided
-    tools_path_str = config.get("tools_path")
-    if tools_path_str:
-        tools_path = Path(tools_path_str)
-        registry = ToolRegistry()
-        await registry.load_from_directory(tools_path)
-        tools_ns = ToolsNamespace(registry)
-    else:
-        # Empty registry when no tools_path provided
-        tools_ns = ToolsNamespace(ToolRegistry())
-
+    tools_ns = await _load_tools_namespace(config.get("tools_path"))
     artifact_store = storage.get_artifact_store()
 
     # Create deps namespace
@@ -174,19 +172,4 @@ async def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
     installer = PackageInstaller()
     deps_ns = DepsNamespace(deps_store, installer)
 
-    # SkillsNamespace needs a namespace dict for skill execution
-    namespace_dict: dict[str, Any] = {}
-    skills_ns = SkillsNamespace(storage.get_skill_library(), namespace_dict)
-
-    # Wire up circular references
-    namespace_dict["tools"] = tools_ns
-    namespace_dict["skills"] = skills_ns
-    namespace_dict["artifacts"] = artifact_store
-    namespace_dict["deps"] = deps_ns
-
-    return NamespaceBundle(
-        tools=tools_ns,
-        skills=skills_ns,
-        artifacts=artifact_store,
-        deps=deps_ns,
-    )
+    return _build_namespace_bundle(storage, tools_ns, deps_ns, artifact_store)

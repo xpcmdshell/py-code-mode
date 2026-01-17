@@ -194,7 +194,6 @@ class ContainerConfig:
     # Container settings
     environment: dict[str, str] = field(default_factory=dict)
     remove_on_exit: bool = True
-    name: str | None = None  # Container name (auto-generated if None)
 
     # Deps configuration
     allow_runtime_deps: bool = True
@@ -322,9 +321,5 @@ class ContainerConfig:
         # macOS/Windows Docker Desktop provides this natively, but Linux needs it
         if platform.system() == "Linux":
             config["extra_hosts"] = {"host.docker.internal": "host-gateway"}
-
-        # Add container name
-        if self.name:
-            config["name"] = self.name
 
         return config
