@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -138,7 +139,7 @@ class WorkflowLibrary:
         # Index locally for semantic search
         self._index_workflow(workflow)
 
-    def list(self) -> list[PythonWorkflow]:
+    def list(self) -> builtins.list[PythonWorkflow]:
         """List all workflows."""
         return list(self._workflows.values())
 
@@ -173,7 +174,7 @@ class WorkflowLibrary:
         self,
         query: str,
         limit: int = 10,
-    ) -> list[PythonWorkflow]:
+    ) -> builtins.list[PythonWorkflow]:
         """Search for workflows by semantic similarity.
 
         Args:

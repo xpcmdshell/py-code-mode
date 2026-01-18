@@ -265,12 +265,10 @@ class RedisWorkflowStore:
             return []
 
         workflows = []
-        for name, value in all_data.items():
+        for raw_name, raw_value in all_data.items():
+            name = raw_name.decode() if isinstance(raw_name, bytes) else raw_name
+            value = raw_value.decode() if isinstance(raw_value, bytes) else raw_value
             try:
-                if isinstance(value, bytes):
-                    value = value.decode()
-                if isinstance(name, bytes):
-                    name = name.decode()
                 data = json.loads(value)
                 workflows.append(self._deserialize_workflow(data))
             except (json.JSONDecodeError, ValueError, SyntaxError, KeyError) as e:
