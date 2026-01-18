@@ -64,7 +64,7 @@ class WorkflowsNamespace:
         """
         return self._library
 
-    def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+    def search(self, query: str, limit: int = 10) -> builtins.list[dict[str, Any]]:
         """Search for workflows matching query. Returns simplified workflow info."""
         workflows = self._library.search(query, limit)
         return [self._simplify(w) for w in workflows]
@@ -73,7 +73,7 @@ class WorkflowsNamespace:
         """Get a workflow by name."""
         return self._library.get(name)
 
-    def list(self) -> list[dict[str, Any]]:
+    def list(self) -> builtins.list[dict[str, Any]]:
         """List all available workflows. Returns simplified workflow info."""
         workflows = self._library.list()
         return [self._simplify(w) for w in workflows]

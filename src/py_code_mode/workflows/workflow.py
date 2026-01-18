@@ -1,17 +1,21 @@
-"""Workflows system - Python workflows with IDE support."""
+"""Workflows system - Python workflows.
+
+Security model:
+- Workflow source is validated and indexed using AST only (no execution).
+- Workflow invocation executes the workflow source in a fresh namespace each time
+  (stateless; module globals do not persist across invocations).
+"""
 
 from __future__ import annotations
 
 import ast
 import builtins
-import importlib.util
 import inspect
 import logging
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, get_type_hints
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -48,52 +52,121 @@ class WorkflowParameter:
     default: Any = None
 
 
-# Map Python types to our type strings
-_PYTHON_TYPE_MAP: dict[type, str] = {
-    str: "string",
-    int: "integer",
-    float: "number",
-    bool: "boolean",
-    list: "array",
-    dict: "object",
-}
-
 # Special parameters that are injected, not user-provided
 _INJECTED_PARAMS = {"tools", "workflows", "artifacts", "deps"}
 
 
-def _extract_parameters(func: Callable[..., Any], name: str) -> list[WorkflowParameter]:
-    """Extract WorkflowParameter list from a function's signature."""
-    sig = inspect.signature(func)
+def _annotation_to_type_str(annotation: ast.expr | None) -> str:
+    """Best-effort mapping from annotation AST to our simplified type strings."""
+
+    def _base_name(expr: ast.expr) -> str | None:
+        if isinstance(expr, ast.Name):
+            return expr.id
+        if isinstance(expr, ast.Attribute):
+            # e.g. typing.List, module.Type
+            return expr.attr
+        return None
+
+    if annotation is None:
+        return "string"
+
+    # Handle list[int], dict[str, int], etc.
+    if isinstance(annotation, ast.Subscript):
+        base = _base_name(annotation.value)
+        if base in {"list", "List", "Sequence", "Iterable"}:
+            return "array"
+        if base in {"dict", "Dict", "Mapping"}:
+            return "object"
+
+    base = _base_name(annotation)
+    if base in {"str", "String"}:
+        return "string"
+    if base in {"int", "Integer"}:
+        return "integer"
+    if base in {"float", "number", "Number"}:
+        return "number"
+    if base in {"bool", "Boolean"}:
+        return "boolean"
+    if base in {"list", "List"}:
+        return "array"
+    if base in {"dict", "Dict"}:
+        return "object"
+
+    return "string"
+
+
+def _default_expr_to_value(expr: ast.expr) -> Any:
+    """Return a safe representation for a default expression.
+
+    - If it's a Python literal (incl. containers), returns the concrete value.
+    - Otherwise returns a string representation of the expression.
+    """
     try:
-        type_hints = get_type_hints(func)
-    except (NameError, AttributeError, TypeError) as e:
-        # NameError: unresolved forward references
-        # AttributeError: issues accessing type attributes
-        # TypeError: invalid type annotations
-        logger.debug(f"Type hint extraction failed for {name}: {type(e).__name__}: {e}")
-        type_hints = {}
+        return ast.literal_eval(expr)
+    except Exception:
+        try:
+            return ast.unparse(expr)
+        except Exception:
+            return None
 
-    parameters = []
-    for param_name, param in sig.parameters.items():
-        if param_name in _INJECTED_PARAMS:
-            continue
 
-        python_type = type_hints.get(param_name, str)
-        type_str = _PYTHON_TYPE_MAP.get(python_type, "string")
-        has_default = param.default is not inspect.Parameter.empty
-        default = param.default if has_default else None
+def _extract_parameters_from_ast(run_func: ast.AsyncFunctionDef) -> list[WorkflowParameter]:
+    """Extract WorkflowParameter list from an async run() AST node.
 
+    This avoids executing workflow code at load/index time.
+    """
+    args = run_func.args
+
+    # Positional args are posonlyargs + args; defaults apply to the last N of these.
+    pos_args = list(args.posonlyargs) + list(args.args)
+    defaults = list(args.defaults)
+    pos_defaults: dict[str, ast.expr] = {}
+    if defaults:
+        for arg_node, default_node in zip(pos_args[-len(defaults) :], defaults, strict=True):
+            pos_defaults[arg_node.arg] = default_node
+
+    kw_defaults: dict[str, ast.expr] = {}
+    for kw_arg, kw_default in zip(args.kwonlyargs, args.kw_defaults, strict=True):
+        if kw_default is not None:
+            kw_defaults[kw_arg.arg] = kw_default
+
+    parameters: list[WorkflowParameter] = []
+
+    def _add_param(arg_node: ast.arg, default_node: ast.expr | None) -> None:
+        if arg_node.arg in _INJECTED_PARAMS:
+            return
+
+        if default_node is not None:
+            default_val = _default_expr_to_value(default_node)
+            has_default = True
+        else:
+            default_val = None
+            has_default = False
         parameters.append(
             WorkflowParameter(
-                name=param_name,
-                type=type_str,
+                name=arg_node.arg,
+                type=_annotation_to_type_str(arg_node.annotation),
                 description="",
                 required=not has_default,
-                default=default,
+                default=default_val,
             )
         )
+
+    for a in pos_args:
+        _add_param(a, pos_defaults.get(a.arg))
+
+    for a in args.kwonlyargs:
+        _add_param(a, kw_defaults.get(a.arg))
+
     return parameters
+
+
+def _find_run_async_def(tree: ast.Module) -> ast.AsyncFunctionDef:
+    """Find the top-level async def run() function in a module AST."""
+    for node in tree.body:
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "run":
+            return node
+    raise ValueError("Workflow must define an 'async def run()' function")
 
 
 @dataclass
@@ -108,7 +181,6 @@ class PythonWorkflow:
     description: str
     parameters: list[WorkflowParameter]
     source: str
-    _func: Callable[..., Any] = field(repr=False)
     metadata: WorkflowMetadata | None = None
 
     @classmethod
@@ -149,27 +221,12 @@ class PythonWorkflow:
         except SyntaxError as e:
             raise SyntaxError(f"Syntax error in workflow code: {e}")
 
-        has_async_run = False
-        has_sync_run = False
-        for node in ast.walk(tree):
-            if isinstance(node, ast.AsyncFunctionDef) and node.name == "run":
-                has_async_run = True
-                break
-            if isinstance(node, ast.FunctionDef) and node.name == "run":
-                has_sync_run = True
-
-        if has_sync_run and not has_async_run:
+        has_sync_run = any(
+            isinstance(node, ast.FunctionDef) and node.name == "run" for node in tree.body
+        )
+        run_node = _find_run_async_def(tree)
+        if has_sync_run:
             raise ValueError("Workflow must define 'async def run()', not 'def run()'")
-        if not has_async_run:
-            raise ValueError("Workflow must define an 'async def run()' function")
-
-        # Compile and execute to get the function
-        namespace: dict[str, Any] = {}
-        _run_code(compile(tree, f"<workflow:{name}>", "exec"), namespace)
-
-        func = namespace.get("run")
-        if not callable(func):
-            raise ValueError("run must be a callable function")
 
         # Extract description from source if not provided
         if not description:
@@ -180,17 +237,18 @@ class PythonWorkflow:
                     if isinstance(doc, str):
                         description = doc.strip().split("\n")[0]
             # Try function docstring
-            if not description and func.__doc__:
-                description = func.__doc__.strip().split("\n")[0]
+            if not description:
+                func_doc = ast.get_docstring(run_node)
+                if func_doc:
+                    description = func_doc.strip().split("\n")[0]
 
-        parameters = _extract_parameters(func, name)
+        parameters = _extract_parameters_from_ast(run_node)
 
         return cls(
             name=name,
             description=description,
             parameters=parameters,
             source=source,
-            _func=func,
             metadata=metadata or WorkflowMetadata.now(),
         )
 
@@ -210,42 +268,24 @@ class PythonWorkflow:
         except SyntaxError as e:
             raise SyntaxError(f"Syntax error in workflow {path}: {e}")
 
-        has_async_run = False
-        has_sync_run = False
-        for node in ast.walk(tree):
-            if isinstance(node, ast.AsyncFunctionDef) and node.name == "run":
-                has_async_run = True
-                break
-            if isinstance(node, ast.FunctionDef) and node.name == "run":
-                has_sync_run = True
-
-        if has_sync_run and not has_async_run:
+        has_sync_run = any(
+            isinstance(node, ast.FunctionDef) and node.name == "run" for node in tree.body
+        )
+        run_node = _find_run_async_def(tree)
+        if has_sync_run:
             raise ValueError(f"Workflow {path} must define 'async def run()', not 'def run()'")
-        if not has_async_run:
-            raise ValueError(f"Workflow {path} must define an 'async def run()' function")
-
-        # Load module dynamically
-        spec = importlib.util.spec_from_file_location(path.stem, path)
-        if spec is None or spec.loader is None:
-            raise ValueError(f"Could not load module from {path}")
-
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-
-        func = module.run
 
         # Extract description from module or function docstring
-        description = module.__doc__ or func.__doc__ or ""
-        description = description.strip().split("\n")[0]  # First line
+        description = ast.get_docstring(tree) or ast.get_docstring(run_node) or ""
+        description = description.strip().split("\n")[0]
 
-        parameters = _extract_parameters(func, path.stem)
+        parameters = _extract_parameters_from_ast(run_node)
 
         return cls(
             name=path.stem,
             description=description,
             parameters=parameters,
             source=source,
-            _func=func,
             metadata=WorkflowMetadata(
                 created_at=datetime.now(UTC),
                 created_by="human",
@@ -254,11 +294,21 @@ class PythonWorkflow:
         )
 
     async def invoke(self, **kwargs: Any) -> Any:
-        """Invoke the workflow with given parameters.
+        """Invoke the workflow in a fresh namespace (stateless).
 
-        Awaits the async run() function.
+        Note: This executes the workflow module source on each invocation, so
+        module-level globals do not persist across calls.
         """
-        return await self._func(**kwargs)
+        namespace: dict[str, Any] = {}
+        tree = ast.parse(self.source)
+        _run_code(compile(tree, f"<workflow:{self.name}>", "exec"), namespace)
+        run_func = namespace.get("run")
+        if not callable(run_func):
+            raise ValueError(f"Workflow {self.name} has no run() function")
+        result = run_func(**kwargs)
+        if inspect.iscoroutine(result):
+            return await result
+        return result
 
     @property
     def tags(self) -> frozenset[str]:

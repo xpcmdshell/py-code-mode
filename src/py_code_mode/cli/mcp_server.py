@@ -276,7 +276,9 @@ async def create_session(args: argparse.Namespace) -> Session:
     """Create session based on CLI args."""
     from py_code_mode import Session
     from py_code_mode.execution.subprocess import SubprocessConfig, SubprocessExecutor
+    from py_code_mode.storage import StorageBackend
 
+    storage: StorageBackend
     if args.redis:
         from py_code_mode import RedisStorage
 

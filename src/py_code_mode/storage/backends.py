@@ -243,6 +243,8 @@ class RedisStorage:
         if url is None and redis is None:
             raise ValueError("Either 'url' or 'redis' must be provided")
 
+        self._url: str | None
+
         if url is not None:
             from redis import Redis as RedisClient
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from py_code_mode.errors import ToolCallError, ToolNotFoundError
 from py_code_mode.tools.types import Tool, ToolCallable, ToolParameter
@@ -11,12 +11,15 @@ from py_code_mode.tools.types import Tool, ToolCallable, ToolParameter
 logger = logging.getLogger(__name__)
 
 # MCP SDK exception types (optional dependency)
+MCP_ERRORS: tuple[type[BaseException], ...]
 try:
     from mcp import JSONRPCError, McpError
-
-    MCP_ERRORS = (McpError, JSONRPCError)
 except ImportError:
     MCP_ERRORS = ()
+else:
+    # Stubs for mcp may not model exception inheritance precisely; the runtime objects
+    # are still safe to use in `except MCP_ERRORS`.
+    MCP_ERRORS = cast(tuple[type[BaseException], ...], (McpError, JSONRPCError))
 
 if TYPE_CHECKING:
     from contextlib import AsyncExitStack

@@ -24,6 +24,7 @@ from py_code_mode.deps import (
     PackageInstaller,
     collect_configured_deps,
 )
+from py_code_mode.deps.store import DepsStore, MemoryDepsStore
 from py_code_mode.execution.in_process.config import InProcessConfig
 from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
 from py_code_mode.execution.protocol import Capability, validate_storage_not_access
@@ -287,15 +288,12 @@ class InProcessExecutor:
             installer = PackageInstaller()
             # Use a file-backed store if deps_file is configured, otherwise in-memory
             if self._config.deps_file:
-                deps_store = FileDepsStore(self._config.deps_file.parent)
+                deps_store: DepsStore = FileDepsStore(self._config.deps_file.parent)
                 # Pre-populate store with config deps
                 for dep in initial_deps:
-                    if not deps_store.exists(dep):
-                        deps_store.add(dep)
+                    deps_store.add(dep)
             else:
                 # In-memory store for deps when no file configured
-                from py_code_mode.deps.store import MemoryDepsStore
-
                 deps_store = MemoryDepsStore()
                 for dep in initial_deps:
                     deps_store.add(dep)

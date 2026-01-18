@@ -367,7 +367,6 @@ def _make_workflow_with_invalid_name(name: str) -> PythonWorkflow:
         description=valid_workflow.description,
         parameters=valid_workflow.parameters,
         source=valid_workflow.source,
-        _func=valid_workflow._func,
         metadata=valid_workflow.metadata,
     )
 

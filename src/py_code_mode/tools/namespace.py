@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 from typing import TYPE_CHECKING, Any
 
 from py_code_mode.tools.types import Tool, ToolCallable
@@ -56,11 +57,11 @@ class ToolsNamespace:
 
         return ToolProxy(self._registry, tool, self._loop)
 
-    def list(self) -> list[Tool]:
+    def list(self) -> builtins.list[Tool]:
         """List all available tools."""
         return self._registry.get_all_tools()
 
-    def search(self, query: str, limit: int = 5) -> list[Tool]:
+    def search(self, query: str, limit: int = 5) -> builtins.list[Tool]:
         """Search tools by query string."""
         from py_code_mode.tools.registry import substring_search
 
