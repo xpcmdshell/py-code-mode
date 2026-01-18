@@ -15,60 +15,60 @@ class TestVectorStoreProtocol:
     """Protocol compliance tests for VectorStore implementations."""
 
     def test_vector_store_protocol_exists(self) -> None:
-        """VectorStore protocol should be importable from skills module."""
+        """VectorStore protocol should be importable from workflows module."""
         # Protocol should be runtime checkable
 
-        from py_code_mode.skills.vector_store import VectorStore
+        from py_code_mode.workflows.vector_store import VectorStore
 
         assert isinstance(VectorStore, type)
 
     def test_protocol_has_add_method(self) -> None:
         """VectorStore must define add() method signature."""
-        from py_code_mode.skills.vector_store import VectorStore
+        from py_code_mode.workflows.vector_store import VectorStore
 
         # Protocol defines method signatures at class level
         assert hasattr(VectorStore, "add")
 
     def test_protocol_has_remove_method(self) -> None:
         """VectorStore must define remove() method signature."""
-        from py_code_mode.skills.vector_store import VectorStore
+        from py_code_mode.workflows.vector_store import VectorStore
 
         assert hasattr(VectorStore, "remove")
 
     def test_protocol_has_search_method(self) -> None:
         """VectorStore must define search() method signature."""
-        from py_code_mode.skills.vector_store import VectorStore
+        from py_code_mode.workflows.vector_store import VectorStore
 
         assert hasattr(VectorStore, "search")
 
     def test_protocol_has_get_content_hash_method(self) -> None:
         """VectorStore must define get_content_hash() for change detection."""
-        from py_code_mode.skills.vector_store import VectorStore
+        from py_code_mode.workflows.vector_store import VectorStore
 
         assert hasattr(VectorStore, "get_content_hash")
 
     def test_protocol_has_get_model_info_method(self) -> None:
         """VectorStore must define get_model_info() for model validation."""
-        from py_code_mode.skills.vector_store import VectorStore
+        from py_code_mode.workflows.vector_store import VectorStore
 
         assert hasattr(VectorStore, "get_model_info")
 
     def test_protocol_has_clear_method(self) -> None:
         """VectorStore must define clear() to reset index."""
-        from py_code_mode.skills.vector_store import VectorStore
+        from py_code_mode.workflows.vector_store import VectorStore
 
         assert hasattr(VectorStore, "clear")
 
     def test_protocol_has_count_method(self) -> None:
-        """VectorStore must define count() to get indexed skill count."""
-        from py_code_mode.skills.vector_store import VectorStore
+        """VectorStore must define count() to get indexed workflow count."""
+        from py_code_mode.workflows.vector_store import VectorStore
 
         assert hasattr(VectorStore, "count")
 
     def test_protocol_is_runtime_checkable(self) -> None:
         """Protocol should support isinstance() checks."""
 
-        from py_code_mode.skills.vector_store import VectorStore
+        from py_code_mode.workflows.vector_store import VectorStore
 
         # Check that VectorStore has the runtime_checkable marker
         # This allows isinstance(obj, VectorStore) to work
@@ -80,7 +80,7 @@ class TestModelInfo:
 
     def test_model_info_dataclass_exists(self) -> None:
         """ModelInfo should be importable and constructible."""
-        from py_code_mode.skills.vector_store import ModelInfo
+        from py_code_mode.workflows.vector_store import ModelInfo
 
         info = ModelInfo(model_name="bge-small", dimension=384, version="1.5")
 
@@ -90,7 +90,7 @@ class TestModelInfo:
 
     def test_model_info_is_frozen(self) -> None:
         """ModelInfo should be immutable (frozen dataclass)."""
-        from py_code_mode.skills.vector_store import ModelInfo
+        from py_code_mode.workflows.vector_store import ModelInfo
 
         info = ModelInfo(model_name="bge-small", dimension=384, version="1.5")
 
@@ -100,7 +100,7 @@ class TestModelInfo:
 
     def test_model_info_equality(self) -> None:
         """ModelInfo instances with same values should be equal."""
-        from py_code_mode.skills.vector_store import ModelInfo
+        from py_code_mode.workflows.vector_store import ModelInfo
 
         info1 = ModelInfo(model_name="bge-small", dimension=384, version="1.5")
         info2 = ModelInfo(model_name="bge-small", dimension=384, version="1.5")
@@ -111,7 +111,7 @@ class TestModelInfo:
 
     def test_model_info_hashable(self) -> None:
         """Frozen dataclass should be hashable for use in sets/dicts."""
-        from py_code_mode.skills.vector_store import ModelInfo
+        from py_code_mode.workflows.vector_store import ModelInfo
 
         info1 = ModelInfo(model_name="bge-small", dimension=384, version="1.5")
         info2 = ModelInfo(model_name="bge-base", dimension=768, version="1.5")
@@ -127,45 +127,45 @@ class TestSearchResult:
 
     def test_search_result_dataclass_exists(self) -> None:
         """SearchResult should be importable and constructible."""
-        from py_code_mode.skills.vector_store import SearchResult
+        from py_code_mode.workflows.vector_store import SearchResult
 
-        result = SearchResult(id="skill_name", score=0.85, metadata={"tags": ["network"]})
+        result = SearchResult(id="workflow_name", score=0.85, metadata={"tags": ["network"]})
 
-        assert result.id == "skill_name"
+        assert result.id == "workflow_name"
         assert result.score == 0.85
         assert result.metadata == {"tags": ["network"]}
 
     def test_search_result_is_frozen(self) -> None:
         """SearchResult should be immutable."""
-        from py_code_mode.skills.vector_store import SearchResult
+        from py_code_mode.workflows.vector_store import SearchResult
 
-        result = SearchResult(id="skill_name", score=0.85, metadata={})
+        result = SearchResult(id="workflow_name", score=0.85, metadata={})
 
         with pytest.raises(Exception):  # dataclasses.FrozenInstanceError
             result.score = 0.95  # type: ignore[misc]
 
     def test_search_result_equality(self) -> None:
         """SearchResult instances with same values should be equal."""
-        from py_code_mode.skills.vector_store import SearchResult
+        from py_code_mode.workflows.vector_store import SearchResult
 
-        r1 = SearchResult(id="skill", score=0.85, metadata={})
-        r2 = SearchResult(id="skill", score=0.85, metadata={})
-        r3 = SearchResult(id="skill", score=0.90, metadata={})
+        r1 = SearchResult(id="workflow", score=0.85, metadata={})
+        r2 = SearchResult(id="workflow", score=0.85, metadata={})
+        r3 = SearchResult(id="workflow", score=0.90, metadata={})
 
         assert r1 == r2
         assert r1 != r3
 
     def test_search_result_with_empty_metadata(self) -> None:
         """SearchResult should work with empty metadata dict."""
-        from py_code_mode.skills.vector_store import SearchResult
+        from py_code_mode.workflows.vector_store import SearchResult
 
-        result = SearchResult(id="skill", score=0.75, metadata={})
+        result = SearchResult(id="workflow", score=0.75, metadata={})
 
         assert result.metadata == {}
 
     def test_search_result_ordering_by_score(self) -> None:
         """SearchResult should be comparable by score for sorting."""
-        from py_code_mode.skills.vector_store import SearchResult
+        from py_code_mode.workflows.vector_store import SearchResult
 
         r1 = SearchResult(id="a", score=0.9, metadata={})
         r2 = SearchResult(id="b", score=0.7, metadata={})
@@ -185,7 +185,7 @@ class TestContentHashUtility:
 
     def test_compute_content_hash_exists(self) -> None:
         """compute_content_hash() should be importable and callable."""
-        from py_code_mode.skills.vector_store import compute_content_hash
+        from py_code_mode.workflows.vector_store import compute_content_hash
 
         hash_value = compute_content_hash(
             description="Scan network ports",
@@ -197,7 +197,7 @@ class TestContentHashUtility:
 
     def test_content_hash_is_16_chars(self) -> None:
         """Hash should be 16-character hex string (8 bytes)."""
-        from py_code_mode.skills.vector_store import compute_content_hash
+        from py_code_mode.workflows.vector_store import compute_content_hash
 
         hash_value = compute_content_hash(description="test", source="async def run(): pass")
 
@@ -207,7 +207,7 @@ class TestContentHashUtility:
 
     def test_same_input_produces_same_hash(self) -> None:
         """Deterministic: same input should produce same hash."""
-        from py_code_mode.skills.vector_store import compute_content_hash
+        from py_code_mode.workflows.vector_store import compute_content_hash
 
         description = "Scan network ports"
         source = 'async def run(target: str):\n    return f"nmap {target}"'
@@ -219,7 +219,7 @@ class TestContentHashUtility:
 
     def test_different_description_produces_different_hash(self) -> None:
         """Different description should change hash."""
-        from py_code_mode.skills.vector_store import compute_content_hash
+        from py_code_mode.workflows.vector_store import compute_content_hash
 
         source = "async def run(): pass"
 
@@ -230,9 +230,9 @@ class TestContentHashUtility:
 
     def test_different_source_produces_different_hash(self) -> None:
         """Different source code should change hash."""
-        from py_code_mode.skills.vector_store import compute_content_hash
+        from py_code_mode.workflows.vector_store import compute_content_hash
 
-        description = "Test skill"
+        description = "Test workflow"
 
         hash1 = compute_content_hash(description, "async def run(): return 1")
         hash2 = compute_content_hash(description, "async def run(): return 2")
@@ -241,7 +241,7 @@ class TestContentHashUtility:
 
     def test_whitespace_changes_affect_hash(self) -> None:
         """Whitespace is significant - changes should affect hash."""
-        from py_code_mode.skills.vector_store import compute_content_hash
+        from py_code_mode.workflows.vector_store import compute_content_hash
 
         description = "Test"
         source1 = "async def run(): pass"
@@ -254,7 +254,7 @@ class TestContentHashUtility:
 
     def test_hash_uses_sha256_algorithm(self) -> None:
         """Hash should be first 16 chars of SHA-256 hex digest."""
-        from py_code_mode.skills.vector_store import compute_content_hash
+        from py_code_mode.workflows.vector_store import compute_content_hash
 
         description = "Test description"
         source = "async def run(): pass"
@@ -269,7 +269,7 @@ class TestContentHashUtility:
 
     def test_hash_separates_description_and_source(self) -> None:
         """Hash should use delimiter to prevent collision."""
-        from py_code_mode.skills.vector_store import compute_content_hash
+        from py_code_mode.workflows.vector_store import compute_content_hash
 
         # These would collide if we just concatenated without delimiter
         hash1 = compute_content_hash("AB", "C")
@@ -279,7 +279,7 @@ class TestContentHashUtility:
 
     def test_empty_strings_produce_valid_hash(self) -> None:
         """Should handle empty description and source gracefully."""
-        from py_code_mode.skills.vector_store import compute_content_hash
+        from py_code_mode.workflows.vector_store import compute_content_hash
 
         hash_value = compute_content_hash("", "")
 
@@ -296,7 +296,7 @@ class TestVectorStoreSignatures:
 
     def test_add_signature_accepts_required_params(self) -> None:
         """add() should accept id, description, source, content_hash."""
-        from py_code_mode.skills.vector_store import VectorStore
+        from py_code_mode.workflows.vector_store import VectorStore
 
         class MinimalVectorStore:
             def add(self, id: str, description: str, source: str, content_hash: str) -> None:
@@ -314,7 +314,7 @@ class TestVectorStoreSignatures:
                 return None
 
             def get_model_info(self):
-                from py_code_mode.skills.vector_store import ModelInfo
+                from py_code_mode.workflows.vector_store import ModelInfo
 
                 return ModelInfo("test", 384, "1.0")
 
@@ -329,7 +329,7 @@ class TestVectorStoreSignatures:
 
         # Should be callable with these parameters
         store.add(
-            id="test_skill",
+            id="test_workflow",
             description="Test description",
             source="async def run(): pass",
             content_hash="abcd1234",
@@ -337,7 +337,7 @@ class TestVectorStoreSignatures:
 
     def test_search_returns_list_of_search_results(self) -> None:
         """search() should return list[SearchResult]."""
-        from py_code_mode.skills.vector_store import SearchResult, VectorStore
+        from py_code_mode.workflows.vector_store import SearchResult, VectorStore
 
         class MinimalVectorStore:
             def add(self, id: str, description: str, source: str, content_hash: str) -> None:
@@ -355,7 +355,7 @@ class TestVectorStoreSignatures:
                 return None
 
             def get_model_info(self):
-                from py_code_mode.skills.vector_store import ModelInfo
+                from py_code_mode.workflows.vector_store import ModelInfo
 
                 return ModelInfo("test", 384, "1.0")
 
@@ -376,7 +376,7 @@ class TestVectorStoreSignatures:
 
     def test_get_model_info_returns_model_info(self) -> None:
         """get_model_info() should return ModelInfo dataclass."""
-        from py_code_mode.skills.vector_store import ModelInfo, VectorStore
+        from py_code_mode.workflows.vector_store import ModelInfo, VectorStore
 
         class MinimalVectorStore:
             def add(self, id: str, description: str, source: str, content_hash: str) -> None:

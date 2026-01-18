@@ -48,7 +48,7 @@ class SubprocessConfig:
             are kernel dependencies. None means no pre-configured user deps.
         deps_file: Path to requirements.txt-style file for pre-configured deps.
             None means no deps file.
-        ipc_timeout: Timeout for IPC queries (tool/skill/artifact) in seconds.
+        ipc_timeout: Timeout for IPC queries (tool/workflow/artifact) in seconds.
             None means unlimited (default).
     """
 
@@ -72,7 +72,9 @@ class SubprocessConfig:
             object.__setattr__(self, "python_version", _get_current_python_version())
 
         # Validate python_version (now guaranteed to be str)
-        version = self.python_version  # type: ignore[union-attr]
+        version = self.python_version
+        if version is None:
+            raise ValueError("python_version cannot be None")
         stripped = version.strip()
         if not stripped:
             raise ValueError("python_version cannot be empty or whitespace-only")

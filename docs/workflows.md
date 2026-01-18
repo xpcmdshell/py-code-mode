@@ -1,19 +1,19 @@
-# Skills
+# Workflows
 
-Skills are reusable Python workflows that persist across sessions. Agents create skills when they solve problems, then invoke them later instead of re-solving from scratch.
+Workflows are reusable Python workflows that persist across sessions. Agents create workflows when they solve problems, then invoke them later instead of re-solving from scratch.
 
 ## Core Concept
 
-When an agent successfully completes a multi-step workflow, they save it as a skill. Next time they need that capability, they search for and invoke the skill directly—no re-planning required.
+When an agent successfully completes a multi-step workflow, they save it as a workflow. Next time they need that capability, they search for and invoke the workflow directly—no re-planning required.
 
-Over time, the skill library grows. Simple skills become building blocks for more complex workflows.
+Over time, the workflow library grows. Simple workflows become building blocks for more complex workflows.
 
-## Creating Skills
+## Creating Workflows
 
-Skills are async Python functions with an `async def run()` entry point:
+Workflows are async Python functions with an `async def run()` entry point:
 
 ```python
-# skills/fetch_json.py
+# workflows/fetch_json.py
 """Fetch and parse JSON from a URL."""
 
 async def run(url: str, headers: dict = None) -> dict:
@@ -37,14 +37,14 @@ async def run(url: str, headers: dict = None) -> dict:
         raise RuntimeError(f"Invalid JSON from {url}: {e}") from e
 ```
 
-> **Note:** All skills must use `async def run()`. Synchronous `def run()` is not supported.
+> **Note:** All workflows must use `async def run()`. Synchronous `def run()` is not supported.
 
 ### Runtime Creation
 
-Agents can create skills dynamically:
+Agents can create workflows dynamically:
 
 ```python
-skills.create(
+workflows.create(
     name="fetch_json",
     source='''async def run(url: str) -> dict:
     """Fetch and parse JSON from a URL."""
@@ -56,46 +56,46 @@ skills.create(
 )
 ```
 
-## Skill Discovery
+## Workflow Discovery
 
-Skills support semantic search based on descriptions:
+Workflows support semantic search based on descriptions:
 
 ```python
 # Search by intent
-results = skills.search("fetch github repository data")
-# Returns skills ranked by relevance to the query
+results = workflows.search("fetch github repository data")
+# Returns workflows ranked by relevance to the query
 
-# List all skills
-all_skills = skills.list()
+# List all workflows
+all_workflows = workflows.list()
 
-# Get specific skill details
-skill = skills.get("fetch_json")
+# Get specific workflow details
+workflow = workflows.get("fetch_json")
 ```
 
 The search uses embedding-based similarity, so it understands intent even if the exact words don't match.
 
-## Invoking Skills
+## Invoking Workflows
 
 ```python
 # Direct invocation
-data = skills.invoke("fetch_json", url="https://api.github.com/repos/owner/repo")
+data = workflows.invoke("fetch_json", url="https://api.github.com/repos/owner/repo")
 
 # With keyword arguments
-analysis = skills.invoke(
+analysis = workflows.invoke(
     "analyze_repo",
     owner="anthropics",
     repo="anthropic-sdk-python"
 )
 ```
 
-## Composing Skills
+## Composing Workflows
 
-Skills can invoke other skills, enabling layered workflows:
+Workflows can invoke other workflows, enabling layered workflows:
 
-### Layer 1: Base Skills (Building Blocks)
+### Layer 1: Base Workflows (Building Blocks)
 
 ```python
-# skills/fetch_json.py
+# workflows/fetch_json.py
 async def run(url: str) -> dict:
     """Fetch and parse JSON from a URL."""
     import json
@@ -103,14 +103,14 @@ async def run(url: str) -> dict:
     return json.loads(response)
 ```
 
-### Layer 2: Domain Skills (Compositions)
+### Layer 2: Domain Workflows (Compositions)
 
 ```python
-# skills/get_repo_metadata.py
+# workflows/get_repo_metadata.py
 async def run(owner: str, repo: str) -> dict:
     """Get GitHub repository metadata."""
-    # Uses the fetch_json skill
-    data = skills.invoke("fetch_json",
+    # Uses the fetch_json workflow
+    data = workflows.invoke("fetch_json",
                          url=f"https://api.github.com/repos/{owner}/{repo}")
 
     return {
@@ -121,17 +121,17 @@ async def run(owner: str, repo: str) -> dict:
     }
 ```
 
-### Layer 3: Workflow Skills (Orchestration)
+### Layer 3: Workflow Workflows (Orchestration)
 
 ```python
-# skills/analyze_multiple_repos.py
+# workflows/analyze_multiple_repos.py
 async def run(repos: list) -> dict:
     """Analyze multiple GitHub repositories."""
     summaries = []
     for repo in repos:
         owner, name = repo.split('/')
-        # Uses the get_repo_metadata skill
-        metadata = skills.invoke("get_repo_metadata", owner=owner, repo=name)
+        # Uses the get_repo_metadata workflow
+        metadata = workflows.invoke("get_repo_metadata", owner=owner, repo=name)
         summaries.append(metadata)
 
     # Aggregate results
@@ -146,11 +146,11 @@ async def run(repos: list) -> dict:
     }
 ```
 
-**Simple skills become building blocks for complex workflows.** As the library grows, agents accomplish more by composing existing capabilities.
+**Simple workflows become building blocks for complex workflows.** As the library grows, agents accomplish more by composing existing capabilities.
 
 ## Quality Standards
 
-Skills should follow these standards for reliability and maintainability:
+Workflows should follow these standards for reliability and maintainability:
 
 ### Type Hints
 
@@ -223,25 +223,25 @@ async def run(repo_url: str, incl_contrib: bool = False) -> dict:
     ...
 ```
 
-## Managing Skills
+## Managing Workflows
 
-### Deleting Skills
+### Deleting Workflows
 
 ```python
-# Delete a skill by name
-skills.delete("old_skill_name")
+# Delete a workflow by name
+workflows.delete("old_workflow_name")
 ```
 
-### Updating Skills
+### Updating Workflows
 
-Skills are immutable. To update, delete and recreate:
+Workflows are immutable. To update, delete and recreate:
 
 ```python
 # Delete old version
-skills.delete("fetch_json")
+workflows.delete("fetch_json")
 
 # Create new version
-skills.create(
+workflows.create(
     name="fetch_json",
     source='''async def run(url: str, timeout: int = 30) -> dict:
     # Updated implementation with timeout
@@ -251,16 +251,16 @@ skills.create(
 )
 ```
 
-## Seeding Skills
+## Seeding Workflows
 
-You can pre-author skills for agents to discover:
+You can pre-author workflows for agents to discover:
 
 ### File-based (Recommended)
 
-Create `.py` files in the skills directory:
+Create `.py` files in the workflows directory:
 
 ```python
-# skills/fetch_and_summarize.py
+# workflows/fetch_and_summarize.py
 """Fetch a URL and extract key information."""
 
 async def run(url: str) -> dict:
@@ -275,11 +275,11 @@ async def run(url: str) -> dict:
 
 ### Programmatic
 
-Use `session.add_skill()` for runtime skill creation (recommended):
+Use `session.add_workflow()` for runtime workflow creation (recommended):
 
 ```python
 async with Session(storage=storage) as session:
-    await session.add_skill(
+    await session.add_workflow(
         name="greet",
         source='''async def run(name: str = "World") -> str:
     return f"Hello, {name}!"
@@ -288,11 +288,11 @@ async with Session(storage=storage) as session:
     )
 ```
 
-For advanced use cases where you need to create skills outside of agent code execution, use `session.add_skill()`:
+For advanced use cases where you need to create workflows outside of agent code execution, use `session.add_workflow()`:
 
 ```python
 async with Session(storage=storage, executor=executor) as session:
-    await session.add_skill(
+    await session.add_workflow(
         name="greet",
         source='''async def run(name: str = "World") -> str:
     return f"Hello, {name}!"
@@ -303,23 +303,23 @@ async with Session(storage=storage, executor=executor) as session:
 
 ## Best Practices
 
-**When to create skills:**
+**When to create workflows:**
 - You'll need this operation again (or similar variants)
 - It's more than 5 lines of meaningful logic
 - It has clear inputs and outputs
 - It could be composed into higher-level workflows
 
-**When NOT to create skills:**
+**When NOT to create workflows:**
 - One-off operations you won't repeat
 - Simple wrappers around single tool calls
 - Exploration or debugging code
 
-**Skill composition guidelines:**
-- Start with simple, focused skills (single responsibility)
-- Build higher-level skills by composing simpler ones
-- Use semantic search to find existing skills before creating new ones
-- Name skills descriptively (what they do, not how they do it)
+**Workflow composition guidelines:**
+- Start with simple, focused workflows (single responsibility)
+- Build higher-level workflows by composing simpler ones
+- Use semantic search to find existing workflows before creating new ones
+- Name workflows descriptively (what they do, not how they do it)
 
 ## Examples
 
-See [examples/](../examples/) for complete skill libraries in working agent applications.
+See [examples/](../examples/) for complete workflow libraries in working agent applications.

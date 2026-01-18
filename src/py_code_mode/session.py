@@ -1,7 +1,7 @@
 """Session - unified interface for code execution with storage.
 
 Session wraps a StorageBackend and Executor, providing the primary API
-for py-code-mode. It injects tools, skills, and artifacts namespaces
+for py-code-mode. It injects tools, workflows, and artifacts namespaces
 into the executor's runtime environment.
 """
 
@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from py_code_mode.execution import Executor
-from py_code_mode.skills import PythonSkill
+from py_code_mode.workflows import PythonWorkflow
 from py_code_mode.types import ExecutionResult
 
 if TYPE_CHECKING:
@@ -51,7 +51,7 @@ class Session:
             TypeError: If executor is a string (unsupported) or wrong type.
 
         For convenience, use class methods instead of __init__ directly:
-            - Session.from_base(path) - auto-discover tools/skills/artifacts
+            - Session.from_base(path) - auto-discover tools/workflows/artifacts
             - Session.subprocess(...) - subprocess isolation (recommended)
             - Session.in_process(...) - same process (fastest, no isolation)
             - Session.container(...) - Docker isolation (most secure)
@@ -97,7 +97,7 @@ class Session:
 
         Auto-discovers from workspace directory:
         - tools/ for tool definitions
-        - skills/ for skill files
+        - workflows/ for workflow files
         - artifacts/ for persistent data
         - requirements.txt for pre-configured dependencies
 
@@ -306,7 +306,7 @@ class Session:
 
         # Start executor with storage backend directly
         # Each executor handles storage access appropriately:
-        # - InProcessExecutor: uses storage.tools/skills/artifacts directly
+        # - InProcessExecutor: uses storage.tools/workflows/artifacts directly
         # - ContainerExecutor: calls storage.get_serializable_access() internally
         # - SubprocessExecutor: calls storage.get_serializable_access() internally
         await self._executor.start(storage=self._storage)
@@ -348,7 +348,7 @@ class Session:
     async def reset(self) -> None:
         """Reset the execution environment.
 
-        Clears all user-defined variables but preserves tools, skills, artifacts namespaces.
+        Clears all user-defined variables but preserves tools, workflows, artifacts namespaces.
         """
         if self._executor is None:
             return
@@ -432,96 +432,100 @@ class Session:
         return await self._executor.search_tools(query, limit)
 
     # -------------------------------------------------------------------------
-    # Skills facade methods
+    # Workflows facade methods
     # -------------------------------------------------------------------------
 
-    async def list_skills(self) -> list[dict[str, Any]]:
-        """List all skills (refreshes from storage first).
+    async def list_workflows(self) -> list[dict[str, Any]]:
+        """List all workflows (refreshes from storage first).
 
         Returns:
-            List of skill summaries (name, description, parameters - no source).
-            Use get_skill() to retrieve full source for a specific skill.
+            List of workflow summaries (name, description, parameters - no source).
+            Use get_workflow() to retrieve full source for a specific workflow.
         """
-        library = self._storage.get_skill_library()
+        library = self._storage.get_workflow_library()
         library.refresh()
-        skills = library.list()
-        return [self._skill_to_dict(skill, include_source=False) for skill in skills]
+        workflows = library.list()
+        return [self._workflow_to_dict(workflow, include_source=False) for workflow in workflows]
 
-    async def search_skills(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
-        """Search skills (refreshes from storage first).
+    async def search_workflows(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Search workflows (refreshes from storage first).
 
         Args:
             query: Natural language search query.
             limit: Maximum number of results.
 
         Returns:
-            List of matching skill summaries (name, description, parameters - no source).
-            Use get_skill() to retrieve full source for a specific skill.
+            List of matching workflow summaries (name, description, parameters - no source).
+            Use get_workflow() to retrieve full source for a specific workflow.
         """
-        library = self._storage.get_skill_library()
+        library = self._storage.get_workflow_library()
         library.refresh()
-        skills = library.search(query, limit=limit)
-        return [self._skill_to_dict(skill, include_source=False) for skill in skills]
+        workflows = library.search(query, limit=limit)
+        return [self._workflow_to_dict(workflow, include_source=False) for workflow in workflows]
 
-    async def add_skill(self, name: str, source: str, description: str) -> dict[str, Any]:
-        """Create and persist a skill.
+    async def add_workflow(self, name: str, source: str, description: str) -> dict[str, Any]:
+        """Create and persist a workflow.
 
         Args:
-            name: Unique skill name (must be valid Python identifier).
+            name: Unique workflow name (must be valid Python identifier).
             source: Python source code with def run(...) function.
-            description: What the skill does.
+            description: What the workflow does.
 
         Returns:
-            Skill metadata dict.
+            Workflow metadata dict.
 
         Raises:
             ValueError: If name is invalid or source doesn't define run().
             SyntaxError: If source has syntax errors.
         """
-        skill = PythonSkill.from_source(name=name, source=source, description=description)
-        library = self._storage.get_skill_library()
-        library.add(skill)
-        return self._skill_to_dict(skill)
+        workflow = PythonWorkflow.from_source(name=name, source=source, description=description)
+        library = self._storage.get_workflow_library()
+        library.add(workflow)
+        return self._workflow_to_dict(workflow)
 
-    async def remove_skill(self, name: str) -> bool:
-        """Remove a skill.
+    async def remove_workflow(self, name: str) -> bool:
+        """Remove a workflow.
 
         Args:
-            name: Name of the skill to remove.
+            name: Name of the workflow to remove.
 
         Returns:
             True if removed, False if not found.
         """
-        library = self._storage.get_skill_library()
+        library = self._storage.get_workflow_library()
         return library.remove(name)
 
-    async def get_skill(self, name: str) -> dict[str, Any] | None:
-        """Get skill by name.
+    async def get_workflow(self, name: str) -> dict[str, Any] | None:
+        """Get workflow by name.
 
         Args:
-            name: Skill name.
+            name: Workflow name.
 
         Returns:
-            Skill info dict, or None if not found.
+            Workflow info dict, or None if not found.
         """
-        library = self._storage.get_skill_library()
+        library = self._storage.get_workflow_library()
         library.refresh()
-        skill = library.get(name)
-        if skill is None:
+        workflow = library.get(name)
+        if workflow is None:
             return None
-        return self._skill_to_dict(skill)
+        return self._workflow_to_dict(workflow)
 
-    def _skill_to_dict(self, skill: PythonSkill, include_source: bool = True) -> dict[str, Any]:
-        """Convert a PythonSkill to a JSON-serializable dict.
+    def _workflow_to_dict(
+        self,
+        workflow: PythonWorkflow,
+        include_source: bool = True,
+    ) -> dict[str, Any]:
+        """Convert a PythonWorkflow to a JSON-serializable dict.
 
         Args:
-            skill: The skill to convert.
+            workflow: The workflow to convert.
             include_source: Whether to include full source code. False for listings,
-                True for get_skill where the caller needs the implementation.
+                True for get_workflow where the caller needs the implementation.
         """
         result: dict[str, Any] = {
-            "name": skill.name,
-            "description": skill.description,
+            "name": workflow.name,
+            "description": workflow.description,
             "parameters": [
                 {
                     "name": p.name,
@@ -530,11 +534,11 @@ class Session:
                     "required": p.required,
                     "default": p.default,
                 }
-                for p in skill.parameters
+                for p in workflow.parameters
             ],
         }
         if include_source:
-            result["source"] = skill.source
+            result["source"] = workflow.source
         return result
 
     # -------------------------------------------------------------------------

@@ -26,11 +26,11 @@ class FileStorageAccess:
     """Access descriptor for file-based storage.
 
     Session derives this from FileStorage and passes to executor.start()
-    so the executor knows where to find skills and artifacts.
+    so the executor knows where to find workflows and artifacts.
     Tools and deps are owned by executors (via config), not storage.
     """
 
-    skills_path: Path | None
+    workflows_path: Path | None
     artifacts_path: Path
     vectors_path: Path | None = None
 
@@ -40,12 +40,12 @@ class RedisStorageAccess:
     """Access descriptor for Redis storage.
 
     Session derives this from RedisStorage and passes to executor.start()
-    so the executor knows the Redis connection and key prefixes for skills
+    so the executor knows the Redis connection and key prefixes for workflows
     and artifacts. Tools and deps are owned by executors (via config).
     """
 
     redis_url: str
-    skills_prefix: str
+    workflows_prefix: str
     artifacts_prefix: str
     vectors_prefix: str | None = None
 
@@ -188,7 +188,7 @@ class Executor(Protocol):
 
         Args:
             storage: StorageBackend instance. Executor decides how to use it:
-                    - InProcessExecutor: uses storage.tools/skills/artifacts directly
+                    - InProcessExecutor: uses storage.tools/workflows/artifacts directly
                     - ContainerExecutor: calls storage.get_serializable_access()
                     - SubprocessExecutor: calls storage.get_serializable_access()
         """

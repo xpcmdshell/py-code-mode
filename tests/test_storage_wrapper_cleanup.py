@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from py_code_mode.artifacts import ArtifactStoreProtocol
-from py_code_mode.skills import SkillLibrary
+from py_code_mode.workflows import WorkflowLibrary
 from py_code_mode.storage import FileStorage, RedisStorage
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class TestWrapperPropertiesRemoved:
-    """Verify .tools, .skills, .artifacts properties are REMOVED."""
+    """Verify .tools, .workflows, .artifacts properties are REMOVED."""
 
     def test_file_storage_no_tools_property(self, tmp_path: Path) -> None:
         """FileStorage.tools property must be removed.
@@ -32,15 +32,15 @@ class TestWrapperPropertiesRemoved:
         with pytest.raises(AttributeError):
             _ = storage.tools
 
-    def test_file_storage_no_skills_property(self, tmp_path: Path) -> None:
-        """FileStorage.skills property must be removed.
+    def test_file_storage_no_workflows_property(self, tmp_path: Path) -> None:
+        """FileStorage.workflows property must be removed.
 
         Breaks when: Property still exists (should raise AttributeError).
         """
         storage = FileStorage(tmp_path)
 
         with pytest.raises(AttributeError):
-            _ = storage.skills
+            _ = storage.workflows
 
     def test_file_storage_no_artifacts_property(self, tmp_path: Path) -> None:
         """FileStorage.artifacts property must be removed.
@@ -62,15 +62,15 @@ class TestWrapperPropertiesRemoved:
         with pytest.raises(AttributeError):
             _ = storage.tools
 
-    def test_redis_storage_no_skills_property(self, mock_redis: MockRedisClient) -> None:
-        """RedisStorage.skills property must be removed.
+    def test_redis_storage_no_workflows_property(self, mock_redis: MockRedisClient) -> None:
+        """RedisStorage.workflows property must be removed.
 
         Breaks when: Property still exists (should raise AttributeError).
         """
         storage = RedisStorage(redis=mock_redis, prefix="test")
 
         with pytest.raises(AttributeError):
-            _ = storage.skills
+            _ = storage.workflows
 
     def test_redis_storage_no_artifacts_property(self, mock_redis: MockRedisClient) -> None:
         """RedisStorage.artifacts property must be removed.
@@ -89,16 +89,18 @@ class TestGetMethodsReturnDirectTypes:
     # NOTE: test_file_storage_get_tool_registry_returns_tool_registry removed
     # tools are now owned by executors, not storage
 
-    def test_file_storage_get_skill_library_returns_skill_library(self, tmp_path: Path) -> None:
-        """get_skill_library() returns SkillLibrary directly.
+    def test_file_storage_get_workflow_library_returns_workflow_library(
+        self, tmp_path: Path
+    ) -> None:
+        """get_workflow_library() returns WorkflowLibrary directly.
 
-        Breaks when: Returns SkillStoreWrapper or wrong type.
+        Breaks when: Returns WorkflowStoreWrapper or wrong type.
         """
         storage = FileStorage(tmp_path)
 
-        result = storage.get_skill_library()
+        result = storage.get_workflow_library()
 
-        assert isinstance(result, SkillLibrary)
+        assert isinstance(result, WorkflowLibrary)
 
     def test_file_storage_get_artifact_store_returns_artifact_store_protocol(
         self, tmp_path: Path
@@ -118,18 +120,18 @@ class TestGetMethodsReturnDirectTypes:
     # NOTE: test_redis_storage_get_tool_registry_returns_tool_registry removed
     # tools are now owned by executors, not storage
 
-    def test_redis_storage_get_skill_library_returns_skill_library(
+    def test_redis_storage_get_workflow_library_returns_workflow_library(
         self, mock_redis: MockRedisClient
     ) -> None:
-        """get_skill_library() returns SkillLibrary directly.
+        """get_workflow_library() returns WorkflowLibrary directly.
 
-        Breaks when: Returns SkillStoreWrapper or wrong type.
+        Breaks when: Returns WorkflowStoreWrapper or wrong type.
         """
         storage = RedisStorage(redis=mock_redis, prefix="test")
 
-        result = storage.get_skill_library()
+        result = storage.get_workflow_library()
 
-        assert isinstance(result, SkillLibrary)
+        assert isinstance(result, WorkflowLibrary)
 
     def test_redis_storage_get_artifact_store_returns_artifact_store_protocol(
         self, mock_redis: MockRedisClient
@@ -168,14 +170,14 @@ class TestWrapperClassesNotExported:
 
         assert not hasattr(storage, "RedisToolStoreWrapper")
 
-    def test_skill_store_wrapper_not_exported(self) -> None:
-        """SkillStoreWrapper should not be in storage exports.
+    def test_workflow_store_wrapper_not_exported(self) -> None:
+        """WorkflowStoreWrapper should not be in storage exports.
 
         Breaks when: Class is still exported from py_code_mode.storage.
         """
         from py_code_mode import storage
 
-        assert not hasattr(storage, "SkillStoreWrapper")
+        assert not hasattr(storage, "WorkflowStoreWrapper")
 
     def test_artifact_store_wrapper_not_exported(self) -> None:
         """ArtifactStoreWrapper should not be in storage exports.
@@ -195,14 +197,14 @@ class TestWrapperClassesNotExported:
 
         assert not hasattr(storage, "ToolStore")
 
-    def test_skill_store_wrapper_protocol_not_exported(self) -> None:
-        """SkillStoreWrapperProtocol should not be in storage exports.
+    def test_workflow_store_wrapper_protocol_not_exported(self) -> None:
+        """WorkflowStoreWrapperProtocol should not be in storage exports.
 
         Breaks when: Protocol is still exported from py_code_mode.storage.
         """
         from py_code_mode import storage
 
-        assert not hasattr(storage, "SkillStoreWrapperProtocol")
+        assert not hasattr(storage, "WorkflowStoreWrapperProtocol")
 
     def test_artifact_store_wrapper_protocol_not_exported(self) -> None:
         """ArtifactStoreWrapperProtocol should not be in storage exports.
@@ -254,14 +256,14 @@ class TestStorageBackendProtocolSimplified:
     # NOTE: test_storage_backend_has_get_tool_registry removed
     # tools are now owned by executors, not storage
 
-    def test_storage_backend_has_get_skill_library(self) -> None:
-        """StorageBackend protocol must have get_skill_library method.
+    def test_storage_backend_has_get_workflow_library(self) -> None:
+        """StorageBackend protocol must have get_workflow_library method.
 
         Breaks when: Method is missing from protocol.
         """
         from py_code_mode.storage.backends import StorageBackend
 
-        assert hasattr(StorageBackend, "get_skill_library")
+        assert hasattr(StorageBackend, "get_workflow_library")
 
     def test_storage_backend_has_get_artifact_store(self) -> None:
         """StorageBackend protocol must have get_artifact_store method.
@@ -293,15 +295,15 @@ class TestStorageBackendProtocolSimplified:
         annotations = getattr(StorageBackend, "__protocol_attrs__", set())
         assert "tools" not in annotations
 
-    def test_storage_backend_no_skills_property(self) -> None:
-        """StorageBackend protocol must NOT have skills property.
+    def test_storage_backend_no_workflows_property(self) -> None:
+        """StorageBackend protocol must NOT have workflows property.
 
         Breaks when: Property still exists in protocol.
         """
         from py_code_mode.storage.backends import StorageBackend
 
         annotations = getattr(StorageBackend, "__protocol_attrs__", set())
-        assert "skills" not in annotations
+        assert "workflows" not in annotations
 
     def test_storage_backend_no_artifacts_property(self) -> None:
         """StorageBackend protocol must NOT have artifacts property.

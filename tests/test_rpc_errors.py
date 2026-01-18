@@ -57,67 +57,67 @@ async def executor_with_deps_allowed(tmp_path: Path):
 
 
 # =============================================================================
-# SkillError Tests
+# WorkflowError Tests
 # =============================================================================
 
 
 @pytest.mark.slow
 @pytest.mark.xdist_group("subprocess")
-class TestSkillErrors:
-    """Tests for skill-related RPC errors raising SkillError."""
+class TestWorkflowErrors:
+    """Tests for workflow-related RPC errors raising WorkflowError."""
 
     @pytest.mark.asyncio
-    async def test_skill_with_missing_import_raises_skill_error(
+    async def test_workflow_with_missing_import_raises_workflow_error(
         self, executor_with_deps_allowed
     ) -> None:
-        """Skill with missing import raises SkillError with ModuleNotFoundError type.
+        """Workflow with missing import raises WorkflowError with ModuleNotFoundError type.
 
-        Contract: When a skill invocation fails due to missing import, the error
-        should be SkillError with original_type=ModuleNotFoundError.
+        Contract: When a workflow invocation fails due to missing import, the error
+        should be WorkflowError with original_type=ModuleNotFoundError.
 
         Breaks when: Host sends unstructured errors or kernel doesn't parse correctly.
         """
-        # Create a skill that imports a nonexistent module
+        # Create a workflow that imports a nonexistent module
         create_code = '''
-skills.create(
-    "broken_skill",
+workflows.create(
+    "broken_workflow",
     """async def run():
     import this_module_definitely_does_not_exist
     return "never reached"
 """,
-    "A skill that will fail on import"
+    "A workflow that will fail on import"
 )
 '''
         result = await executor_with_deps_allowed.run(create_code)
-        assert result.error is None, f"Failed to create skill: {result.error}"
+        assert result.error is None, f"Failed to create workflow: {result.error}"
 
-        # Invoke the skill - should raise SkillError
-        result = await executor_with_deps_allowed.run('skills.invoke("broken_skill")')
+        # Invoke the workflow - should raise WorkflowError
+        result = await executor_with_deps_allowed.run('workflows.invoke("broken_workflow")')
 
         assert result.error is not None
         # Error message should contain structured information
-        # Format: "skills.invoke: [ModuleNotFoundError] message"
-        assert "skills.invoke" in result.error
+        # Format: "workflows.invoke: [ModuleNotFoundError] message"
+        assert "workflows.invoke" in result.error
         assert "ModuleNotFoundError" in result.error
 
     @pytest.mark.asyncio
-    async def test_skill_creation_with_syntax_error_raises_skill_error(
+    async def test_workflow_creation_with_syntax_error_raises_workflow_error(
         self, executor_with_deps_allowed
     ) -> None:
-        """Skill creation with syntax error raises SkillError with SyntaxError type.
+        """Workflow creation with syntax error raises WorkflowError with SyntaxError type.
 
-        Contract: When skill creation fails due to syntax error, the error
-        should be SkillError with original_type=SyntaxError.
+        Contract: When workflow creation fails due to syntax error, the error
+        should be WorkflowError with original_type=SyntaxError.
         """
-        # Try to create a skill with invalid Python syntax
+        # Try to create a workflow with invalid Python syntax
         result = await executor_with_deps_allowed.run("""
-skills.create("bad_syntax", "if x", "broken skill")
+workflows.create("bad_syntax", "if x", "broken workflow")
 """)
 
         assert result.error is not None
         # Error message should contain structured information
-        # Format: "skills.create: [SyntaxError] message"
-        assert "skills.create" in result.error
+        # Format: "workflows.create: [SyntaxError] message"
+        assert "workflows.create" in result.error
         assert "SyntaxError" in result.error or "syntax" in result.error.lower()
 
 
@@ -229,21 +229,21 @@ class TestStructuredErrorFormat:
 
         Contract: The [ExceptionType] should appear in the error message.
         """
-        # Create a skill that raises a specific exception type
+        # Create a workflow that raises a specific exception type
         create_code = '''
-skills.create(
-    "value_error_skill",
+workflows.create(
+    "value_error_workflow",
     """async def run():
     raise ValueError("intentional value error")
 """,
-    "A skill that raises ValueError"
+    "A workflow that raises ValueError"
 )
 '''
         result = await executor_with_deps_allowed.run(create_code)
-        assert result.error is None, f"Failed to create skill: {result.error}"
+        assert result.error is None, f"Failed to create workflow: {result.error}"
 
-        # Invoke - should raise SkillError with ValueError in the message
-        result = await executor_with_deps_allowed.run('skills.invoke("value_error_skill")')
+        # Invoke - should raise WorkflowError with ValueError in the message
+        result = await executor_with_deps_allowed.run('workflows.invoke("value_error_workflow")')
 
         assert result.error is not None
         # Should preserve the original exception type in brackets
@@ -304,12 +304,12 @@ class TestErrorClassHierarchy:
     """Tests verifying the error class hierarchy is properly defined in kernel."""
 
     @pytest.mark.asyncio
-    async def test_skill_error_is_namespace_error(self, executor_with_storage) -> None:
-        """SkillError is a subclass of NamespaceError in the kernel.
+    async def test_workflow_error_is_namespace_error(self, executor_with_storage) -> None:
+        """WorkflowError is a subclass of NamespaceError in the kernel.
 
-        Contract: SkillError inherits from NamespaceError.
+        Contract: WorkflowError inherits from NamespaceError.
         """
-        result = await executor_with_storage.run("issubclass(SkillError, NamespaceError)")
+        result = await executor_with_storage.run("issubclass(WorkflowError, NamespaceError)")
 
         assert result.error is None
         assert result.value in (True, "True")
@@ -388,14 +388,14 @@ class TestErrorAttributes:
         """
         result = await executor_with_storage.run("""
 try:
-    raise NamespaceError("skills", "invoke", "test error")
+    raise NamespaceError("workflows", "invoke", "test error")
 except NamespaceError as e:
     result = e.namespace
 result
 """)
 
         assert result.error is None
-        assert "skills" in str(result.value)
+        assert "workflows" in str(result.value)
 
     @pytest.mark.asyncio
     async def test_namespace_error_has_operation_attribute(self, executor_with_storage) -> None:
@@ -405,7 +405,7 @@ result
         """
         result = await executor_with_storage.run("""
 try:
-    raise NamespaceError("skills", "invoke", "test error")
+    raise NamespaceError("workflows", "invoke", "test error")
 except NamespaceError as e:
     result = e.operation
 result
@@ -422,7 +422,7 @@ result
         """
         result = await executor_with_storage.run("""
 try:
-    raise NamespaceError("skills", "invoke", "test error", "ValueError")
+    raise NamespaceError("workflows", "invoke", "test error", "ValueError")
 except NamespaceError as e:
     result = e.original_type
 result

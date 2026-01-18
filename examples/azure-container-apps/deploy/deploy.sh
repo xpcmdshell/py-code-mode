@@ -2,7 +2,7 @@
 # Deploy py-code-mode agent to Azure Container Apps
 #
 # This deploys:
-# - Azure Cache for Redis: Stores tools, skills, deps
+# - Azure Cache for Redis: Stores tools, workflows, deps
 # - Azure OpenAI (GPT-4o): LLM for agent
 # - Session server (internal): Code execution with tools
 # - Agent server (external): AutoGen agent with GPT-4o
@@ -88,8 +88,8 @@ docker buildx build --platform linux/amd64 --push \
     -f examples/azure-container-apps/Dockerfile.agent \
     -t "$ACR_SERVER/py-code-mode-agent:latest" . 2>&1 | tail -5
 
-# Step 4: Bootstrap Redis with tools, skills, and deps
-echo "[4/7] Bootstrapping tools, skills, and deps to Redis..."
+# Step 4: Bootstrap Redis with tools, workflows, and deps
+echo "[4/7] Bootstrapping tools, workflows, and deps to Redis..."
 SHARED_DIR="$SCRIPT_DIR/../../shared"
 
 # Use built-in CLI for bootstrapping (run from repo root for module resolution)
@@ -103,12 +103,12 @@ uv run python -m py_code_mode.cli.store bootstrap \
     --prefix "pycodemode:tools" \
     --clear
 
-echo "   Bootstrapping skills..."
+echo "   Bootstrapping workflows..."
 uv run python -m py_code_mode.cli.store bootstrap \
-    --type skills \
-    --source "$SHARED_DIR/skills" \
+    --type workflows \
+    --source "$SHARED_DIR/workflows" \
     --target "$REDIS_CONNECTION_STRING" \
-    --prefix "pycodemode:skills" \
+    --prefix "pycodemode:workflows" \
     --clear
 
 echo "   Bootstrapping deps..."

@@ -1,4 +1,4 @@
-"""VectorStore protocol and core types for skill embedding caching."""
+"""VectorStore protocol and core types for workflow embedding caching."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ class SearchResult:
     """Result from a VectorStore similarity search.
 
     Attributes:
-        id: The skill identifier.
+        id: The workflow identifier.
         score: Similarity score (0.0 to 1.0, higher is more similar).
         metadata: Additional metadata about the match.
     """
@@ -36,31 +36,31 @@ class SearchResult:
 
 @runtime_checkable
 class VectorStore(Protocol):
-    """Protocol for vector stores that cache skill embeddings.
+    """Protocol for vector stores that cache workflow embeddings.
 
-    VectorStore implementations persist embeddings for skills, enabling
+    VectorStore implementations persist embeddings for workflows, enabling
     fast semantic search without re-embedding on every startup.
     """
 
     def add(self, id: str, description: str, source: str, content_hash: str) -> None:
-        """Add or update a skill's embeddings in the store.
+        """Add or update a workflow's embeddings in the store.
 
         Args:
-            id: Unique identifier for the skill.
-            description: Skill description text to embed.
-            source: Skill source code to embed.
+            id: Unique identifier for the workflow.
+            description: Workflow description text to embed.
+            source: Workflow source code to embed.
             content_hash: Hash of description + source for change detection.
         """
         ...
 
     def remove(self, id: str) -> bool:
-        """Remove a skill's embeddings from the store.
+        """Remove a workflow's embeddings from the store.
 
         Args:
-            id: Unique identifier for the skill.
+            id: Unique identifier for the workflow.
 
         Returns:
-            True if the skill was removed, False if it wasn't in the store.
+            True if the workflow was removed, False if it wasn't in the store.
         """
         ...
 
@@ -71,7 +71,7 @@ class VectorStore(Protocol):
         desc_weight: float,
         code_weight: float,
     ) -> list[SearchResult]:
-        """Search for skills by semantic similarity.
+        """Search for workflows by semantic similarity.
 
         Args:
             query: Search query text.
@@ -85,34 +85,30 @@ class VectorStore(Protocol):
         ...
 
     def get_content_hash(self, id: str) -> str | None:
-        """Get the stored content hash for a skill.
+        """Get the stored content hash for a workflow.
 
         Args:
-            id: Unique identifier for the skill.
+            id: Unique identifier for the workflow.
 
         Returns:
-            The content hash if the skill exists, None otherwise.
+            The content hash if the workflow exists, None otherwise.
+        """
+        ...
+
+    def count(self) -> int:
+        """Get the number of workflows indexed in the store.
+
+        Returns:
+            Number of unique workflows with embeddings.
         """
         ...
 
     def get_model_info(self) -> ModelInfo:
-        """Get information about the embedding model.
-
-        Returns:
-            ModelInfo describing the model used for embeddings.
-        """
+        """Return embedder model identity for cache validation."""
         ...
 
     def clear(self) -> None:
-        """Remove all embeddings from the store."""
-        ...
-
-    def count(self) -> int:
-        """Get the number of skills indexed in the store.
-
-        Returns:
-            Number of unique skills with embeddings.
-        """
+        """Remove all stored embeddings."""
         ...
 
 
@@ -122,8 +118,8 @@ def compute_content_hash(description: str, source: str) -> str:
     Uses SHA-256 and returns the first 16 characters (8 bytes) of the hex digest.
 
     Args:
-        description: Skill description text.
-        source: Skill source code.
+        description: Workflow description text.
+        source: Workflow source code.
 
     Returns:
         16-character hex string hash.

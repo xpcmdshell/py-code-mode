@@ -1,6 +1,6 @@
 """Namespace setup code generation for SubprocessExecutor.
 
-Generates Python code that sets up tools, skills, artifacts, and deps namespaces
+Generates Python code that sets up tools, workflows, artifacts, and deps namespaces
 in the kernel subprocess using full py-code-mode functionality.
 """
 
@@ -17,7 +17,7 @@ def build_namespace_setup_code(
 
     The generated code imports from py-code-mode (which must be installed
     in the kernel's venv) and creates real namespace objects with full
-    functionality including tool invocation, skill creation, and semantic search.
+    functionality including tool invocation, workflow creation, and semantic search.
 
     Args:
         storage_access: Storage access descriptor with paths or connection info.
@@ -60,8 +60,8 @@ _vectors_path = Path({vectors_path_str})
 # Setup vector store if vectors_path provided
 _vector_store = None
 try:
-    from py_code_mode.skills.vector_stores.chroma import ChromaVectorStore
-    from py_code_mode.skills import Embedder
+    from py_code_mode.workflows.vector_stores.chroma import ChromaVectorStore
+    from py_code_mode.workflows import Embedder
     _vectors_path.mkdir(parents=True, exist_ok=True)
     _embedder = Embedder()
     _vector_store = ChromaVectorStore(path=_vectors_path, embedder=_embedder)
@@ -98,8 +98,8 @@ def _build_file_storage_setup_code(
     The generated code creates an empty ToolRegistry since tools loading is
     handled separately by the executor.
     """
-    skills_path_str = (
-        repr(str(storage_access.skills_path)) if storage_access.skills_path else "None"
+    workflows_path_str = (
+        repr(str(storage_access.workflows_path)) if storage_access.workflows_path else "None"
     )
     artifacts_path_str = repr(str(storage_access.artifacts_path))
     # Base path is parent of artifacts for deps store
@@ -198,32 +198,32 @@ class _SyncCallableWrapper:
 tools = _SyncToolsWrapper(_base_tools)
 
 # =============================================================================
-# Skills Namespace (with optional vector store)
+# Workflows Namespace (with optional vector store)
 # =============================================================================
 
-from py_code_mode.skills import FileSkillStore, create_skill_library
-from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
+from py_code_mode.workflows import FileWorkflowStore, create_workflow_library
+from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
 
-_skills_path = Path({skills_path_str}) if {skills_path_str} else None
+_workflows_path = Path({workflows_path_str}) if {workflows_path_str} else None
 {vector_store_setup}
 
-if _skills_path is not None:
-    _skills_path.mkdir(parents=True, exist_ok=True)
-    _store = FileSkillStore(_skills_path)
-    _library = create_skill_library(store=_store, vector_store=_vector_store)
+if _workflows_path is not None:
+    _workflows_path.mkdir(parents=True, exist_ok=True)
+    _store = FileWorkflowStore(_workflows_path)
+    _library = create_workflow_library(store=_store, vector_store=_vector_store)
 else:
-    from py_code_mode.skills import MemorySkillStore, MockEmbedder, SkillLibrary
-    _store = MemorySkillStore()
-    _library = SkillLibrary(embedder=MockEmbedder(), store=_store, vector_store=_vector_store)
+    from py_code_mode.workflows import MemoryWorkflowStore, MockEmbedder, WorkflowLibrary
+    _store = MemoryWorkflowStore()
+    _library = WorkflowLibrary(embedder=MockEmbedder(), store=_store, vector_store=_vector_store)
 
-# SkillsNamespace now takes a namespace dict directly (no executor needed).
+# WorkflowsNamespace now takes a namespace dict directly (no executor needed).
 # Create the namespace dict first, then wire up circular references.
-_skills_ns_dict = {{}}
-skills = SkillsNamespace(_library, _skills_ns_dict)
+_workflows_ns_dict = {{}}
+workflows = WorkflowsNamespace(_library, _workflows_ns_dict)
 
-# Wire up the namespace so skills can access tools/skills/artifacts
-_skills_ns_dict["tools"] = tools
-_skills_ns_dict["skills"] = skills
+# Wire up the namespace so workflows can access tools/workflows/artifacts
+_workflows_ns_dict["tools"] = tools
+_workflows_ns_dict["workflows"] = workflows
 
 # =============================================================================
 # Artifacts Namespace (with simplified API for agent usage)
@@ -279,8 +279,9 @@ class _SimpleArtifactStore:
 
 artifacts = _SimpleArtifactStore(_base_artifacts)
 
-# Complete the namespace wiring for skills
-_skills_ns_dict["artifacts"] = artifacts
+# Complete the namespace wiring for workflows
+_workflows_ns_dict["artifacts"] = artifacts
+
 
 # =============================================================================
 # Deps Namespace (with optional runtime deps control)
@@ -312,9 +313,9 @@ class _ControlledDepsNamespace:
     to prevent bypass attacks like deps._namespace.add().
     """
 
-    _ALLOWED_ATTRS = frozenset({
+    _ALLOWED_ATTRS = frozenset({{
         "add", "list", "remove", "sync", "__repr__", "__class__", "__doc__"
-    })
+    }})
 
     def __init__(self, namespace, allow_runtime):
         # Use object.__setattr__ to bypass __getattribute__
@@ -372,27 +373,28 @@ class _ControlledDepsNamespace:
 
 deps = _ControlledDepsNamespace(_base_deps, _allow_runtime_deps)
 
-# Complete the namespace wiring for skills to include deps
-_skills_ns_dict["deps"] = deps
+# Complete the namespace wiring for workflows to include deps
+_workflows_ns_dict["deps"] = deps
 
 # =============================================================================
 # Cleanup temporary variables (keep wrapper classes for runtime use)
 # =============================================================================
 
 del _registry, _base_tools
-del _skills_path, _store, _library, _skills_ns_dict
-{vector_store_cleanup}
+del _workflows_path, _store, _library, _workflows_ns_dict
 del _artifacts_path, _base_artifacts
+{vector_store_cleanup}
 del _base_path, _deps_store, _installer, _base_deps, _allow_runtime_deps
 del Path
 del ToolRegistry, ToolsNamespace, CLIAdapter
-del FileSkillStore, create_skill_library, SkillsNamespace
+del FileWorkflowStore, create_workflow_library, WorkflowsNamespace
 try:
-    del MemorySkillStore, MockEmbedder, SkillLibrary
+    del MemoryWorkflowStore, MockEmbedder, WorkflowLibrary
 except NameError:
     pass
 del FileArtifactStore
 del DepsNamespace, FileDepsStore, PackageInstaller
+
 # Note: Wrapper classes (_SyncToolsWrapper, _SyncToolProxy, _SyncCallableWrapper,
 # _SimpleArtifactStore, _ControlledDepsNamespace) and asyncio/nest_asyncio are kept for runtime use
 '''
@@ -409,12 +411,12 @@ def _build_redis_storage_setup_code(
     handled separately by the executor.
     """
     redis_url_str = repr(storage_access.redis_url)
-    skills_prefix_str = repr(storage_access.skills_prefix)
+    workflows_prefix_str = repr(storage_access.workflows_prefix)
     artifacts_prefix_str = repr(storage_access.artifacts_prefix)
-    # Deps prefix follows the pattern: {base_prefix}:deps
-    # Extract base prefix from artifacts_prefix (e.g., "test:artifacts" -> "test")
-    base_prefix = storage_access.artifacts_prefix.rsplit(":", 1)[0]
-    deps_prefix_str = repr(f"{base_prefix}:deps")
+    vectors_prefix_str = (
+        repr(storage_access.vectors_prefix) if storage_access.vectors_prefix else "None"
+    )
+    deps_prefix_str = repr(f"{storage_access.workflows_prefix.rsplit(':', 1)[0]}:deps")
     allow_deps_str = "True" if allow_runtime_deps else "False"
 
     return f'''# Auto-generated namespace setup for SubprocessExecutor (Redis)
@@ -504,24 +506,39 @@ class _SyncCallableWrapper:
 tools = _SyncToolsWrapper(_base_tools)
 
 # =============================================================================
-# Skills Namespace
+# Workflows Namespace (with optional vector store)
 # =============================================================================
 
-from py_code_mode.skills import RedisSkillStore, create_skill_library
-from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
+from py_code_mode.workflows import RedisWorkflowStore, create_workflow_library
+from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
 
-_skills_prefix = {skills_prefix_str}
-_store = RedisSkillStore(_redis_client, prefix=_skills_prefix)
-_library = create_skill_library(store=_store)
+_workflows_prefix = {workflows_prefix_str}
 
-# SkillsNamespace now takes a namespace dict directly (no executor needed).
+_vector_store = None
+if {vectors_prefix_str} is not None:
+    try:
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows import Embedder
+        _embedder = Embedder()
+        _vector_store = RedisVectorStore(
+            redis=_redis_client,
+            embedder=_embedder,
+            prefix={vectors_prefix_str},
+        )
+    except ImportError:
+        _vector_store = None
+
+_store = RedisWorkflowStore(_redis_client, prefix=_workflows_prefix)
+_library = create_workflow_library(store=_store, vector_store=_vector_store)
+
+# WorkflowsNamespace now takes a namespace dict directly (no executor needed).
 # Create the namespace dict first, then wire up circular references.
-_skills_ns_dict = {{}}
-skills = SkillsNamespace(_library, _skills_ns_dict)
+_workflows_ns_dict = {{}}
+workflows = WorkflowsNamespace(_library, _workflows_ns_dict)
 
-# Wire up the namespace so skills can access tools/skills/artifacts
-_skills_ns_dict["tools"] = tools
-_skills_ns_dict["skills"] = skills
+# Wire up the namespace so workflows can access tools/workflows/artifacts
+_workflows_ns_dict["tools"] = tools
+_workflows_ns_dict["workflows"] = workflows
 
 # =============================================================================
 # Artifacts Namespace (with simplified API for agent usage)
@@ -571,8 +588,8 @@ class _SimpleArtifactStore:
 
 artifacts = _SimpleArtifactStore(_base_artifacts)
 
-# Complete the namespace wiring for skills
-_skills_ns_dict["artifacts"] = artifacts
+# Complete the namespace wiring for workflows
+_workflows_ns_dict["artifacts"] = artifacts
 
 # =============================================================================
 # Deps Namespace (with optional runtime deps control)
@@ -664,19 +681,32 @@ class _ControlledDepsNamespace:
 
 deps = _ControlledDepsNamespace(_base_deps, _allow_runtime_deps)
 
-# Complete the namespace wiring for skills to include deps
-_skills_ns_dict["deps"] = deps
+# Complete the namespace wiring for workflows to include deps
+_workflows_ns_dict["deps"] = deps
 
 # =============================================================================
 # Cleanup temporary variables (keep wrapper classes for runtime use)
 # =============================================================================
 
+if {vectors_prefix_str} is not None:
+    del _vector_store
+    try:
+        del RedisVectorStore, Embedder, _embedder
+    except NameError:
+        pass
+else:
+    del _vector_store
+
 del _registry, _base_tools
-del _skills_prefix, _store, _library, _skills_ns_dict
+del _workflows_prefix, _store, _library, _workflows_ns_dict
 del _artifacts_prefix, _base_artifacts
 del _deps_prefix, _deps_store, _installer, _base_deps, _allow_runtime_deps
 del ToolRegistry, ToolsNamespace, CLIAdapter
-del RedisSkillStore, create_skill_library, SkillsNamespace
+del RedisWorkflowStore, create_workflow_library, WorkflowsNamespace
+try:
+    del MockEmbedder, WorkflowLibrary
+except NameError:
+    pass
 del RedisArtifactStore
 del DepsNamespace, RedisDepsStore, PackageInstaller
 del Redis

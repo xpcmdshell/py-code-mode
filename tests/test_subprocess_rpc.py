@@ -74,14 +74,14 @@ class TestRPCRequest:
         data = {
             "type": "rpc_request",
             "id": "test-id",
-            "method": "skills.invoke",
-            "params": {"name": "my_skill", "args": {}},
+            "method": "workflows.invoke",
+            "params": {"name": "my_workflow", "args": {}},
         }
         request = RPCRequest.from_dict(data)
 
         assert request.id == "test-id"
-        assert request.method == "skills.invoke"
-        assert request.params == {"name": "my_skill", "args": {}}
+        assert request.method == "workflows.invoke"
+        assert request.params == {"name": "my_workflow", "args": {}}
 
     def test_from_dict_with_missing_params_defaults_to_empty(self) -> None:
         """from_dict defaults params to empty dict if missing."""
@@ -249,9 +249,9 @@ class TestKernelInitCode:
         """KERNEL_INIT_CODE defines ToolsProxy class."""
         assert "class ToolsProxy" in KERNEL_INIT_CODE
 
-    def test_kernel_init_code_defines_skills_proxy(self) -> None:
-        """KERNEL_INIT_CODE defines SkillsProxy class."""
-        assert "class SkillsProxy" in KERNEL_INIT_CODE
+    def test_kernel_init_code_defines_workflows_proxy(self) -> None:
+        """KERNEL_INIT_CODE defines WorkflowsProxy class."""
+        assert "class WorkflowsProxy" in KERNEL_INIT_CODE
 
     def test_kernel_init_code_defines_artifacts_proxy(self) -> None:
         """KERNEL_INIT_CODE defines ArtifactsProxy class."""
@@ -264,7 +264,7 @@ class TestKernelInitCode:
     def test_kernel_init_code_creates_proxy_instances(self) -> None:
         """KERNEL_INIT_CODE creates proxy instances as globals."""
         assert "tools = ToolsProxy()" in KERNEL_INIT_CODE
-        assert "skills = SkillsProxy()" in KERNEL_INIT_CODE
+        assert "workflows = WorkflowsProxy()" in KERNEL_INIT_CODE
         assert "artifacts = ArtifactsProxy()" in KERNEL_INIT_CODE
         assert "deps = DepsProxy()" in KERNEL_INIT_CODE
 
@@ -321,12 +321,12 @@ class TestResourceProviderProtocol:
         mock.list_tools = AsyncMock(return_value=[])
         mock.search_tools = AsyncMock(return_value=[])
         mock.list_tool_recipes = AsyncMock(return_value=[])
-        mock.invoke_skill = AsyncMock(return_value="result")
-        mock.search_skills = AsyncMock(return_value=[])
-        mock.list_skills = AsyncMock(return_value=[])
-        mock.get_skill = AsyncMock(return_value=None)
-        mock.create_skill = AsyncMock(return_value={})
-        mock.delete_skill = AsyncMock(return_value=True)
+        mock.invoke_workflow = AsyncMock(return_value="result")
+        mock.search_workflows = AsyncMock(return_value=[])
+        mock.list_workflows = AsyncMock(return_value=[])
+        mock.get_workflow = AsyncMock(return_value=None)
+        mock.create_workflow = AsyncMock(return_value={})
+        mock.delete_workflow = AsyncMock(return_value=True)
         mock.load_artifact = AsyncMock(return_value="data")
         mock.save_artifact = AsyncMock(return_value={})
         mock.list_artifacts = AsyncMock(return_value=[])
@@ -358,12 +358,12 @@ class TestRPCDispatch:
         provider.list_tools = AsyncMock(return_value=[{"name": "curl"}])
         provider.search_tools = AsyncMock(return_value=[{"name": "curl"}])
         provider.list_tool_recipes = AsyncMock(return_value=[{"name": "get"}])
-        # Note: No invoke_skill - skills execute locally in kernel, not via RPC
-        provider.search_skills = AsyncMock(return_value=[{"name": "my_skill"}])
-        provider.list_skills = AsyncMock(return_value=[])
-        provider.get_skill = AsyncMock(return_value={"name": "test"})
-        provider.create_skill = AsyncMock(return_value={"name": "new_skill"})
-        provider.delete_skill = AsyncMock(return_value=True)
+        # Note: No invoke_workflow - workflows execute locally in kernel, not via RPC
+        provider.search_workflows = AsyncMock(return_value=[{"name": "my_workflow"}])
+        provider.list_workflows = AsyncMock(return_value=[])
+        provider.get_workflow = AsyncMock(return_value={"name": "test"})
+        provider.create_workflow = AsyncMock(return_value={"name": "new_workflow"})
+        provider.delete_workflow = AsyncMock(return_value=True)
         provider.load_artifact = AsyncMock(return_value="artifact_data")
         provider.save_artifact = AsyncMock(return_value={"name": "saved"})
         provider.list_artifacts = AsyncMock(return_value=[])
@@ -402,8 +402,8 @@ class TestRPCDispatch:
         assert result == [{"name": "curl"}]
         mock_provider.list_tools.assert_called_once()
 
-    # Note: skills.invoke is NOT an RPC method - skills execute locally in kernel
-    # after fetching source via skills.get. See test_dispatch_skills_get instead.
+    # Note: workflows.invoke is NOT an RPC method - workflows execute locally in kernel
+    # after fetching source via workflows.get. See test_dispatch_workflows_get instead.
 
     @pytest.mark.asyncio
     async def test_dispatch_artifacts_load(self, mock_provider: MagicMock) -> None:

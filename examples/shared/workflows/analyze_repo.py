@@ -1,4 +1,4 @@
-"""Analyze a GitHub repository - demonstrates multi-tool skill workflow."""
+"""Analyze a GitHub repository - demonstrates multi-tool workflow workflow."""
 
 import json
 
@@ -6,7 +6,7 @@ import json
 async def run(repo: str) -> dict:
     """Analyze a GitHub repository by combining multiple API calls.
 
-    This skill demonstrates the value of prebaked workflows:
+    This workflow demonstrates the value of prebaked workflows:
     1. Fetches repo metadata (stars, forks, language)
     2. Gets recent commits to understand activity
     3. Checks open issues count

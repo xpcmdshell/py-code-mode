@@ -1,19 +1,19 @@
-"""Tests for skills system - Python skills only."""
+"""Tests for workflows system - Python workflows only."""
 
 from pathlib import Path
 from textwrap import dedent
 
 import pytest
 
-from py_code_mode.skills import PythonSkill, SkillParameter
+from py_code_mode.workflows import PythonWorkflow, WorkflowParameter
 
 
-class TestSkillParameter:
-    """Tests for SkillParameter dataclass."""
+class TestWorkflowParameter:
+    """Tests for WorkflowParameter dataclass."""
 
     def test_parameter_with_required(self) -> None:
         """Parameter can be marked required."""
-        param = SkillParameter(
+        param = WorkflowParameter(
             name="target",
             type="string",
             description="Target to process",
@@ -26,7 +26,7 @@ class TestSkillParameter:
 
     def test_parameter_with_default(self) -> None:
         """Parameters can have default values."""
-        param = SkillParameter(
+        param = WorkflowParameter(
             name="count",
             type="integer",
             description="Number of times",
@@ -38,18 +38,18 @@ class TestSkillParameter:
         assert param.required is False
 
 
-class TestPythonSkill:
-    """Tests for .py skill format - full Python files with run() entrypoint."""
+class TestPythonWorkflow:
+    """Tests for .py workflow format - full Python files with run() entrypoint."""
 
     @pytest.fixture
-    def skill_file(self, tmp_path: Path) -> Path:
-        """Create a sample .py skill file."""
-        skill_path = tmp_path / "greet.py"
-        skill_path.write_text(
+    def workflow_file(self, tmp_path: Path) -> Path:
+        """Create a sample .py workflow file."""
+        workflow_path = tmp_path / "greet.py"
+        workflow_path.write_text(
             dedent('''
             """Greet someone by name.
 
-            A friendly greeting skill.
+            A friendly greeting workflow.
             """
 
             async def run(target_name: str, enthusiasm: int = 1) -> str:
@@ -65,70 +65,70 @@ class TestPythonSkill:
                 return f"Hello, {target_name}!" + "!" * (enthusiasm - 1)
         ''').strip()
         )
-        return skill_path
+        return workflow_path
 
-    def test_load_from_file(self, skill_file: Path) -> None:
-        """Load a Python skill from file."""
-        skill = PythonSkill.from_file(skill_file)
+    def test_load_from_file(self, workflow_file: Path) -> None:
+        """Load a Python workflow from file."""
+        workflow = PythonWorkflow.from_file(workflow_file)
 
-        assert skill.name == "greet"
-        assert "Greet someone" in skill.description
+        assert workflow.name == "greet"
+        assert "Greet someone" in workflow.description
 
-    def test_extracts_parameters_from_signature(self, skill_file: Path) -> None:
+    def test_extracts_parameters_from_signature(self, workflow_file: Path) -> None:
         """Parameters extracted from function signature."""
-        skill = PythonSkill.from_file(skill_file)
+        workflow = PythonWorkflow.from_file(workflow_file)
 
-        assert len(skill.parameters) == 2
+        assert len(workflow.parameters) == 2
 
         # First param: target_name (required, no default)
-        assert skill.parameters[0].name == "target_name"
-        assert skill.parameters[0].type == "string"
-        assert skill.parameters[0].required is True
+        assert workflow.parameters[0].name == "target_name"
+        assert workflow.parameters[0].type == "string"
+        assert workflow.parameters[0].required is True
 
         # Second param: enthusiasm (optional, has default)
-        assert skill.parameters[1].name == "enthusiasm"
-        assert skill.parameters[1].type == "integer"
-        assert skill.parameters[1].required is False
-        assert skill.parameters[1].default == 1
+        assert workflow.parameters[1].name == "enthusiasm"
+        assert workflow.parameters[1].type == "integer"
+        assert workflow.parameters[1].required is False
+        assert workflow.parameters[1].default == 1
 
-    def test_has_source_property(self, skill_file: Path) -> None:
-        """Skill exposes source code for agent inspection."""
-        skill = PythonSkill.from_file(skill_file)
+    def test_has_source_property(self, workflow_file: Path) -> None:
+        """Workflow exposes source code for agent inspection."""
+        workflow = PythonWorkflow.from_file(workflow_file)
 
-        assert skill.source is not None
-        assert "async def run(" in skill.source
-        assert "Hello, {target_name}" in skill.source
+        assert workflow.source is not None
+        assert "async def run(" in workflow.source
+        assert "Hello, {target_name}" in workflow.source
 
     @pytest.mark.asyncio
-    async def test_invoke_calls_function(self, skill_file: Path) -> None:
-        """Invoking skill calls the run() function."""
-        skill = PythonSkill.from_file(skill_file)
+    async def test_invoke_calls_function(self, workflow_file: Path) -> None:
+        """Invoking workflow calls the run() function."""
+        workflow = PythonWorkflow.from_file(workflow_file)
 
-        result = await skill.invoke(target_name="Alice")
+        result = await workflow.invoke(target_name="Alice")
 
         assert result == "Hello, Alice!"
 
     @pytest.mark.asyncio
-    async def test_invoke_with_defaults(self, skill_file: Path) -> None:
+    async def test_invoke_with_defaults(self, workflow_file: Path) -> None:
         """Invoke uses default parameter values."""
-        skill = PythonSkill.from_file(skill_file)
+        workflow = PythonWorkflow.from_file(workflow_file)
 
-        result = await skill.invoke(target_name="Bob", enthusiasm=3)
+        result = await workflow.invoke(target_name="Bob", enthusiasm=3)
 
         assert result == "Hello, Bob!!!"
 
     @pytest.mark.asyncio
-    async def test_invoke_validates_required_params(self, skill_file: Path) -> None:
+    async def test_invoke_validates_required_params(self, workflow_file: Path) -> None:
         """Invoke fails if required params missing."""
-        skill = PythonSkill.from_file(skill_file)
+        workflow = PythonWorkflow.from_file(workflow_file)
 
         with pytest.raises(TypeError):
-            await skill.invoke()
+            await workflow.invoke()
 
-    def test_skill_with_tools_access(self, tmp_path: Path) -> None:
-        """Skill can reference tools in its code."""
-        skill_path = tmp_path / "scan.py"
-        skill_path.write_text(
+    def test_workflow_with_tools_access(self, tmp_path: Path) -> None:
+        """Workflow can reference tools in its code."""
+        workflow_path = tmp_path / "scan.py"
+        workflow_path.write_text(
             dedent('''
             """Scan a network target."""
 
@@ -144,19 +144,19 @@ class TestPythonSkill:
         ''').strip()
         )
 
-        skill = PythonSkill.from_file(skill_path)
+        workflow = PythonWorkflow.from_file(workflow_path)
 
         # tools parameter should be recognized as special, not a user param
-        user_params = [p for p in skill.parameters if p.name != "tools"]
+        user_params = [p for p in workflow.parameters if p.name != "tools"]
         assert len(user_params) == 1
         assert user_params[0].name == "target"
 
 
-class TestPythonSkillFromSource:
-    """Tests for creating Python skills from source code."""
+class TestPythonWorkflowFromSource:
+    """Tests for creating Python workflows from source code."""
 
     def test_from_source_basic(self) -> None:
-        """Create skill from source string."""
+        """Create workflow from source string."""
         source = dedent('''
             """Add two numbers."""
 
@@ -164,11 +164,11 @@ class TestPythonSkillFromSource:
                 return a + b
         ''').strip()
 
-        skill = PythonSkill.from_source(name="add", source=source)
+        workflow = PythonWorkflow.from_source(name="add", source=source)
 
-        assert skill.name == "add"
-        assert skill.description == "Add two numbers."
-        assert len(skill.parameters) == 2
+        assert workflow.name == "add"
+        assert workflow.description == "Add two numbers."
+        assert len(workflow.parameters) == 2
 
     def test_from_source_with_description_override(self) -> None:
         """Description parameter overrides docstring."""
@@ -178,18 +178,18 @@ class TestPythonSkillFromSource:
                 return "hello"
         ''').strip()
 
-        skill = PythonSkill.from_source(
+        workflow = PythonWorkflow.from_source(
             name="test",
             source=source,
             description="Custom description",
         )
 
-        assert skill.description == "Custom description"
+        assert workflow.description == "Custom description"
 
     def test_from_source_validates_syntax(self) -> None:
         """Invalid syntax raises SyntaxError."""
         with pytest.raises(SyntaxError):
-            PythonSkill.from_source(name="bad", source="async def run( broken")
+            PythonWorkflow.from_source(name="bad", source="async def run( broken")
 
     def test_from_source_requires_run_function(self) -> None:
         """Must have run() function."""
@@ -200,25 +200,25 @@ class TestPythonSkillFromSource:
         ''').strip()
 
         with pytest.raises(ValueError, match="run"):
-            PythonSkill.from_source(name="no_run", source=source)
+            PythonWorkflow.from_source(name="no_run", source=source)
 
     def test_from_source_validates_name(self) -> None:
         """Name must be valid Python identifier."""
         source = "async def run(): pass"
 
         with pytest.raises(ValueError, match="identifier"):
-            PythonSkill.from_source(name="invalid-name", source=source)
+            PythonWorkflow.from_source(name="invalid-name", source=source)
 
     @pytest.mark.asyncio
-    async def test_invoke_from_source_skill(self) -> None:
-        """Can invoke skill created from source."""
+    async def test_invoke_from_source_workflow(self) -> None:
+        """Can invoke workflow created from source."""
         source = dedent('''
             """Multiply numbers."""
             async def run(x: int, y: int) -> int:
                 return x * y
         ''').strip()
 
-        skill = PythonSkill.from_source(name="multiply", source=source)
-        result = await skill.invoke(x=3, y=4)
+        workflow = PythonWorkflow.from_source(name="multiply", source=source)
+        result = await workflow.invoke(x=3, y=4)
 
         assert result == 12

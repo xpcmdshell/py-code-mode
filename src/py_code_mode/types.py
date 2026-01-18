@@ -137,7 +137,7 @@ class ExecutorConfig:
     # Common
     default_timeout: float = 30.0
     tools_path: str | None = None
-    skills_path: str | None = None
+    workflows_path: str | None = None
     artifacts_path: str | None = None
 
     # Security policies (backends ignore if unsupported)

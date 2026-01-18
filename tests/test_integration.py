@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from py_code_mode.execution.in_process import InProcessExecutor
-from py_code_mode.skills import FileSkillStore, MockEmbedder, SkillLibrary
+from py_code_mode.workflows import FileWorkflowStore, MockEmbedder, WorkflowLibrary
 from py_code_mode.tools.adapters.base import ToolAdapter
 from py_code_mode.tools.adapters.cli import CLIAdapter
 from py_code_mode.tools.registry import ToolRegistry
@@ -370,51 +370,53 @@ class TestScopedExecution:
         assert tools[0].name == "scan"
 
 
-class TestSkillsIntegration:
-    """Tests skills integration with executor."""
+class TestWorkflowsIntegration:
+    """Tests workflows integration with executor."""
 
     @pytest.fixture
-    def skill_library(self, tmp_path: Path) -> SkillLibrary:
-        """Create skill library with test skills."""
-        skills_path = tmp_path / "skills"
-        skills_path.mkdir()
+    def workflow_library(self, tmp_path: Path) -> WorkflowLibrary:
+        """Create workflow library with test workflows."""
+        workflows_path = tmp_path / "workflows"
+        workflows_path.mkdir()
 
-        # Create a simple skill
-        (skills_path / "double.py").write_text('''"""Double a number."""
+        # Create a simple workflow
+        (workflows_path / "double.py").write_text('''"""Double a number."""
 
 async def run(n: int) -> int:
     return n * 2
 ''')
 
-        store = FileSkillStore(skills_path)
-        return SkillLibrary(embedder=MockEmbedder(), store=store)
+        store = FileWorkflowStore(workflows_path)
+        return WorkflowLibrary(embedder=MockEmbedder(), store=store)
 
     @pytest.fixture
-    def executor_with_skills(self, skill_library: SkillLibrary) -> InProcessExecutor:
-        """Executor with skill library."""
-        return InProcessExecutor(skill_library=skill_library)
+    def executor_with_workflows(self, workflow_library: WorkflowLibrary) -> InProcessExecutor:
+        """Executor with workflow library."""
+        return InProcessExecutor(workflow_library=workflow_library)
 
     @pytest.mark.asyncio
-    async def test_skills_list_shows_skills(self, executor_with_skills: InProcessExecutor) -> None:
-        """skills.list() returns available skills."""
-        result = await executor_with_skills.run("len(skills.list())")
+    async def test_workflows_list_shows_workflows(
+        self, executor_with_workflows: InProcessExecutor
+    ) -> None:
+        """workflows.list() returns available workflows."""
+        result = await executor_with_workflows.run("len(workflows.list())")
 
         assert result.is_ok, f"Execution failed: {result.error}"
         assert result.value == 1
 
     @pytest.mark.asyncio
-    async def test_skill_invocation(self, executor_with_skills: InProcessExecutor) -> None:
-        """Can invoke skill from executed code."""
-        result = await executor_with_skills.run("skills.double(n=21)")
+    async def test_workflow_invocation(self, executor_with_workflows: InProcessExecutor) -> None:
+        """Can invoke workflow from executed code."""
+        result = await executor_with_workflows.run("workflows.double(n=21)")
 
         assert result.is_ok, f"Execution failed: {result.error}"
         assert result.value == 42
 
     @pytest.mark.asyncio
-    async def test_skills_search(self, executor_with_skills: InProcessExecutor) -> None:
-        """skills.search() can find skills."""
-        result = await executor_with_skills.run("""
-matches = skills.search("double")
+    async def test_workflows_search(self, executor_with_workflows: InProcessExecutor) -> None:
+        """workflows.search() can find workflows."""
+        result = await executor_with_workflows.run("""
+matches = workflows.search("double")
 [s["name"] for s in matches]
 """)
 

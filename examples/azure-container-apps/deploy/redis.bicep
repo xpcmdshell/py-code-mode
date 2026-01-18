@@ -1,5 +1,5 @@
 // Azure Cache for Redis module
-// Basic tier (C0 - 250MB) for tools/skills/artifacts storage
+// Basic tier (C0 - 250MB) for tools/workflows/artifacts storage
 
 @description('Location for the Redis cache')
 param location string

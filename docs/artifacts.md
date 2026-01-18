@@ -76,7 +76,7 @@ async def run(url: str) -> dict:
     return {"status": "success", "content": content}
 ```
 
-### Sharing Data Between Skills
+### Sharing Data Between Workflows
 
 ```python
 # Skill 1: Collect data

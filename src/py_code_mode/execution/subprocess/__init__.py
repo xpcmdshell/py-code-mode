@@ -2,7 +2,7 @@
 
 This executor runs Python code in an isolated subprocess (Jupyter kernel) with
 bidirectional RPC for namespace operations. The kernel contains lightweight
-proxy objects that forward all tools/skills/artifacts/deps calls to the host.
+proxy objects that forward all tools/workflows/artifacts/deps calls to the host.
 """
 
 from py_code_mode.execution.subprocess.config import SubprocessConfig

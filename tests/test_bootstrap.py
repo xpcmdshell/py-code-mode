@@ -36,7 +36,7 @@ class TestNamespaceBundle:
 
     NamespaceBundle contains the three namespaces needed for code execution:
     - tools: ToolsNamespace for tool access
-    - skills: SkillsNamespace for skill access
+    - workflows: WorkflowsNamespace for workflow access
     - artifacts: ArtifactStoreProtocol for artifact storage
     """
 
@@ -61,16 +61,16 @@ class TestNamespaceBundle:
         field_names = [f.name for f in fields(NamespaceBundle)]
         assert "tools" in field_names
 
-    def test_namespace_bundle_has_skills_field(self) -> None:
-        """NamespaceBundle has a 'skills' field.
+    def test_namespace_bundle_has_workflows_field(self) -> None:
+        """NamespaceBundle has a 'workflows' field.
 
-        Contract: Must have skills field for SkillsNamespace access.
+        Contract: Must have workflows field for WorkflowsNamespace access.
         Breaks when: Field is missing or renamed.
         """
         from py_code_mode.bootstrap import NamespaceBundle
 
         field_names = [f.name for f in fields(NamespaceBundle)]
-        assert "skills" in field_names
+        assert "workflows" in field_names
 
     def test_namespace_bundle_has_artifacts_field(self) -> None:
         """NamespaceBundle has an 'artifacts' field.
@@ -95,7 +95,7 @@ class TestNamespaceBundle:
         assert "deps" in field_names
 
     def test_namespace_bundle_has_exactly_four_fields(self) -> None:
-        """NamespaceBundle has exactly four fields (tools, skills, artifacts, deps).
+        """NamespaceBundle has exactly four fields (tools, workflows, artifacts, deps).
 
         Contract: Bundle should contain the four namespace fields.
         Breaks when: Extra fields are added without updating tests.
@@ -134,7 +134,7 @@ class TestBootstrapNamespaces:
 
         # Create required directories
         (tmp_path / "tools").mkdir()
-        (tmp_path / "skills").mkdir()
+        (tmp_path / "workflows").mkdir()
         (tmp_path / "artifacts").mkdir()
 
         config = {
@@ -157,7 +157,7 @@ class TestBootstrapNamespaces:
         from py_code_mode.tools import ToolsNamespace
 
         (tmp_path / "tools").mkdir()
-        (tmp_path / "skills").mkdir()
+        (tmp_path / "workflows").mkdir()
         (tmp_path / "artifacts").mkdir()
 
         config = {
@@ -170,17 +170,19 @@ class TestBootstrapNamespaces:
         assert isinstance(result.tools, ToolsNamespace)
 
     @pytest.mark.asyncio
-    async def test_bootstrap_file_storage_bundle_has_skills_namespace(self, tmp_path: Path) -> None:
-        """File bootstrap returns bundle with SkillsNamespace for skills.
+    async def test_bootstrap_file_storage_bundle_has_workflows_namespace(
+        self, tmp_path: Path
+    ) -> None:
+        """File bootstrap returns bundle with WorkflowsNamespace for workflows.
 
-        Contract: Bundle.skills is SkillsNamespace instance
-        Breaks when: Skills namespace is wrong type or missing.
+        Contract: Bundle.workflows is WorkflowsNamespace instance
+        Breaks when: Workflows namespace is wrong type or missing.
         """
         from py_code_mode.bootstrap import bootstrap_namespaces
-        from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
+        from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
 
         (tmp_path / "tools").mkdir()
-        (tmp_path / "skills").mkdir()
+        (tmp_path / "workflows").mkdir()
         (tmp_path / "artifacts").mkdir()
 
         config = {
@@ -190,7 +192,7 @@ class TestBootstrapNamespaces:
 
         result = await bootstrap_namespaces(config)
 
-        assert isinstance(result.skills, SkillsNamespace)
+        assert isinstance(result.workflows, WorkflowsNamespace)
 
     @pytest.mark.asyncio
     async def test_bootstrap_file_storage_bundle_has_artifact_store(self, tmp_path: Path) -> None:
@@ -203,7 +205,7 @@ class TestBootstrapNamespaces:
         from py_code_mode.bootstrap import bootstrap_namespaces
 
         (tmp_path / "tools").mkdir()
-        (tmp_path / "skills").mkdir()
+        (tmp_path / "workflows").mkdir()
         (tmp_path / "artifacts").mkdir()
 
         config = {
@@ -226,7 +228,7 @@ class TestBootstrapNamespaces:
         from py_code_mode.deps import DepsNamespace
 
         (tmp_path / "tools").mkdir()
-        (tmp_path / "skills").mkdir()
+        (tmp_path / "workflows").mkdir()
         (tmp_path / "artifacts").mkdir()
 
         config = {
@@ -275,7 +277,7 @@ class TestBootstrapNamespaces:
     ) -> None:
         """File bootstrap creates subdirectories if they don't exist.
 
-        Contract: Bootstrap should create tools/, skills/, artifacts/ directories
+        Contract: Bootstrap should create tools/, workflows/, artifacts/ directories
         Breaks when: Bootstrap fails on missing directories instead of creating them.
         """
         from py_code_mode.bootstrap import bootstrap_namespaces
@@ -345,16 +347,16 @@ class TestBootstrapNamespaces:
         assert isinstance(result.tools, ToolsNamespace)
 
     @pytest.mark.asyncio
-    async def test_bootstrap_redis_storage_bundle_has_skills_namespace(
+    async def test_bootstrap_redis_storage_bundle_has_workflows_namespace(
         self, mock_redis: MockRedisClient
     ) -> None:
-        """Redis bootstrap returns bundle with SkillsNamespace for skills.
+        """Redis bootstrap returns bundle with WorkflowsNamespace for workflows.
 
-        Contract: Bundle.skills is SkillsNamespace instance
-        Breaks when: Skills namespace is wrong type or missing.
+        Contract: Bundle.workflows is WorkflowsNamespace instance
+        Breaks when: Workflows namespace is wrong type or missing.
         """
         from py_code_mode.bootstrap import bootstrap_namespaces
-        from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
+        from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
 
         config = {
             "type": "redis",
@@ -365,7 +367,7 @@ class TestBootstrapNamespaces:
         with patch("redis.Redis.from_url", return_value=mock_redis):
             result = await bootstrap_namespaces(config)
 
-        assert isinstance(result.skills, SkillsNamespace)
+        assert isinstance(result.workflows, WorkflowsNamespace)
 
     @pytest.mark.asyncio
     async def test_bootstrap_redis_storage_bundle_has_artifact_store(
@@ -693,12 +695,12 @@ class TestFileStorageBootstrapConfig:
 
         # Create storage with some content
         storage = FileStorage(tmp_path)
-        (tmp_path / "skills").mkdir(exist_ok=True)
-        skill_file = tmp_path / "skills" / "greet.py"
-        skill_content = (
+        (tmp_path / "workflows").mkdir(exist_ok=True)
+        workflow_file = tmp_path / "workflows" / "greet.py"
+        workflow_content = (
             '"""Greet."""\nasync def run(name: str) -> str:\n    return f"Hello, {name}!"'
         )
-        skill_file.write_text(skill_content)
+        workflow_file.write_text(workflow_content)
 
         # Serialize
         config = storage.to_bootstrap_config()
@@ -706,10 +708,10 @@ class TestFileStorageBootstrapConfig:
         # Reconstruct (async because get_tool_registry() is async for MCP support)
         bundle = await bootstrap_namespaces(config)
 
-        # Verify skills are accessible
-        skill = bundle.skills.library.get("greet")
-        assert skill is not None
-        assert skill.name == "greet"
+        # Verify workflows are accessible
+        workflow = bundle.workflows.library.get("greet")
+        assert workflow is not None
+        assert workflow.name == "greet"
 
 
 # =============================================================================
@@ -846,18 +848,18 @@ class TestRedisStorageBootstrapConfig:
         Breaks when: Serialization loses critical information.
         """
         from py_code_mode.bootstrap import bootstrap_namespaces
-        from py_code_mode.skills import PythonSkill
+        from py_code_mode.workflows import PythonWorkflow
         from py_code_mode.storage import RedisStorage
 
         # Create storage with some content
         storage = RedisStorage(redis=mock_redis, prefix="test")
-        skill_store = storage.get_skill_store()
-        test_skill = PythonSkill.from_source(
+        workflow_store = storage.get_workflow_store()
+        test_workflow = PythonWorkflow.from_source(
             name="greet",
             source='async def run(name: str) -> str:\n    return f"Hello, {name}!"',
             description="Greet a user",
         )
-        skill_store.save(test_skill)
+        workflow_store.save(test_workflow)
 
         # Serialize
         config = storage.to_bootstrap_config()
@@ -866,10 +868,10 @@ class TestRedisStorageBootstrapConfig:
         with patch("redis.Redis.from_url", return_value=mock_redis):
             bundle = await bootstrap_namespaces(config)
 
-        # Verify skills are accessible
-        skill = bundle.skills.library.get("greet")
-        assert skill is not None
-        assert skill.name == "greet"
+        # Verify workflows are accessible
+        workflow = bundle.workflows.library.get("greet")
+        assert workflow is not None
+        assert workflow.name == "greet"
 
 
 # =============================================================================
@@ -952,8 +954,8 @@ class TestRedisStorageLazyConnection:
         # Store should be usable
         assert artifact_store is not None
 
-    def test_get_skill_library_triggers_connection(self, mock_redis: MockRedisClient) -> None:
-        """get_skill_library() triggers Redis connection/usage.
+    def test_get_workflow_library_triggers_connection(self, mock_redis: MockRedisClient) -> None:
+        """get_workflow_library() triggers Redis connection/usage.
 
         Contract: Lazy connection should happen on first actual use
         Breaks when: Connection happens too early or not at all.
@@ -963,7 +965,7 @@ class TestRedisStorageLazyConnection:
         storage = RedisStorage(redis=mock_redis, prefix="test")
 
         # This should create the library (lazy initialization)
-        library = storage.get_skill_library()
+        library = storage.get_workflow_library()
 
         # Library should be usable
         assert library is not None
@@ -1105,11 +1107,11 @@ class TestBootstrapUserJourney:
 
         User action: Set up storage, serialize for subprocess, reconstruct and use
         Steps:
-            1. Create FileStorage with tools/skills
+            1. Create FileStorage with tools/workflows
             2. Serialize via to_bootstrap_config()
             3. Reconstruct via bootstrap_namespaces()
             4. Verify namespaces work correctly
-        Verification: Skills can be loaded and invoked after reconstruction
+        Verification: Workflows can be loaded and invoked after reconstruction
         Breaks when: Any step in the bootstrap process fails.
         """
         from py_code_mode.bootstrap import bootstrap_namespaces
@@ -1117,10 +1119,10 @@ class TestBootstrapUserJourney:
 
         # Step 1: Create storage with content
         storage = FileStorage(tmp_path)
-        (tmp_path / "skills").mkdir(exist_ok=True)
-        skill_file = tmp_path / "skills" / "double.py"
-        skill_content = '"""Double a number."""\nasync def run(n: int) -> int:\n    return n * 2'
-        skill_file.write_text(skill_content)
+        (tmp_path / "workflows").mkdir(exist_ok=True)
+        workflow_file = tmp_path / "workflows" / "double.py"
+        workflow_content = '"""Double a number."""\nasync def run(n: int) -> int:\n    return n * 2'
+        workflow_file.write_text(workflow_content)
 
         (tmp_path / "artifacts").mkdir(exist_ok=True)
 
@@ -1137,10 +1139,10 @@ class TestBootstrapUserJourney:
         bundle = await bootstrap_namespaces(restored_config)
 
         # Step 4: Verify namespaces work
-        # Check skills
-        skill = bundle.skills.library.get("double")
-        assert skill is not None
-        assert skill.name == "double"
+        # Check workflows
+        workflow = bundle.workflows.library.get("double")
+        assert workflow is not None
+        assert workflow.name == "double"
 
         # Check artifacts (should be usable)
         bundle.artifacts.save("test", {"value": 42}, description="test data")
@@ -1153,26 +1155,26 @@ class TestBootstrapUserJourney:
 
         User action: Set up storage, serialize for subprocess, reconstruct and use
         Steps:
-            1. Create RedisStorage with skills
+            1. Create RedisStorage with workflows
             2. Serialize via to_bootstrap_config()
             3. Reconstruct via bootstrap_namespaces()
             4. Verify namespaces work correctly
-        Verification: Skills can be loaded after reconstruction
+        Verification: Workflows can be loaded after reconstruction
         Breaks when: Any step in the bootstrap process fails.
         """
         from py_code_mode.bootstrap import bootstrap_namespaces
-        from py_code_mode.skills import PythonSkill
+        from py_code_mode.workflows import PythonWorkflow
         from py_code_mode.storage import RedisStorage
 
         # Step 1: Create storage with content
         storage = RedisStorage(redis=mock_redis, prefix="journey")
-        skill_store = storage.get_skill_store()
-        skill = PythonSkill.from_source(
+        workflow_store = storage.get_workflow_store()
+        workflow = PythonWorkflow.from_source(
             name="triple",
             source="async def run(n: int) -> int:\n    return n * 3",
             description="Triple a number",
         )
-        skill_store.save(skill)
+        workflow_store.save(workflow)
 
         # Step 2: Serialize
         config = storage.to_bootstrap_config()
@@ -1188,6 +1190,6 @@ class TestBootstrapUserJourney:
             bundle = await bootstrap_namespaces(restored_config)
 
         # Step 4: Verify namespaces work
-        loaded_skill = bundle.skills.library.get("triple")
-        assert loaded_skill is not None
-        assert loaded_skill.name == "triple"
+        loaded_workflow = bundle.workflows.library.get("triple")
+        assert loaded_workflow is not None
+        assert loaded_workflow.name == "triple"

@@ -1,7 +1,7 @@
 """MCP server exposing py-code-mode executor to MCP clients.
 
 Usage:
-    # Base directory (auto-discovers tools/, skills/, artifacts/ subdirs)
+    # Base directory (auto-discovers tools/, workflows/, artifacts/ subdirs)
     py-code-mode-mcp --base ~/.code-mode
 
     # Explicit storage + tools
@@ -19,7 +19,7 @@ Note on execution:
     still allowing access to CLI tools on your system.
 
 Note on architecture:
-    Storage (--storage or --redis) holds skills and artifacts.
+    Storage (--storage or --redis) holds workflows and artifacts.
     Tools are owned by the executor and loaded from --tools directory.
     The --base flag is a convenience that sets both: storage=base, tools=base/tools.
 """
@@ -45,24 +45,24 @@ _session: Session | None = None
 
 @mcp.tool
 async def run_code(code: str) -> str:
-    """Execute Python code with access to tools, skills, and artifacts.
+    """Execute Python code with access to tools, workflows, and artifacts.
 
     WORKFLOW:
-    1. First, use search_skills to find existing solutions for your task
-    2. If a skill exists, invoke it: skills.invoke("skill_name", arg=value)
-    3. If no skill exists, solve the task ad-hoc using tools and Python
-    4. Once solved, save reusable solutions as skills for future use
+    1. First, use search_workflows to find existing solutions for your task
+    2. If a workflow exists, invoke it: workflows.invoke("workflow_name", arg=value)
+    3. If no workflow exists, solve the task ad-hoc using tools and Python
+    4. Once solved, save reusable solutions as workflows for future use
 
     NAMESPACES:
     - tools.* - Call registered tools (use list_tools to see available)
       Example: tools.curl(url="https://api.example.com")
 
-    - skills.* - Work with skills:
-      - skills.invoke("name", arg=val) - Run an existing skill
-      - skills.search("query") - Find skills (same as search_skills tool)
-      - skills.create("name", code, "description") - Save a new skill
-      - skills.list() - List all skills
-      - skills.get("name") - Get skill details
+    - workflows.* - Work with workflows:
+      - workflows.invoke("name", arg=val) - Run an existing workflow
+      - workflows.search("query") - Find workflows (same as search_workflows tool)
+      - workflows.create("name", code, "description") - Save a new workflow
+      - workflows.list() - List all workflows
+      - workflows.get("name") - Get workflow details
 
     - artifacts.* - Persist data across sessions:
       - artifacts.save("filename", data) - Save data
@@ -70,7 +70,7 @@ async def run_code(code: str) -> str:
 
     - deps.* - Manage Python dependencies:
       - deps.add("package") - Install a package
-      - deps.list() - List configured dependencies
+      - deps.list("package") - List configured dependencies
       - deps.remove("package") - Remove a dependency
 
     The namespace persists across calls - variables survive between run_code invocations.
@@ -119,33 +119,33 @@ async def search_tools(query: str, limit: int = 10) -> str:
 
 
 @mcp.tool
-async def list_skills() -> str:
-    """List all available skills with their descriptions."""
+async def list_workflows() -> str:
+    """List all available workflows with their descriptions."""
     if _session is None:
         raise RuntimeError("Session not initialized")
-    skills = await _session.list_skills()
-    return json.dumps(skills)
+    workflows = await _session.list_workflows()
+    return json.dumps(workflows)
 
 
 @mcp.tool
-async def search_skills(query: str, limit: int = 5) -> str:
-    """Search for existing skills before solving a task from scratch.
+async def search_workflows(query: str, limit: int = 5) -> str:
+    """Search for existing workflows before solving a task from scratch.
 
-    START HERE: Before writing code, search for skills that might already solve
-    your task. Skills are reusable solutions that combine tools and logic.
+    START HERE: Before writing code, search for workflows that might already solve
+    your task. Workflows are reusable solutions that combine tools and logic.
 
     Args:
         query: Natural language description of what you're trying to accomplish
         limit: Maximum number of results to return (default: 5)
 
-    Returns matching skills with their descriptions and parameters.
+    Returns matching workflows with their descriptions and parameters.
     If no good match exists, use run_code to solve the task ad-hoc,
-    then create a skill for future reuse.
+    then create a workflow for future reuse.
     """
     if _session is None:
         raise RuntimeError("Session not initialized")
-    skills = await _session.search_skills(query, limit)
-    return json.dumps(skills)
+    workflows = await _session.search_workflows(query, limit)
+    return json.dumps(workflows)
 
 
 @mcp.tool
@@ -158,41 +158,41 @@ async def list_artifacts() -> str:
 
 
 @mcp.tool
-async def create_skill(name: str, source: str, description: str) -> dict:
-    """Create a reusable skill from Python source code.
+async def create_workflow(name: str, source: str, description: str) -> dict:
+    """Create a reusable workflow from Python source code.
 
     The source must contain a `def run(...)` function that will be executed
-    when the skill is invoked. The function can accept parameters and has
-    access to tools, skills, and artifacts namespaces.
+    when the workflow is invoked. The function can accept parameters and has
+    access to tools, workflows, and artifacts namespaces.
 
     Example source:
         def run(url: str) -> str:
             return tools.curl.get(url=url)
 
     Args:
-        name: Unique name for the skill (used to invoke it later)
+        name: Unique name for the workflow (used to invoke it later)
         source: Python source code containing a `def run(...)` function
-        description: Human-readable description of what the skill does
+        description: Human-readable description of what the workflow does
 
-    Returns the created skill's metadata.
+    Returns the created workflow's metadata.
     """
     if _session is None:
         raise RuntimeError("Session not initialized")
-    return await _session.add_skill(name, source, description)
+    return await _session.add_workflow(name, source, description)
 
 
 @mcp.tool
-async def delete_skill(name: str) -> bool:
-    """Delete a skill by name.
+async def delete_workflow(name: str) -> bool:
+    """Delete a workflow by name.
 
     Args:
-        name: Name of the skill to delete
+        name: Name of the workflow to delete
 
-    Returns True if the skill was deleted, False if it was not found.
+    Returns True if the workflow was deleted, False if it was not found.
     """
     if _session is None:
         raise RuntimeError("Session not initialized")
-    return await _session.remove_skill(name)
+    return await _session.remove_workflow(name)
 
 
 async def list_deps() -> list[str]:
@@ -296,7 +296,7 @@ async def create_session(args: argparse.Namespace) -> Session:
     tools_path = Path(args.tools) if args.tools else None
 
     # Venv goes in ~/.cache/py-code-mode/venv-{version} by default (cache_venv=True)
-    # Storage is for skills/artifacts only, not executor concerns like venvs
+    # Storage is for workflows/artifacts only, not executor concerns like venvs
     config = SubprocessConfig(
         allow_runtime_deps=not no_runtime_deps,
         default_timeout=timeout,
@@ -323,7 +323,7 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Base directory (auto-discovers tools/, skills/, artifacts/)
+  # Base directory (auto-discovers tools/, workflows/, artifacts/)
   py-code-mode-mcp --base ~/.code-mode
 
   # Explicit storage + tools
@@ -337,16 +337,16 @@ Examples:
         """,
     )
 
-    # Base directory (convenience: auto-discovers tools/, skills/, artifacts/)
+    # Base directory (convenience: auto-discovers tools/, workflows/, artifacts/)
     parser.add_argument(
         "--base",
-        help="Base directory with tools/, skills/, artifacts/ subdirs (convenience shorthand)",
+        help="Base directory with tools/, workflows/, artifacts/ subdirs (convenience shorthand)",
     )
 
     # File storage option
     parser.add_argument(
         "--storage",
-        help="Path to storage directory (contains skills/, artifacts/)",
+        help="Path to storage directory (contains workflows/, artifacts/)",
     )
 
     # Tools path (separate from storage since tools are executor-owned)

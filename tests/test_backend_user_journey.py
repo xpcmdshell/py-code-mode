@@ -2,9 +2,9 @@
 
 These tests simulate real agent workflows that use multiple features together:
 - Tools discovery and invocation
-- Skills creation, invocation, and persistence
+- Workflows creation, invocation, and persistence
 - Artifacts save/load
-- Cross-namespace operations (skills calling tools)
+- Cross-namespace operations (workflows calling tools)
 
 Critical deployment scenarios:
 - FileStorage + ContainerExecutor (standard)
@@ -97,7 +97,7 @@ class TestAgentFullWorkflow:
     These tests simulate a real LLM agent session where the agent:
     1. Discovers available tools
     2. Uses tools to accomplish tasks
-    3. Creates reusable skills from patterns
+    3. Creates reusable workflows from patterns
     4. Saves results as artifacts
     """
 
@@ -107,8 +107,8 @@ class TestAgentFullWorkflow:
     ) -> None:
         """Complete agent workflow with InProcessExecutor.
 
-        User story: An agent lists tools, uses a tool, creates a skill,
-        invokes the skill, and saves results as an artifact.
+        User story: An agent lists tools, uses a tool, creates a workflow,
+        invokes the workflow, and saves results as an artifact.
         """
         storage = FileStorage(tools_storage)
         config = InProcessConfig(tools_path=tools_dir)
@@ -127,19 +127,19 @@ class TestAgentFullWorkflow:
             assert result.is_ok, f"tools.echo() failed: {result.error}"
             assert "hello world" in result.value
 
-            # 3. Agent creates a skill from what it learned
+            # 3. Agent creates a workflow from what it learned
             result = await session.run("""
-skills.create(
+workflows.create(
     name="shout",
     description="Echo text in uppercase",
     source="async def run(text: str) -> str:\\n    return text.upper()"
 )
 """)
-            assert result.is_ok, f"skills.create() failed: {result.error}"
+            assert result.is_ok, f"workflows.create() failed: {result.error}"
 
-            # 4. Agent invokes the created skill
-            result = await session.run('skills.shout(text="quiet")')
-            assert result.is_ok, f"skills.shout() failed: {result.error}"
+            # 4. Agent invokes the created workflow
+            result = await session.run('workflows.shout(text="quiet")')
+            assert result.is_ok, f"workflows.shout() failed: {result.error}"
             assert result.value == "QUIET"
 
             # 5. Agent saves results as artifact
@@ -186,19 +186,19 @@ skills.create(
             assert result.is_ok, f"tools.echo() failed: {result.error}"
             assert "container hello" in result.value
 
-            # 3. Agent creates a skill
+            # 3. Agent creates a workflow
             result = await session.run("""
-skills.create(
+workflows.create(
     name="container_shout",
     description="Echo text in uppercase",
     source="async def run(text: str) -> str:\\n    return text.upper()"
 )
 """)
-            assert result.is_ok, f"skills.create() failed: {result.error}"
+            assert result.is_ok, f"workflows.create() failed: {result.error}"
 
-            # 4. Agent invokes the created skill
-            result = await session.run('skills.container_shout(text="whisper")')
-            assert result.is_ok, f"skills.container_shout() failed: {result.error}"
+            # 4. Agent invokes the created workflow
+            result = await session.run('workflows.container_shout(text="whisper")')
+            assert result.is_ok, f"workflows.container_shout() failed: {result.error}"
             assert result.value == "WHISPER"
 
             # 5. Agent saves artifact
@@ -268,73 +268,73 @@ class TestContainerToolsInvocation:
 
 
 # =============================================================================
-# Container + Skills Lifecycle Tests
+# Container + Workflows Lifecycle Tests
 # =============================================================================
 
 
 @pytest.mark.xdist_group("docker")
-class TestContainerSkillsLifecycle:
-    """Test full skills lifecycle inside a container."""
+class TestContainerWorkflowsLifecycle:
+    """Test full workflows lifecycle inside a container."""
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_skills_create_invoke_delete(self, empty_storage: Path) -> None:
-        """Skills can be created, invoked, and deleted in container."""
+    async def test_workflows_create_invoke_delete(self, empty_storage: Path) -> None:
+        """Workflows can be created, invoked, and deleted in container."""
         storage = FileStorage(empty_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
-            # 1. Verify empty skills
-            result = await session.run("skills.list()")
+            # 1. Verify empty workflows
+            result = await session.run("workflows.list()")
             assert result.is_ok
             assert result.value == []
 
-            # 2. Create skill
+            # 2. Create workflow
             result = await session.run("""
-skills.create(
+workflows.create(
     name="add_numbers",
     description="Add two numbers",
     source="async def run(a: int, b: int) -> int:\\n    return a + b"
 )
 """)
-            assert result.is_ok, f"skills.create() failed: {result.error}"
+            assert result.is_ok, f"workflows.create() failed: {result.error}"
 
-            # 3. List shows new skill
-            result = await session.run("skills.list()")
+            # 3. List shows new workflow
+            result = await session.run("workflows.list()")
             assert result.is_ok
             names = [s.name if hasattr(s, "name") else s["name"] for s in result.value]
             assert "add_numbers" in names
 
-            # 4. Invoke skill
-            result = await session.run("skills.add_numbers(a=5, b=3)")
-            assert result.is_ok, f"skills.add_numbers() failed: {result.error}"
+            # 4. Invoke workflow
+            result = await session.run("workflows.add_numbers(a=5, b=3)")
+            assert result.is_ok, f"workflows.add_numbers() failed: {result.error}"
             assert result.value == 8
 
-            # 5. Delete skill
-            result = await session.run('skills.delete("add_numbers")')
-            assert result.is_ok, f"skills.delete() failed: {result.error}"
+            # 5. Delete workflow
+            result = await session.run('workflows.delete("add_numbers")')
+            assert result.is_ok, f"workflows.delete() failed: {result.error}"
 
             # 6. Verify deletion
-            result = await session.run("skills.list()")
+            result = await session.run("workflows.list()")
             assert result.is_ok
             names = [s.name if hasattr(s, "name") else s["name"] for s in result.value]
             assert "add_numbers" not in names
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_skill_uses_tools_in_container(
+    async def test_workflow_uses_tools_in_container(
         self, tools_storage: Path, tools_dir: Path
     ) -> None:
-        """Skills can call tools from within container execution."""
+        """Workflows can call tools from within container execution."""
         storage = FileStorage(tools_storage)
         executor = ContainerExecutor(
             ContainerConfig(timeout=30.0, auth_disabled=True, tools_path=tools_dir)
         )
 
         async with Session(storage=storage, executor=executor) as session:
-            # Create skill that uses tools
+            # Create workflow that uses tools
             result = await session.run('''
-skills.create(
+workflows.create(
     name="loud_echo",
     description="Echo text and uppercase it",
     source="""async def run(text: str) -> str:
@@ -343,11 +343,11 @@ skills.create(
 """
 )
 ''')
-            assert result.is_ok, f"skills.create() failed: {result.error}"
+            assert result.is_ok, f"workflows.create() failed: {result.error}"
 
-            # Invoke skill that calls tool
-            result = await session.run('skills.loud_echo(text="hello")')
-            assert result.is_ok, f"skills.loud_echo() failed: {result.error}"
+            # Invoke workflow that calls tool
+            result = await session.run('workflows.loud_echo(text="hello")')
+            assert result.is_ok, f"workflows.loud_echo() failed: {result.error}"
             assert result.value == "HELLO"
 
 
@@ -362,37 +362,37 @@ class TestContainerSessionPersistence:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_skill_persists_across_container_sessions(self, empty_storage: Path) -> None:
-        """Skills created in one container session are available in next."""
-        # Session 1: Create skill
+    async def test_workflow_persists_across_container_sessions(self, empty_storage: Path) -> None:
+        """Workflows created in one container session are available in next."""
+        # Session 1: Create workflow
         storage1 = FileStorage(empty_storage)
         executor1 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage1, executor=executor1) as session:
             result = await session.run("""
-skills.create(
-    name="persistent_skill",
+workflows.create(
+    name="persistent_workflow",
     description="Should persist",
     source="async def run() -> str:\\n    return 'persisted'"
 )
 """)
             assert result.is_ok
 
-            result = await session.run("skills.persistent_skill()")
+            result = await session.run("workflows.persistent_workflow()")
             assert result.is_ok
             assert result.value == "persisted"
 
-        # Session 2: Skill should still exist
+        # Session 2: Workflow should still exist
         storage2 = FileStorage(empty_storage)
         executor2 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage2, executor=executor2) as session:
-            result = await session.run("skills.list()")
+            result = await session.run("workflows.list()")
             assert result.is_ok
             names = [s.name if hasattr(s, "name") else s["name"] for s in result.value]
-            assert "persistent_skill" in names, f"Skill not persisted: {names}"
+            assert "persistent_workflow" in names, f"Workflow not persisted: {names}"
 
-            result = await session.run("skills.persistent_skill()")
+            result = await session.run("workflows.persistent_workflow()")
             assert result.is_ok
             assert result.value == "persisted"
 
@@ -442,19 +442,19 @@ class TestRedisContainerIntegration:
         executor = ContainerExecutor(ContainerConfig(timeout=60.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
-            # 1. Create skill (stored in Redis)
+            # 1. Create workflow (stored in Redis)
             result = await session.run("""
-skills.create(
-    name="redis_skill",
-    description="Test skill in Redis",
+workflows.create(
+    name="redis_workflow",
+    description="Test workflow in Redis",
     source="async def run(x: int) -> int:\\n    return x * 2"
 )
 """)
-            assert result.is_ok, f"skills.create() failed: {result.error}"
+            assert result.is_ok, f"workflows.create() failed: {result.error}"
 
-            # 2. Invoke skill
-            result = await session.run("skills.redis_skill(x=21)")
-            assert result.is_ok, f"skills.redis_skill() failed: {result.error}"
+            # 2. Invoke workflow
+            result = await session.run("workflows.redis_workflow(x=21)")
+            assert result.is_ok, f"workflows.redis_workflow() failed: {result.error}"
             assert result.value == 42
 
             # 3. Save artifact (stored in Redis)
@@ -470,17 +470,17 @@ skills.create(
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_redis_container_skill_persistence(self, redis_url: str) -> None:
-        """Skills persist in Redis across container sessions."""
+    async def test_redis_container_workflow_persistence(self, redis_url: str) -> None:
+        """Workflows persist in Redis across container sessions."""
         client = redis.from_url(redis_url)
 
-        # Session 1: Create skill
+        # Session 1: Create workflow
         storage1 = RedisStorage(redis=client, prefix="persist_test")
         executor1 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage1, executor=executor1) as session:
             result = await session.run("""
-skills.create(
+workflows.create(
     name="redis_persistent",
     description="Should persist in Redis",
     source="async def run() -> str:\\n    return 'from redis'"
@@ -488,42 +488,42 @@ skills.create(
 """)
             assert result.is_ok
 
-        # Session 2: Skill should exist
+        # Session 2: Workflow should exist
         storage2 = RedisStorage(redis=client, prefix="persist_test")
         executor2 = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage2, executor=executor2) as session:
-            result = await session.run("skills.list()")
+            result = await session.run("workflows.list()")
             assert result.is_ok
             names = [s.name if hasattr(s, "name") else s["name"] for s in result.value]
             assert "redis_persistent" in names
 
-            result = await session.run("skills.redis_persistent()")
+            result = await session.run("workflows.redis_persistent()")
             assert result.is_ok
             assert result.value == "from redis"
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_redis_container_skill_search(self, redis_url: str) -> None:
-        """Skill search should find created skills by semantic similarity."""
+    async def test_redis_container_workflow_search(self, redis_url: str) -> None:
+        """Workflow search should find created workflows by semantic similarity."""
         client = redis.from_url(redis_url)
         storage = RedisStorage(redis=client, prefix="search_test")
         executor = ContainerExecutor(ContainerConfig(timeout=60.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
-            # 1. Create a skill with clear description
+            # 1. Create a workflow with clear description
             result = await session.run("""
-skills.create(
+workflows.create(
     name="port_scanner",
     description="Scan network ports to find open services",
     source="async def run(host: str) -> list:\\n    return ['port scanning', host]"
 )
 """)
-            assert result.is_ok, f"skills.create() failed: {result.error}"
+            assert result.is_ok, f"workflows.create() failed: {result.error}"
 
-            # 2. Search for the skill using semantic query
-            result = await session.run('skills.search("network port scanning")')
-            assert result.is_ok, f"skills.search() failed: {result.error}"
+            # 2. Search for the workflow using semantic query
+            result = await session.run('workflows.search("network port scanning")')
+            assert result.is_ok, f"workflows.search() failed: {result.error}"
 
             # Should find port_scanner since query matches description
             found_names = [s["name"] if isinstance(s, dict) else s.name for s in result.value]
@@ -533,22 +533,22 @@ skills.create(
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_redis_search_skills_facade(self, redis_url: str) -> None:
-        """session.search_skills() facade should find skills with RedisStorage."""
+    async def test_redis_search_workflows_facade(self, redis_url: str) -> None:
+        """session.search_workflows() facade should find workflows with RedisStorage."""
         client = redis.from_url(redis_url)
         storage = RedisStorage(redis=client, prefix="facade_test")
         executor = ContainerExecutor(ContainerConfig(timeout=60.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
-            # 1. Create a skill using facade method
-            await session.add_skill(
+            # 1. Create a workflow using facade method
+            await session.add_workflow(
                 name="web_scraper",
                 source="async def run(url: str) -> str:\n    return f'scraped {url}'",
                 description="Scrape web pages and extract content",
             )
 
             # 2. Search using facade method (host-side library)
-            results = await session.search_skills("web scraping extract")
+            results = await session.search_workflows("web scraping extract")
 
             # Should find web_scraper since query matches description
             found_names = [s["name"] for s in results]
@@ -590,8 +590,8 @@ class TestRedisStackIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_redis_stack_search_skills_facade(self, redis_stack_url: str) -> None:
-        """session.search_skills() should work with RedisVectorStore (RediSearch)."""
+    async def test_redis_stack_search_workflows_facade(self, redis_stack_url: str) -> None:
+        """session.search_workflows() should work with RedisVectorStore (RediSearch)."""
         import redis as redis_lib
 
         client = redis_lib.from_url(redis_stack_url)
@@ -604,15 +604,15 @@ class TestRedisStackIntegration:
         executor = ContainerExecutor(ContainerConfig(timeout=60.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
-            # 1. Create a skill
-            await session.add_skill(
+            # 1. Create a workflow
+            await session.add_workflow(
                 name="data_analyzer",
                 source="async def run(data: list) -> dict:\n    return {'count': len(data)}",
                 description="Analyze data and return statistics",
             )
 
             # 2. Search using facade method - this uses RedisVectorStore
-            results = await session.search_skills("data analysis statistics")
+            results = await session.search_workflows("data analysis statistics")
 
             found_names = [s["name"] for s in results]
             assert "data_analyzer" in found_names, (
@@ -656,27 +656,27 @@ class TestContainerNegativeCases:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_container_skill_not_found_error(self, empty_storage: Path) -> None:
-        """Calling non-existent skill gives clear error."""
+    async def test_container_workflow_not_found_error(self, empty_storage: Path) -> None:
+        """Calling non-existent workflow gives clear error."""
         storage = FileStorage(empty_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
-            result = await session.run("skills.nonexistent_skill()")
-            assert not result.is_ok, "Expected error for missing skill"
+            result = await session.run("workflows.nonexistent_workflow()")
+            assert not result.is_ok, "Expected error for missing workflow"
             assert result.error is not None
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _docker_available(), reason="Docker not available")
-    async def test_container_invalid_skill_source_rejected(self, empty_storage: Path) -> None:
-        """Creating skill with syntax error fails gracefully."""
+    async def test_container_invalid_workflow_source_rejected(self, empty_storage: Path) -> None:
+        """Creating workflow with syntax error fails gracefully."""
         storage = FileStorage(empty_storage)
         executor = ContainerExecutor(ContainerConfig(timeout=30.0, auth_disabled=True))
 
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("""
-skills.create(
-    name="bad_skill",
+workflows.create(
+    name="bad_workflow",
     description="Invalid syntax",
     source="async def run( broken"
 )

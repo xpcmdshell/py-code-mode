@@ -1,10 +1,10 @@
-"""VectorStore implementations for skill embedding caching."""
+"""VectorStore implementations for workflow embedding caching."""
 
 from __future__ import annotations
 
 # ChromaDB is an optional dependency
 try:
-    from py_code_mode.skills.vector_stores.chroma import ChromaVectorStore
+    from py_code_mode.workflows.vector_stores.chroma import ChromaVectorStore
 
     CHROMA_AVAILABLE = True
 except ImportError:
@@ -13,7 +13,7 @@ except ImportError:
 
 # Redis is an optional dependency
 try:
-    from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+    from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
     REDIS_AVAILABLE = True
 except ImportError:

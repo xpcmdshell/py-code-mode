@@ -37,8 +37,8 @@ class SessionConfig:
     # Python dependencies (auto-installed at startup)
     python_deps: list[str] = field(default_factory=list)
 
-    # Skills
-    skills_path: Path = field(default_factory=lambda: Path("/app/skills"))
+    # Workflows
+    workflows_path: Path = field(default_factory=lambda: Path("/app/workflows"))
 
     # Artifacts
     artifacts_path: Path = field(default_factory=lambda: Path("/workspace/artifacts"))
@@ -79,8 +79,8 @@ class SessionConfig:
         config = cls()
 
         # Load paths from env
-        if skills_path := os.environ.get("SKILLS_PATH"):
-            config.skills_path = Path(skills_path)
+        if workflows_path := os.environ.get("WORKFLOWS_PATH"):
+            config.workflows_path = Path(workflows_path)
         if artifacts_path := os.environ.get("ARTIFACTS_PATH"):
             config.artifacts_path = Path(artifacts_path)
 
@@ -143,7 +143,7 @@ class SessionConfig:
         return cls(
             mcp_servers=cls._parse_mcp_servers(data.get("mcp_servers", [])),
             python_deps=data.get("python_deps", []),
-            skills_path=Path(data.get("skills_path", "/app/skills")),
+            workflows_path=Path(data.get("workflows_path", "/app/workflows")),
             artifacts_path=Path(data.get("artifacts_path", "/workspace/artifacts")),
             artifact_backend=data.get("artifact_backend", "file"),
             redis_url=data.get("redis_url"),
@@ -189,7 +189,7 @@ class ContainerConfig:
     timeout: float = 30.0
     startup_timeout: float = 60.0
     health_check_interval: float = 0.5
-    ipc_timeout: float = 30.0  # Timeout for IPC queries (tool/skill/artifact)
+    ipc_timeout: float = 30.0  # Timeout for IPC queries (tool/workflow/artifact)
 
     # Container settings
     environment: dict[str, str] = field(default_factory=dict)
@@ -213,12 +213,12 @@ class ContainerConfig:
     def to_docker_config(
         self,
         tools_path: Path | None = None,
-        skills_path: Path | None = None,
+        workflows_path: Path | None = None,
         artifacts_path: Path | None = None,
         deps_path: Path | None = None,
         redis_url: str | None = None,
         tools_prefix: str | None = None,
-        skills_prefix: str | None = None,
+        workflows_prefix: str | None = None,
         artifacts_prefix: str | None = None,
         deps_prefix: str | None = None,
     ) -> dict[str, Any]:
@@ -227,19 +227,20 @@ class ContainerConfig:
         Args:
             tools_path: Host path to tools directory (volume mount).
                        Falls back to self.tools_path if not provided.
-            skills_path: Host path to skills directory (volume mount).
+            workflows_path: Host path to workflows directory (volume mount).
             artifacts_path: Host path to artifacts directory (volume mount).
             deps_path: Host path to deps directory (volume mount).
                       Falls back to self.deps_file's parent if not provided.
             redis_url: Redis URL for Redis-based storage (sets env vars).
             tools_prefix: Redis key prefix for tools.
-            skills_prefix: Redis key prefix for skills.
+            workflows_prefix: Redis key prefix for workflows.
             artifacts_prefix: Redis key prefix for artifacts.
             deps_prefix: Redis key prefix for dependencies.
 
         Returns:
-            Docker SDK run() configuration dict.
+            Docker SDK configuration dict.
         """
+
         # Use config fields as fallbacks for path arguments
         effective_tools_path = tools_path if tools_path is not None else self.tools_path
         effective_deps_path = deps_path
@@ -267,12 +268,12 @@ class ContainerConfig:
                 "mode": "ro",
             }
             config["environment"]["TOOLS_PATH"] = "/app/tools"
-        if skills_path:
-            volumes[str(skills_path.absolute())] = {
-                "bind": "/app/skills",
-                "mode": "rw",  # Agents create skills via skills.create()
+        if workflows_path:
+            volumes[str(workflows_path.absolute())] = {
+                "bind": "/app/workflows",
+                "mode": "rw",  # Agents create workflows via workflows.create()
             }
-            config["environment"]["SKILLS_PATH"] = "/app/skills"
+            config["environment"]["WORKFLOWS_PATH"] = "/app/workflows"
         if artifacts_path:
             volumes[str(artifacts_path.absolute())] = {
                 "bind": "/workspace/artifacts",
@@ -295,8 +296,8 @@ class ContainerConfig:
             # Pass prefixes so container uses consistent keys
             if tools_prefix:
                 config["environment"]["REDIS_TOOLS_PREFIX"] = tools_prefix
-            if skills_prefix:
-                config["environment"]["REDIS_SKILLS_PREFIX"] = skills_prefix
+            if workflows_prefix:
+                config["environment"]["REDIS_WORKFLOWS_PREFIX"] = workflows_prefix
             if artifacts_prefix:
                 config["environment"]["REDIS_ARTIFACTS_PREFIX"] = artifacts_prefix
             if deps_prefix:

@@ -23,7 +23,7 @@ class InProcessConfig:
              None means no pre-configured deps.
         deps_file: Path to requirements.txt-style file for pre-configured deps.
                   None means no deps file.
-        ipc_timeout: Timeout for IPC queries (tool/skill/artifact) in seconds.
+        ipc_timeout: Timeout for IPC queries (tool/workflow/artifact) in seconds.
                     Default: 30.0.
     """
 

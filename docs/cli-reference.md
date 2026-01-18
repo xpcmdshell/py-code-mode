@@ -23,8 +23,8 @@ py-code-mode-mcp [OPTIONS]
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--base PATH` | Base directory with `tools/`, `skills/`, `artifacts/` subdirs | - |
-| `--storage PATH` | Path to storage directory (skills, artifacts) | - |
+| `--base PATH` | Base directory with `tools/`, `workflows/`, `artifacts/` subdirs | - |
+| `--storage PATH` | Path to storage directory (workflows, artifacts) | - |
 | `--tools PATH` | Path to tools directory (YAML definitions) | - |
 | `--redis URL` | Redis URL for storage | - |
 | `--prefix PREFIX` | Redis key prefix | `py-code-mode` |
@@ -35,7 +35,7 @@ py-code-mode-mcp [OPTIONS]
 ### Examples
 
 ```bash
-# Base directory (auto-discovers tools/, skills/, artifacts/)
+# Base directory (auto-discovers tools/, workflows/, artifacts/)
 py-code-mode-mcp --base ~/.code-mode
 
 # Explicit storage + tools paths
@@ -54,13 +54,13 @@ When running, the server exposes these tools to MCP clients:
 
 | Tool | Description |
 |------|-------------|
-| `run_code` | Execute Python with access to tools, skills, artifacts, deps |
+| `run_code` | Execute Python with access to tools, workflows, artifacts, deps |
 | `list_tools` | List available tools |
 | `search_tools` | Semantic search for tools |
-| `list_skills` | List available skills |
-| `search_skills` | Semantic search for skills |
-| `create_skill` | Save a new skill |
-| `delete_skill` | Remove a skill |
+| `list_workflows` | List available workflows |
+| `search_workflows` | Semantic search for workflows |
+| `create_workflow` | Save a new workflow |
+| `delete_workflow` | Remove a workflow |
 | `list_artifacts` | List saved artifacts |
 | `list_deps` | List configured dependencies |
 | `add_dep` | Add and install a dependency (if `--no-runtime-deps` not set) |
@@ -70,7 +70,7 @@ When running, the server exposes these tools to MCP clients:
 
 ## Store CLI
 
-Manage skills, tools, and dependencies in Redis stores.
+Manage workflows, tools, and dependencies in Redis stores.
 
 ### Usage
 
@@ -82,14 +82,14 @@ python -m py_code_mode.cli.store <command> [OPTIONS]
 
 #### bootstrap
 
-Push skills, tools, or deps from local files to a store.
+Push workflows, tools, or deps from local files to a store.
 
 ```bash
 python -m py_code_mode.cli.store bootstrap \
   --source PATH \
   --target URL \
   --prefix PREFIX \
-  [--type skills|tools|deps] \
+  [--type workflows|tools|deps] \
   [--clear] \
   [--deps "pkg1" "pkg2"]
 ```
@@ -98,17 +98,17 @@ python -m py_code_mode.cli.store bootstrap \
 |--------|-------------|---------|
 | `--source PATH` | Source directory or requirements file | required |
 | `--target URL` | Target store URL (e.g., `redis://localhost:6379`) | required |
-| `--prefix PREFIX` | Key prefix for items | `skills` |
-| `--type TYPE` | Type of items: `skills`, `tools`, or `deps` | `skills` |
+| `--prefix PREFIX` | Key prefix for items | `workflows` |
+| `--type TYPE` | Type of items: `workflows`, `tools`, or `deps` | `workflows` |
 | `--clear` | Remove existing items before adding | false |
 | `--deps` | Inline package specs (for deps only) | - |
 
 **Examples:**
 
 ```bash
-# Bootstrap skills
+# Bootstrap workflows
 python -m py_code_mode.cli.store bootstrap \
-  --source ./skills \
+  --source ./workflows \
   --target redis://localhost:6379 \
   --prefix my-agent
 
@@ -133,9 +133,9 @@ python -m py_code_mode.cli.store bootstrap \
   --type deps \
   --deps "requests>=2.31" "pandas>=2.0"
 
-# Replace all existing skills
+# Replace all existing workflows
 python -m py_code_mode.cli.store bootstrap \
-  --source ./skills \
+  --source ./workflows \
   --target redis://localhost:6379 \
   --prefix my-agent \
   --clear
@@ -149,13 +149,13 @@ List items in a store.
 python -m py_code_mode.cli.store list \
   --target URL \
   --prefix PREFIX \
-  [--type skills|tools|deps]
+  [--type workflows|tools|deps]
 ```
 
 **Examples:**
 
 ```bash
-# List skills
+# List workflows
 python -m py_code_mode.cli.store list \
   --target redis://localhost:6379 \
   --prefix my-agent
@@ -175,7 +175,7 @@ python -m py_code_mode.cli.store list \
 
 #### pull
 
-Retrieve skills from a store to local files.
+Retrieve workflows from a store to local files.
 
 ```bash
 python -m py_code_mode.cli.store pull \
@@ -187,16 +187,16 @@ python -m py_code_mode.cli.store pull \
 **Example:**
 
 ```bash
-# Pull skills to review agent-created ones
+# Pull workflows to review agent-created ones
 python -m py_code_mode.cli.store pull \
   --target redis://localhost:6379 \
   --prefix my-agent \
-  --dest ./skills-from-redis
+  --dest ./workflows-from-redis
 ```
 
 #### diff
 
-Compare local skills vs remote store.
+Compare local workflows vs remote store.
 
 ```bash
 python -m py_code_mode.cli.store diff \
@@ -210,7 +210,7 @@ python -m py_code_mode.cli.store diff \
 ```bash
 # See what agent added or changed
 python -m py_code_mode.cli.store diff \
-  --source ./skills \
+  --source ./workflows \
   --target redis://localhost:6379 \
   --prefix my-agent
 ```
@@ -225,12 +225,12 @@ Output shows:
 
 ## CI/CD Patterns
 
-### Deploy Skills to Production
+### Deploy Workflows to Production
 
 ```bash
 # In CI pipeline
 python -m py_code_mode.cli.store bootstrap \
-  --source ./skills \
+  --source ./workflows \
   --target $REDIS_URL \
   --prefix production \
   --clear
@@ -247,7 +247,7 @@ python -m py_code_mode.cli.store pull \
 
 # Compare to source
 python -m py_code_mode.cli.store diff \
-  --source ./skills \
+  --source ./workflows \
   --target $REDIS_URL \
   --prefix production
 ```

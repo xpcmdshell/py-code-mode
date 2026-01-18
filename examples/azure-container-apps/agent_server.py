@@ -90,7 +90,7 @@ async def run_task(request: TaskRequest):
             """Execute Python code via the session server.
 
             Args:
-                code: Python code to execute. Has access to tools, skills,
+                code: Python code to execute. Has access to tools, workflows,
                       artifacts, and deps namespaces.
 
             Returns:
@@ -109,14 +109,14 @@ async def run_task(request: TaskRequest):
         run_code_tool = FunctionTool(
             func=_run_code,
             name="run_code",
-            description="Execute Python code with tools, skills, artifacts, deps.",
+            description="Execute Python code with tools, workflows, artifacts, deps.",
         )
 
         system_prompt = """You are a helpful assistant that writes Python code to accomplish tasks.
 
 You have access to these namespaces in run_code:
 - tools.* - CLI tools (curl, jq, etc.)
-- skills.* - Reusable Python functions
+- workflows.* - Reusable Python functions
 - artifacts.* - Persistent data storage
 - deps.* - Python package management
 
@@ -151,7 +151,7 @@ Always use the run_code tool to execute Python code."""
 
 @app.get("/info")
 async def info():
-    """Get available tools and skills from session server."""
+    """Get available tools and workflows from session server."""
     # Create storage pointing to same Redis as session server
     storage = RedisStorage(
         url=os.environ["REDIS_URL"],
@@ -167,8 +167,8 @@ async def info():
 
     async with Session(storage=storage, executor=executor) as session:
         tools = await session.list_tools()
-        skills = await session.list_skills()
+        workflows = await session.list_workflows()
         return {
             "tools": tools,
-            "skills": skills,
+            "workflows": workflows,
         }

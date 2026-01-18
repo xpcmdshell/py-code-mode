@@ -1,7 +1,7 @@
 """Tests for Session class.
 
 Session wraps a StorageBackend and Executor, providing the unified
-interface that agents use. It injects the tools, skills, and artifacts
+interface that agents use. It injects the tools, workflows, and artifacts
 namespaces into the executor's namespace.
 
 Session lifecycle:
@@ -158,16 +158,16 @@ class TestSessionCodeExecution:
             assert result.value == 84
 
 
-class TestSessionSkillsNamespace:
-    """Tests for Session skills namespace injection."""
+class TestSessionWorkflowsNamespace:
+    """Tests for Session workflows namespace injection."""
 
     @pytest.fixture
-    def storage_with_skills(self, tmp_path: Path) -> FileStorage:
-        """Create FileStorage with skills."""
+    def storage_with_workflows(self, tmp_path: Path) -> FileStorage:
+        """Create FileStorage with workflows."""
         storage = FileStorage(tmp_path)
-        skills_dir = tmp_path / "skills"
-        skills_dir.mkdir(exist_ok=True)
-        (skills_dir / "double.py").write_text(
+        workflows_dir = tmp_path / "workflows"
+        workflows_dir.mkdir(exist_ok=True)
+        (workflows_dir / "double.py").write_text(
             '''"""Double a number."""
 
 async def run(n: int) -> int:
@@ -177,44 +177,46 @@ async def run(n: int) -> int:
         return storage
 
     @pytest.mark.asyncio
-    async def test_skills_list_callable(self, storage_with_skills: FileStorage) -> None:
-        """skills.list() is callable and returns list."""
-        async with Session(storage=storage_with_skills) as session:
-            result = await session.run("skills.list()")
+    async def test_workflows_list_callable(self, storage_with_workflows: FileStorage) -> None:
+        """workflows.list() is callable and returns list."""
+        async with Session(storage=storage_with_workflows) as session:
+            result = await session.run("workflows.list()")
 
-            assert result.is_ok, f"skills.list() failed: {result.error}"
+            assert result.is_ok, f"workflows.list() failed: {result.error}"
             assert result.value is not None
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_skills_list_returns_skill_info(self, storage_with_skills: FileStorage) -> None:
-        """skills.list() returns skill info with name, description, params."""
-        async with Session(storage=storage_with_skills) as session:
-            result = await session.run("skills.list()")
+    async def test_workflows_list_returns_workflow_info(
+        self, storage_with_workflows: FileStorage
+    ) -> None:
+        """workflows.list() returns workflow info with name, description, params."""
+        async with Session(storage=storage_with_workflows) as session:
+            result = await session.run("workflows.list()")
 
             assert result.is_ok
             assert len(result.value) >= 1
-            skill = result.value[0]
-            assert "name" in skill
-            assert "description" in skill
-            assert "params" in skill
+            workflow = result.value[0]
+            assert "name" in workflow
+            assert "description" in workflow
+            assert "params" in workflow
 
     @pytest.mark.asyncio
-    async def test_skills_search_callable(self, storage_with_skills: FileStorage) -> None:
-        """skills.search(query) is callable and returns list."""
-        async with Session(storage=storage_with_skills) as session:
-            result = await session.run('skills.search("number")')
+    async def test_workflows_search_callable(self, storage_with_workflows: FileStorage) -> None:
+        """workflows.search(query) is callable and returns list."""
+        async with Session(storage=storage_with_workflows) as session:
+            result = await session.run('workflows.search("number")')
 
             assert result.is_ok
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_skills_create_callable(self, storage_with_skills: FileStorage) -> None:
-        """skills.create(name, description, source) is callable."""
-        async with Session(storage=storage_with_skills) as session:
+    async def test_workflows_create_callable(self, storage_with_workflows: FileStorage) -> None:
+        """workflows.create(name, description, source) is callable."""
+        async with Session(storage=storage_with_workflows) as session:
             result = await session.run(
                 """
-skills.create(
+workflows.create(
     name="triple",
     description="Triple a number",
     source="async def run(n: int) -> int:\\n    return n * 3"
@@ -224,16 +226,16 @@ skills.create(
 
             assert result.is_ok
 
-            # Verify skill was created
-            result = await session.run("skills.triple(n=10)")
+            # Verify workflow was created
+            result = await session.run("workflows.triple(n=10)")
             assert result.is_ok
             assert result.value == 30
 
     @pytest.mark.asyncio
-    async def test_skill_direct_invocation(self, storage_with_skills: FileStorage) -> None:
-        """skills.skill_name(**kwargs) syntax works."""
-        async with Session(storage=storage_with_skills) as session:
-            result = await session.run("skills.double(n=21)")
+    async def test_workflow_direct_invocation(self, storage_with_workflows: FileStorage) -> None:
+        """workflows.workflow_name(**kwargs) syntax works."""
+        async with Session(storage=storage_with_workflows) as session:
+            result = await session.run("workflows.double(n=21)")
 
             assert result.is_ok
             assert result.value == 42
@@ -319,7 +321,7 @@ class TestSessionReset:
 
     @pytest.mark.asyncio
     async def test_reset_preserves_namespaces(self, storage: FileStorage) -> None:
-        """reset() preserves tools, skills, artifacts namespaces."""
+        """reset() preserves tools, workflows, artifacts namespaces."""
         async with Session(storage=storage) as session:
             await session.run("x = 42")
             await session.reset()
@@ -329,7 +331,7 @@ class TestSessionReset:
             assert result.is_ok
             assert result.value is True
 
-            result = await session.run("'skills' in dir()")
+            result = await session.run("'workflows' in dir()")
             assert result.is_ok
             assert result.value is True
 
@@ -467,31 +469,31 @@ class TestStorageAccessTypes:
         assert RedisStorageAccess is not None
 
     def test_file_storage_access_has_paths(self) -> None:
-        """FileStorageAccess has skills_path, artifacts_path.
+        """FileStorageAccess has workflows_path, artifacts_path.
 
         NOTE: tools_path and deps_path removed - tools/deps now owned by executors.
         """
         from py_code_mode.execution.protocol import FileStorageAccess
 
         access = FileStorageAccess(
-            skills_path=Path("/tmp/skills"),
+            workflows_path=Path("/tmp/workflows"),
             artifacts_path=Path("/tmp/artifacts"),
         )
-        assert access.skills_path == Path("/tmp/skills")
+        assert access.workflows_path == Path("/tmp/workflows")
         assert access.artifacts_path == Path("/tmp/artifacts")
 
     def test_file_storage_access_paths_optional(self) -> None:
-        """FileStorageAccess allows None for skills_path.
+        """FileStorageAccess allows None for workflows_path.
 
         NOTE: tools_path and deps_path removed - tools/deps now owned by executors.
         """
         from py_code_mode.execution.protocol import FileStorageAccess
 
         access = FileStorageAccess(
-            skills_path=None,
+            workflows_path=None,
             artifacts_path=Path("/tmp/artifacts"),
         )
-        assert access.skills_path is None
+        assert access.workflows_path is None
 
     def test_redis_storage_access_has_url_and_prefixes(self) -> None:
         """RedisStorageAccess has redis_url and prefix fields.
@@ -502,11 +504,11 @@ class TestStorageAccessTypes:
 
         access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix="app:skills",
+            workflows_prefix="app:workflows",
             artifacts_prefix="app:artifacts",
         )
         assert access.redis_url == "redis://localhost:6379"
-        assert access.skills_prefix == "app:skills"
+        assert access.workflows_prefix == "app:workflows"
         assert access.artifacts_prefix == "app:artifacts"
 
 
@@ -586,11 +588,11 @@ class TestStorageAccessWiring:
     # storage_with_tools fixture removed - not compatible with unified interface
 
     @pytest.fixture
-    def storage_with_skills(self, tmp_path: Path) -> FileStorage:
-        """Create FileStorage with skills."""
-        skills_dir = tmp_path / "skills"
-        skills_dir.mkdir()
-        (skills_dir / "double.py").write_text(
+    def storage_with_workflows(self, tmp_path: Path) -> FileStorage:
+        """Create FileStorage with workflows."""
+        workflows_dir = tmp_path / "workflows"
+        workflows_dir.mkdir()
+        (workflows_dir / "double.py").write_text(
             '''"""Double a number."""
 
 async def run(n: int) -> int:
@@ -600,29 +602,31 @@ async def run(n: int) -> int:
         return FileStorage(tmp_path)
 
     @pytest.mark.asyncio
-    async def test_skills_namespace_available_with_typed_executor(
-        self, storage_with_skills: FileStorage
+    async def test_workflows_namespace_available_with_typed_executor(
+        self, storage_with_workflows: FileStorage
     ) -> None:
-        """skills namespace works when using typed executor."""
+        """workflows namespace works when using typed executor."""
         from py_code_mode.execution.in_process import InProcessExecutor
 
         executor = InProcessExecutor()
-        async with Session(storage=storage_with_skills, executor=executor) as session:
-            result = await session.run("'skills' in dir()")
+        async with Session(storage=storage_with_workflows, executor=executor) as session:
+            result = await session.run("'workflows' in dir()")
             assert result.is_ok
             assert result.value is True
 
     @pytest.mark.asyncio
-    async def test_skills_are_loaded_from_storage(self, storage_with_skills: FileStorage) -> None:
-        """skills from storage are available in executor."""
+    async def test_workflows_are_loaded_from_storage(
+        self, storage_with_workflows: FileStorage
+    ) -> None:
+        """workflows from storage are available in executor."""
         from py_code_mode.execution.in_process import InProcessExecutor
 
         executor = InProcessExecutor()
-        async with Session(storage=storage_with_skills, executor=executor) as session:
-            result = await session.run("skills.list()")
+        async with Session(storage=storage_with_workflows, executor=executor) as session:
+            result = await session.run("workflows.list()")
             assert result.is_ok
-            skill_names = [s["name"] for s in result.value]
-            assert "double" in skill_names
+            workflow_names = [s["name"] for s in result.value]
+            assert "double" in workflow_names
 
 
 # =============================================================================
@@ -663,7 +667,7 @@ class TestContainerExecutorStorageAccess:
         config = ContainerConfig(timeout=30.0, auth_disabled=True)
 
         assert not hasattr(config, "host_tools_path")
-        assert not hasattr(config, "host_skills_path")
+        assert not hasattr(config, "host_workflows_path")
         assert not hasattr(config, "host_artifacts_path")
         assert not hasattr(config, "redis_url")
         assert not hasattr(config, "artifact_backend")
@@ -892,20 +896,20 @@ class TestSessionWithSubprocessExecutor:
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _subprocess_executor_available(), reason="uv not available")
     async def test_subprocess_namespaces_work_via_session(self, tmp_path: Path) -> None:
-        """tools/skills/artifacts namespaces accessible via Session.
+        """tools/workflows/artifacts namespaces accessible via Session.
 
         User action: Access namespaces in code via Session.run()
-        Setup: FileStorage with skills directory, py-code-mode in venv
+        Setup: FileStorage with workflows directory, py-code-mode in venv
         Verification: Namespaces exist and are callable
         Breaks when: Namespace injection fails in subprocess
         """
         from py_code_mode.execution.subprocess import SubprocessExecutor
         from py_code_mode.execution.subprocess.config import SubprocessConfig
 
-        # Create skills directory with a test skill
-        skills_dir = tmp_path / "skills"
-        skills_dir.mkdir()
-        (skills_dir / "add_numbers.py").write_text(
+        # Create workflows directory with a test workflow
+        workflows_dir = tmp_path / "workflows"
+        workflows_dir.mkdir()
+        (workflows_dir / "add_numbers.py").write_text(
             '''"""Add two numbers together."""
 
 async def run(a: int, b: int) -> int:
@@ -929,19 +933,19 @@ async def run(a: int, b: int) -> int:
             assert result.is_ok, f"Failed to check tools: {result.error}"
             assert result.value in (True, "True"), "tools namespace not found"
 
-            # Verify skills namespace exists
-            result = await session.run("'skills' in dir()")
-            assert result.is_ok, f"Failed to check skills: {result.error}"
-            assert result.value in (True, "True"), "skills namespace not found"
+            # Verify workflows namespace exists
+            result = await session.run("'workflows' in dir()")
+            assert result.is_ok, f"Failed to check workflows: {result.error}"
+            assert result.value in (True, "True"), "workflows namespace not found"
 
             # Verify artifacts namespace exists
             result = await session.run("'artifacts' in dir()")
             assert result.is_ok, f"Failed to check artifacts: {result.error}"
             assert result.value in (True, "True"), "artifacts namespace not found"
 
-            # Verify skills.list() works and contains our skill
-            result = await session.run("skills.list()")
-            assert result.is_ok, f"skills.list() failed: {result.error}"
+            # Verify workflows.list() works and contains our workflow
+            result = await session.run("workflows.list()")
+            assert result.is_ok, f"workflows.list() failed: {result.error}"
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _subprocess_executor_available(), reason="uv not available")

@@ -17,9 +17,9 @@ git push -u origin feature/description-of-work
 
 ## Project Overview
 
-**py-code-mode** gives AI agents code execution with persistent skills and tool integration.
+**py-code-mode** gives AI agents code execution with persistent workflows and tool integration.
 
-The core idea: Agents write Python code. When a workflow succeeds, they save it as a **skill**. Next time, they invoke the skill directly - no re-planning required.
+The core idea: Agents write Python code. When a workflow succeeds, they save it as a **workflow**. Next time, they invoke the workflow directly - no re-planning required.
 
 **Python version:** 3.12+ (see `pyproject.toml`)
 
@@ -34,7 +34,7 @@ src/py_code_mode/
     subprocess/     # Jupyter kernel-based subprocess executor
     container/      # Docker container executor
     in_process/     # Same-process executor
-  skills/           # Skill storage, library, and vector stores
+  workflows/           # Skill storage, library, and vector stores
   tools/            # Tool adapters: CLI, MCP, HTTP
     adapters/       # CLI, MCP, HTTP adapter implementations
   artifacts/        # Artifact storage (file, redis)
@@ -60,13 +60,13 @@ When agents write code, four namespaces are available:
 | Namespace | Purpose |
 |-----------|---------|
 | `tools.*` | CLI commands, MCP servers, HTTP APIs |
-| `skills.*` | Reusable Python workflows with semantic search |
+| `workflows.*` | Reusable Python workflows with semantic search |
 | `artifacts.*` | Persistent data storage across sessions |
 | `deps.*` | Runtime Python package management |
 
 ### Storage vs Executor
 
-- **Storage** (FileStorage, RedisStorage): Owns skills and artifacts
+- **Storage** (FileStorage, RedisStorage): Owns workflows and artifacts
 - **Executor** (InProcess, Subprocess, Container): Owns tools and deps via config
 
 ### Executors
@@ -88,13 +88,13 @@ When agents write code, four namespaces are available:
 uv run pytest
 
 # Run specific test file
-uv run pytest tests/test_skills.py
+uv run pytest tests/test_workflows.py
 
 # Run with verbose output
 uv run pytest -v
 
 # Run tests matching pattern
-uv run pytest -k "test_skill"
+uv run pytest -k "test_workflow"
 
 # Run without parallelism (for debugging)
 uv run pytest -n 0
@@ -143,7 +143,7 @@ uv run py-code-mode-mcp --base ~/.code-mode --redis redis://localhost:6379
 
 Storage backends implement `StorageBackend` protocol:
 - `get_serializable_access()` - For cross-process communication
-- `get_skill_library()` - Returns SkillLibrary
+- `get_workflow_library()` - Returns SkillLibrary
 - `get_artifact_store()` - Returns ArtifactStore
 
 ### Bootstrap Pattern
@@ -204,4 +204,4 @@ Tools are defined in YAML files. Key patterns:
 | `src/py_code_mode/execution/protocol.py` | Executor protocol definition |
 | `src/py_code_mode/storage/backends.py` | Storage backend implementations |
 | `src/py_code_mode/tools/namespace.py` | ToolsNamespace, ToolProxy |
-| `src/py_code_mode/skills/library.py` | SkillLibrary implementation |
+| `src/py_code_mode/workflows/library.py` | SkillLibrary implementation |

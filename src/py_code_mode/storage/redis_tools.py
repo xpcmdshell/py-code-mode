@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import yaml
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from redis import Redis
 
-    from py_code_mode.skills.embeddings import EmbeddingProvider
+    from py_code_mode.workflows.embeddings import EmbeddingProvider
     from py_code_mode.tools import ToolRegistry
 
 
@@ -47,7 +47,7 @@ class RedisToolStore:
 
     def __len__(self) -> int:
         """Return number of tools in store."""
-        return self._redis.hlen(self._index_key())
+        return cast(int, self._redis.hlen(self._index_key()))
 
     def add(self, name: str, config: dict[str, Any]) -> None:
         """Store tool configuration in Redis.
@@ -67,7 +67,7 @@ class RedisToolStore:
         Returns:
             Tool config dict if found, None otherwise.
         """
-        value = self._redis.hget(self._index_key(), name)
+        value = cast(str | bytes | None, self._redis.hget(self._index_key(), name))
         if value is None:
             return None
 
@@ -82,7 +82,7 @@ class RedisToolStore:
         Returns:
             Dict mapping tool name to config.
         """
-        all_data = self._redis.hgetall(self._index_key())
+        all_data = cast(dict[str | bytes, str | bytes], self._redis.hgetall(self._index_key()))
         if not all_data:
             return {}
 
@@ -105,7 +105,7 @@ class RedisToolStore:
         Returns:
             True if tool was removed, False if it didn't exist.
         """
-        result = self._redis.hdel(self._index_key(), name)
+        result = cast(int, self._redis.hdel(self._index_key(), name))
         return result > 0
 
     @classmethod

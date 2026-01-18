@@ -51,8 +51,8 @@ This starts py-code-mode as an MCP server subprocess and connects AutoGen to it.
 ## How It Works
 
 1. AutoGen's `McpWorkbench` spawns `py-code-mode-mcp` as a subprocess
-2. py-code-mode exposes 4 MCP tools: `run_code`, `list_tools`, `list_skills`, `search_skills`
-3. The agent uses these tools to execute Python code with access to tools/skills/artifacts
+2. py-code-mode exposes 4 MCP tools: `run_code`, `list_tools`, `list_workflows`, `search_workflows`
+3. The agent uses these tools to execute Python code with access to tools/workflows/artifacts
 4. No custom integration code needed - just standard MCP
 
 ## Comparison with Direct Integration
@@ -72,5 +72,5 @@ You: What time is it in Tokyo?
 
 You: Fetch the GitHub API and tell me how many public repos octocat has
 
-You: Search for skills related to API checking, then use one if it exists
+You: Search for workflows related to API checking, then use one if it exists
 ```

@@ -1,4 +1,4 @@
-"""Skills system - Python skills with IDE support."""
+"""Workflows system - Python workflows with IDE support."""
 
 from __future__ import annotations
 
@@ -20,15 +20,15 @@ _run_code = getattr(builtins, "exec")
 
 
 @dataclass
-class SkillMetadata:
-    """Metadata about skill creation and origin."""
+class WorkflowMetadata:
+    """Metadata about workflow creation and origin."""
 
     created_at: datetime
     created_by: str  # "agent" or "human"
     source: str  # "file", "redis", "runtime"
 
     @classmethod
-    def now(cls, created_by: str = "agent", source: str = "runtime") -> SkillMetadata:
+    def now(cls, created_by: str = "agent", source: str = "runtime") -> WorkflowMetadata:
         """Create metadata with current timestamp."""
         return cls(
             created_at=datetime.now(UTC),
@@ -38,8 +38,8 @@ class SkillMetadata:
 
 
 @dataclass
-class SkillParameter:
-    """A parameter for a skill."""
+class WorkflowParameter:
+    """A parameter for a workflow."""
 
     name: str
     type: str
@@ -59,11 +59,11 @@ _PYTHON_TYPE_MAP: dict[type, str] = {
 }
 
 # Special parameters that are injected, not user-provided
-_INJECTED_PARAMS = {"tools", "skills", "artifacts"}
+_INJECTED_PARAMS = {"tools", "workflows", "artifacts", "deps"}
 
 
-def _extract_parameters(func: Callable[..., Any], name: str) -> list[SkillParameter]:
-    """Extract SkillParameter list from a function's signature."""
+def _extract_parameters(func: Callable[..., Any], name: str) -> list[WorkflowParameter]:
+    """Extract WorkflowParameter list from a function's signature."""
     sig = inspect.signature(func)
     try:
         type_hints = get_type_hints(func)
@@ -85,7 +85,7 @@ def _extract_parameters(func: Callable[..., Any], name: str) -> list[SkillParame
         default = param.default if has_default else None
 
         parameters.append(
-            SkillParameter(
+            WorkflowParameter(
                 name=param_name,
                 type=type_str,
                 description="",
@@ -97,8 +97,8 @@ def _extract_parameters(func: Callable[..., Any], name: str) -> list[SkillParame
 
 
 @dataclass
-class PythonSkill:
-    """A skill defined as a Python module with run() entrypoint.
+class PythonWorkflow:
+    """A workflow defined as a Python module with run() entrypoint.
 
     Provides full IDE support (syntax highlighting, intellisense)
     and exposes source code for agent inspection and adaptation.
@@ -106,10 +106,10 @@ class PythonSkill:
 
     name: str
     description: str
-    parameters: list[SkillParameter]
+    parameters: list[WorkflowParameter]
     source: str
     _func: Callable[..., Any] = field(repr=False)
-    metadata: SkillMetadata | None = None
+    metadata: WorkflowMetadata | None = None
 
     @classmethod
     def from_source(
@@ -117,18 +117,18 @@ class PythonSkill:
         name: str,
         source: str,
         description: str = "",
-        metadata: SkillMetadata | None = None,
-    ) -> PythonSkill:
-        """Create a PythonSkill from source code string.
+        metadata: WorkflowMetadata | None = None,
+    ) -> PythonWorkflow:
+        """Create a PythonWorkflow from source code string.
 
         Args:
-            name: Skill name (must be valid Python identifier).
+            name: Workflow name (must be valid Python identifier).
             source: Python source code with def run(...) function.
-            description: What the skill does.
+            description: What the workflow does.
             metadata: Optional creation metadata.
 
         Returns:
-            PythonSkill instance.
+            PythonWorkflow instance.
 
         Raises:
             ValueError: If name is invalid or code doesn't define run().
@@ -136,18 +136,18 @@ class PythonSkill:
         """
         # Validate name is valid identifier
         if not name.isidentifier():
-            raise ValueError(f"Invalid skill name: {name!r} (must be valid Python identifier)")
+            raise ValueError(f"Invalid workflow name: {name!r} (must be valid Python identifier)")
 
-        # Reserved names that would shadow SkillsNamespace methods
+        # Reserved names that would shadow WorkflowsNamespace methods
         reserved = {"list", "search", "get", "invoke", "create", "delete"}
         if name in reserved:
-            raise ValueError(f"Reserved skill name: {name!r}")
+            raise ValueError(f"Reserved workflow name: {name!r}")
 
         # Parse and validate syntax
         try:
             tree = ast.parse(source)
         except SyntaxError as e:
-            raise SyntaxError(f"Syntax error in skill code: {e}")
+            raise SyntaxError(f"Syntax error in workflow code: {e}")
 
         has_async_run = False
         has_sync_run = False
@@ -159,13 +159,13 @@ class PythonSkill:
                 has_sync_run = True
 
         if has_sync_run and not has_async_run:
-            raise ValueError("Skill must define 'async def run()', not 'def run()'")
+            raise ValueError("Workflow must define 'async def run()', not 'def run()'")
         if not has_async_run:
-            raise ValueError("Skill must define an 'async def run()' function")
+            raise ValueError("Workflow must define an 'async def run()' function")
 
         # Compile and execute to get the function
         namespace: dict[str, Any] = {}
-        _run_code(compile(tree, f"<skill:{name}>", "exec"), namespace)
+        _run_code(compile(tree, f"<workflow:{name}>", "exec"), namespace)
 
         func = namespace.get("run")
         if not callable(func):
@@ -191,12 +191,12 @@ class PythonSkill:
             parameters=parameters,
             source=source,
             _func=func,
-            metadata=metadata or SkillMetadata.now(),
+            metadata=metadata or WorkflowMetadata.now(),
         )
 
     @classmethod
-    def from_file(cls, path: Path) -> PythonSkill:
-        """Load a Python skill from a .py file.
+    def from_file(cls, path: Path) -> PythonWorkflow:
+        """Load a Python workflow from a .py file.
 
         The file must have an async def run() function as entrypoint.
         Parameters are extracted from the function signature.
@@ -208,7 +208,7 @@ class PythonSkill:
         try:
             tree = ast.parse(source)
         except SyntaxError as e:
-            raise SyntaxError(f"Syntax error in skill {path}: {e}")
+            raise SyntaxError(f"Syntax error in workflow {path}: {e}")
 
         has_async_run = False
         has_sync_run = False
@@ -220,9 +220,9 @@ class PythonSkill:
                 has_sync_run = True
 
         if has_sync_run and not has_async_run:
-            raise ValueError(f"Skill {path} must define 'async def run()', not 'def run()'")
+            raise ValueError(f"Workflow {path} must define 'async def run()', not 'def run()'")
         if not has_async_run:
-            raise ValueError(f"Skill {path} must define an 'async def run()' function")
+            raise ValueError(f"Workflow {path} must define an 'async def run()' function")
 
         # Load module dynamically
         spec = importlib.util.spec_from_file_location(path.stem, path)
@@ -246,7 +246,7 @@ class PythonSkill:
             parameters=parameters,
             source=source,
             _func=func,
-            metadata=SkillMetadata(
+            metadata=WorkflowMetadata(
                 created_at=datetime.now(UTC),
                 created_by="human",
                 source="file",
@@ -254,7 +254,7 @@ class PythonSkill:
         )
 
     async def invoke(self, **kwargs: Any) -> Any:
-        """Invoke the skill with given parameters.
+        """Invoke the workflow with given parameters.
 
         Awaits the async run() function.
         """

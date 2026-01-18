@@ -11,9 +11,9 @@ from py_code_mode.errors import (
     CodeModeError,
     ConfigurationError,
     DependencyError,
-    SkillExecutionError,
-    SkillNotFoundError,
-    SkillValidationError,
+    WorkflowExecutionError,
+    WorkflowNotFoundError,
+    WorkflowValidationError,
     StorageError,
     StorageReadError,
     StorageWriteError,
@@ -21,6 +21,7 @@ from py_code_mode.errors import (
     ToolNotFoundError,
     ToolTimeoutError,
 )
+
 
 # Execution (commonly needed at top level)
 from py_code_mode.execution import (
@@ -85,9 +86,9 @@ __all__ = [
     "ToolTimeoutError",
     "ArtifactNotFoundError",
     "ArtifactWriteError",
-    "SkillNotFoundError",
-    "SkillValidationError",
-    "SkillExecutionError",
+    "WorkflowNotFoundError",
+    "WorkflowValidationError",
+    "WorkflowExecutionError",
     "DependencyError",
     "StorageError",
     "StorageReadError",

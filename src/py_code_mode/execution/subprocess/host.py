@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from queue import Empty
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from jupyter_client import AsyncKernelManager
+from jupyter_client.manager import AsyncKernelManager
 
 from py_code_mode.execution.subprocess.kernel_init import get_kernel_init_code
 from py_code_mode.execution.subprocess.rpc import RPCRequest, RPCResponse
@@ -34,7 +34,7 @@ def _parse_method(method: str) -> tuple[str, str]:
     """Parse RPC method name into namespace and operation.
 
     Args:
-        method: The RPC method name (e.g., "skills.invoke", "tools.call").
+        method: The RPC method name (e.g., "workflows.invoke", "tools.call").
 
     Returns:
         Tuple of (namespace, operation). Returns ("rpc", method) for unknown format.
@@ -70,28 +70,28 @@ class ResourceProvider(Protocol):
         """List recipes for a specific tool."""
         ...
 
-    # Skill methods
-    # Note: No invoke_skill - skills execute locally in kernel after fetching
-    # source via get_skill. This ensures skills can import runtime-installed packages.
+    # Workflow methods
+    # Note: No invoke_workflow - workflows execute locally in kernel after fetching
+    # source via get_workflow. This ensures workflows can import runtime-installed packages.
 
-    async def search_skills(self, query: str, limit: int) -> list[dict[str, Any]]:
-        """Search for skills matching query."""
+    async def search_workflows(self, query: str, limit: int) -> list[dict[str, Any]]:
+        """Search for workflows matching query."""
         ...
 
-    async def list_skills(self) -> list[dict[str, Any]]:
-        """List all available skills."""
+    async def list_workflows(self) -> list[dict[str, Any]]:
+        """List all available workflows."""
         ...
 
-    async def get_skill(self, name: str) -> dict[str, Any] | None:
-        """Get a skill by name."""
+    async def get_workflow(self, name: str) -> dict[str, Any] | None:
+        """Get a workflow by name."""
         ...
 
-    async def create_skill(self, name: str, source: str, description: str) -> dict[str, Any]:
-        """Create and save a new skill."""
+    async def create_workflow(self, name: str, source: str, description: str) -> dict[str, Any]:
+        """Create and save a new workflow."""
         ...
 
-    async def delete_skill(self, name: str) -> bool:
-        """Delete a skill."""
+    async def delete_workflow(self, name: str) -> bool:
+        """Delete a workflow."""
         ...
 
     # Artifact methods
@@ -205,9 +205,10 @@ class KernelHost:
 
         try:
             # Start kernel
-            self._km = AsyncKernelManager(kernel_name=kernel_name)
-            await self._km.start_kernel()
-            self._kc = self._km.client()
+            km = AsyncKernelManager(kernel_name=kernel_name)
+            self._km = km
+            await km.start_kernel()
+            self._kc = km.client()
             self._kc.start_channels()
 
             # Wait for kernel to be ready
@@ -403,7 +404,17 @@ class KernelHost:
         """Handle an RPC request from the kernel."""
         if self._provider is None:
             self._send_input_reply(
-                json.dumps(RPCResponse(id=data["id"], error="No provider").to_dict())
+                json.dumps(
+                    RPCResponse(
+                        id=data["id"],
+                        error={
+                            "namespace": "rpc",
+                            "operation": "dispatch",
+                            "message": "No provider",
+                            "type": "RuntimeError",
+                        },
+                    ).to_dict()
+                )
             )
             return
 
@@ -446,22 +457,22 @@ class KernelHost:
         elif method == "tools.list_recipes":
             return await self._provider.list_tool_recipes(params["name"])
 
-        # Skills methods
-        # Note: skills.invoke is NOT handled here - skills execute locally in kernel
-        # after fetching source via skills.get. This ensures skills can import
+        # Workflows methods
+        # Note: workflows.invoke is NOT handled here - workflows execute locally in kernel
+        # after fetching source via workflows.get. This ensures workflows can import
         # packages installed at runtime in the kernel's venv.
-        elif method == "skills.search":
-            return await self._provider.search_skills(params["query"], params.get("limit", 5))
-        elif method == "skills.list":
-            return await self._provider.list_skills()
-        elif method == "skills.get":
-            return await self._provider.get_skill(params["name"])
-        elif method == "skills.create":
-            return await self._provider.create_skill(
+        elif method == "workflows.search":
+            return await self._provider.search_workflows(params["query"], params.get("limit", 5))
+        elif method == "workflows.list":
+            return await self._provider.list_workflows()
+        elif method == "workflows.get":
+            return await self._provider.get_workflow(params["name"])
+        elif method == "workflows.create":
+            return await self._provider.create_workflow(
                 params["name"], params["source"], params.get("description", "")
             )
-        elif method == "skills.delete":
-            return await self._provider.delete_skill(params["name"])
+        elif method == "workflows.delete":
+            return await self._provider.delete_workflow(params["name"])
 
         # Artifacts methods
         elif method == "artifacts.load":
@@ -538,4 +549,4 @@ class KernelHost:
         if self._km is None:
             return False
         # is_alive() is sync for AsyncKernelManager
-        return self._km.is_alive()
+        return bool(self._km.is_alive())

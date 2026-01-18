@@ -28,10 +28,10 @@ The MCP server exposes these tools:
 
 | Tool | Purpose |
 |------|---------|
-| `run_code` | Execute Python with access to tools/skills/artifacts |
+| `run_code` | Execute Python with access to tools/workflows/artifacts |
 | `list_tools` / `search_tools` | Discover available tools |
-| `list_skills` / `search_skills` | Discover available skills |
-| `create_skill` / `delete_skill` | Manage skills |
+| `list_workflows` / `search_workflows` | Discover available workflows |
+| `create_workflow` / `delete_workflow` | Manage workflows |
 | `list_artifacts` | List saved data |
 | `list_deps` / `add_dep` / `remove_dep` | Manage dependencies |
 
@@ -154,21 +154,21 @@ async with CodeExecutionTool(Path("./data"), Path("./tools")) as tool:
 When registering with your framework, provide a clear tool description:
 
 ```python
-TOOL_DESCRIPTION = """Execute Python code with access to tools, skills, and artifacts.
+TOOL_DESCRIPTION = """Execute Python code with access to tools, workflows, and artifacts.
 
 NAMESPACES:
 - tools.* - Call registered tools (e.g., tools.curl.get(url="..."))
-- skills.* - Invoke reusable workflows (e.g., skills.invoke("fetch_json", url="..."))
+- workflows.* - Invoke reusable workflows (e.g., workflows.invoke("fetch_json", url="..."))
 - artifacts.* - Persist data (e.g., artifacts.save("key", data))
 - deps.* - Manage packages (e.g., deps.add("pandas"))
 
 Variables persist across calls within the same session.
 
 WORKFLOW:
-1. Search for existing skills: skills.search("your task")
-2. If found, invoke it: skills.invoke("skill_name", arg=value)
+1. Search for existing workflows: workflows.search("your task")
+2. If found, invoke it: workflows.invoke("workflow_name", arg=value)
 3. Otherwise, write code using tools
-4. Save successful workflows as skills for reuse
+4. Save successful workflows as workflows for reuse
 """
 ```
 
@@ -176,19 +176,19 @@ WORKFLOW:
 
 ## Redis Backend for Multi-Agent
 
-When running multiple agent instances, use Redis for shared skill library:
+When running multiple agent instances, use Redis for shared workflow library:
 
 ```python
 from py_code_mode import Session, RedisStorage
 from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
 
-# All instances share skills via Redis
+# All instances share workflows via Redis
 storage = RedisStorage(url="redis://localhost:6379", prefix="my-agents")
 config = SubprocessConfig(tools_path=Path("./tools"))
 executor = SubprocessExecutor(config=config)
 
 async with Session(storage=storage, executor=executor) as session:
-    # Skills created by any agent are available to all
+    # Workflows created by any agent are available to all
     result = await session.run(code)
 ```
 

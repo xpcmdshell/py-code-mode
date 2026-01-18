@@ -2,12 +2,12 @@
 """Minimal Claude agent with py-code-mode code execution.
 
 This example shows:
-1. Loading tools and skills from the shared directory
+1. Loading tools and workflows from the shared directory
 2. Creating a Session with FileStorage
 3. Running an agent loop with raw Claude API
 
 The agent can write Python code that calls tools via the tools.* namespace
-and invoke skills via the skills.* namespace.
+and invoke workflows via the workflows.* namespace.
 """
 
 import asyncio
@@ -23,36 +23,36 @@ from py_code_mode.execution import InProcessConfig, InProcessExecutor
 # Load .env file (for ANTHROPIC_API_KEY)
 load_dotenv()
 
-# Shared tools and skills directory
+# Shared tools and workflows directory
 HERE = Path(__file__).parent
 SHARED = HERE.parent / "shared"
 
-SYSTEM_PROMPT = """You are a helpful assistant with tools and skills via Python code execution.
+SYSTEM_PROMPT = """You are a helpful assistant with tools and workflows via Python code execution.
 
 Write Python code in ```python blocks. The code runs in an environment with
-`tools` and `skills` namespaces.
+`tools` and `workflows` namespaces.
 
 WORKFLOW:
-1. For any nontrivial task, FIRST search skills: skills.search("relevant keywords")
-2. If a skill exists, use it: skills.invoke("name", arg=value)
-3. If no skill matches, search tools: tools.search("keywords")
+1. For any nontrivial task, FIRST search workflows: workflows.search("relevant keywords")
+2. If a workflow exists, use it: workflows.invoke("name", arg=value)
+3. If no workflow matches, search tools: tools.search("keywords")
 4. Script tools together: tools.name(arg=value)
 
 DISCOVERY:
-- skills.search("query") / skills.list() - find prebaked solutions
+- workflows.search("query") / workflows.list() - find prebaked solutions
 - tools.search("query") / tools.list() - find individual tools
 
 Skills are reusable recipes that combine tools. Prefer them over scripting from scratch.
 
 EXAMPLE:
 ```python
-# First check for existing skills
-skills.search("analyze repo")
+# First check for existing workflows
+workflows.search("analyze repo")
 ```
 
 ```python
-# If skill exists, use it
-skills.invoke("analyze_repo", repo="anthropics/claude-code")
+# If workflow exists, use it
+workflows.invoke("analyze_repo", repo="anthropics/claude-code")
 ```
 
 ```python
@@ -74,7 +74,7 @@ def extract_code(text: str) -> str | None:
 
 
 async def main() -> None:
-    # Storage for skills and artifacts only
+    # Storage for workflows and artifacts only
     storage = FileStorage(base_path=SHARED)
 
     # Executor with tools from config

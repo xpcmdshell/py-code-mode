@@ -129,7 +129,7 @@ class ContainerExecutor:
     async def create(
         cls,
         artifacts: str | None = None,
-        skills: str | None = None,
+        workflows: str | None = None,
         tools: str | None = None,
         image: str = DEFAULT_IMAGE,
         timeout: float = 30.0,
@@ -143,7 +143,7 @@ class ContainerExecutor:
 
         Args:
             artifacts: Path to artifacts directory on host.
-            skills: Path to skills directory on host.
+            workflows: Path to workflows directory on host.
             tools: Path to tools directory on host.
             image: Docker image to use.
             timeout: Default execution timeout.
@@ -364,12 +364,12 @@ class ContainerExecutor:
 
         # Extract paths/urls from storage via get_serializable_access()
         tools_path = None
-        skills_path = None
+        workflows_path = None
         artifacts_path = None
         deps_path = None
         redis_url = None
         tools_prefix = None
-        skills_prefix = None
+        workflows_prefix = None
         artifacts_prefix = None
         deps_prefix = None
 
@@ -380,15 +380,15 @@ class ContainerExecutor:
             if isinstance(access, FileStorageAccess):
                 # Tools and deps come from executor config, not storage
                 tools_path = self.config.tools_path
-                skills_path = access.skills_path
+                workflows_path = access.workflows_path
                 artifacts_path = access.artifacts_path
                 deps_path = None
                 if artifacts_path is not None:
                     deps_path = artifacts_path.parent / "deps"
                 # Create directories on host before mounting
-                # Skills need to exist for volume mount
-                if skills_path:
-                    skills_path.mkdir(parents=True, exist_ok=True)
+                # Workflows need to exist for volume mount
+                if workflows_path:
+                    workflows_path.mkdir(parents=True, exist_ok=True)
                 # Artifacts need to exist for volume mount
                 if artifacts_path:
                     artifacts_path.mkdir(parents=True, exist_ok=True)
@@ -402,7 +402,7 @@ class ContainerExecutor:
                     redis_url = _transform_localhost_for_docker(redis_url)
                 # Tools and deps prefixes come from executor config, not storage
                 tools_prefix = None  # Tools owned by executor
-                skills_prefix = access.skills_prefix
+                workflows_prefix = access.workflows_prefix
                 artifacts_prefix = access.artifacts_prefix
                 deps_prefix = None  # Deps owned by executor
             else:
@@ -414,12 +414,12 @@ class ContainerExecutor:
         # Prepare container config with storage access
         docker_config = self.config.to_docker_config(
             tools_path=tools_path,
-            skills_path=skills_path,
+            workflows_path=workflows_path,
             artifacts_path=artifacts_path,
             deps_path=deps_path,
             redis_url=redis_url,
             tools_prefix=tools_prefix,
-            skills_prefix=skills_prefix,
+            workflows_prefix=workflows_prefix,
             artifacts_prefix=artifacts_prefix,
             deps_prefix=deps_prefix,
         )
@@ -607,94 +607,38 @@ class ContainerExecutor:
         return await self._client.search_tools(query, limit)
 
     # ==========================================================================
-    # Skills API Methods
+    # Workflows API Methods
     # ==========================================================================
 
-    async def list_skills(self) -> list[dict[str, Any]]:
-        """List all skills.
-
-        Returns:
-            List of skill metadata dicts with name, description, parameters.
-
-        Raises:
-            RuntimeError: If container is not started.
-        """
+    async def list_workflows(self) -> list[dict[str, Any]]:
+        """List all workflows."""
         if self._client is None:
             raise RuntimeError("Container not started")
+        return await self._client.list_workflows()
 
-        return await self._client.list_skills()
-
-    async def search_skills(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
-        """Search skills semantically.
-
-        Args:
-            query: Natural language search query.
-            limit: Maximum number of results to return.
-
-        Returns:
-            List of matching skill metadata dicts.
-
-        Raises:
-            RuntimeError: If container is not started.
-        """
+    async def search_workflows(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Search workflows."""
         if self._client is None:
             raise RuntimeError("Container not started")
+        return await self._client.search_workflows(query, limit)
 
-        return await self._client.search_skills(query, limit)
-
-    async def get_skill(self, name: str) -> dict[str, Any] | None:
-        """Get skill by name with full source.
-
-        Args:
-            name: Skill name.
-
-        Returns:
-            Skill dict with name, description, parameters, source.
-            None if skill not found.
-
-        Raises:
-            RuntimeError: If container is not started.
-        """
+    async def get_workflow(self, name: str) -> dict[str, Any] | None:
+        """Get workflow by name with full source."""
         if self._client is None:
             raise RuntimeError("Container not started")
+        return await self._client.get_workflow(name)
 
-        return await self._client.get_skill(name)
-
-    async def add_skill(self, name: str, source: str, description: str) -> dict[str, Any]:
-        """Create a new skill.
-
-        Args:
-            name: Skill name.
-            source: Python source code with run() function.
-            description: Skill description.
-
-        Returns:
-            Created skill metadata dict.
-
-        Raises:
-            RuntimeError: If container is not started or skill creation fails.
-        """
+    async def add_workflow(self, name: str, source: str, description: str) -> dict[str, Any]:
+        """Create a new workflow."""
         if self._client is None:
             raise RuntimeError("Container not started")
+        return await self._client.create_workflow(name, source, description)
 
-        return await self._client.create_skill(name, source, description)
-
-    async def remove_skill(self, name: str) -> bool:
-        """Delete a skill.
-
-        Args:
-            name: Skill name.
-
-        Returns:
-            True if skill was deleted, False if not found.
-
-        Raises:
-            RuntimeError: If container is not started.
-        """
+    async def remove_workflow(self, name: str) -> bool:
+        """Delete a workflow."""
         if self._client is None:
             raise RuntimeError("Container not started")
-
-        return await self._client.delete_skill(name)
+        return await self._client.delete_workflow(name)
 
     # ==========================================================================
     # Artifacts API Methods

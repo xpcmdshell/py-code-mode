@@ -62,7 +62,7 @@ from py_code_mode.execution.container.config import SessionConfig  # noqa: E402
 from py_code_mode.execution.in_process import (  # noqa: E402
     InProcessExecutor as CodeExecutor,
 )
-from py_code_mode.skills import FileSkillStore, SkillLibrary, create_skill_library  # noqa: E402
+from py_code_mode.workflows import FileWorkflowStore, WorkflowLibrary, create_workflow_library  # noqa: E402
 from py_code_mode.tools import ToolRegistry  # noqa: E402
 
 # Session expiration (seconds)
@@ -118,7 +118,7 @@ if FASTAPI_AVAILABLE:
         """Server info response."""
 
         tools: list[dict[str, str]]
-        skills: list[dict[str, str]]
+        workflows: list[dict[str, str]]
         artifacts_path: str
 
     class ResetResponseModel(BaseModel):  # type: ignore
@@ -148,19 +148,19 @@ if FASTAPI_AVAILABLE:
     # API Endpoint Request/Response Models
     # ==========================================================================
 
-    class CreateSkillRequest(BaseModel):  # type: ignore
-        """Request to create a new skill."""
+    class CreateWorkflowRequest(BaseModel):  # type: ignore
+        """Request to create a new workflow."""
 
         name: str
         source: str
         description: str
 
-    class SkillResponse(BaseModel):  # type: ignore
-        """Response for skill information."""
+    class WorkflowResponse(BaseModel):  # type: ignore
+        """Response for workflow information."""
 
         name: str
         description: str
-        parameters: list[dict[str, Any]]
+        params: dict[str, str]
         source: str
 
     class SaveArtifactRequest(BaseModel):  # type: ignore
@@ -216,7 +216,7 @@ class ServerState:
 
     config: SessionConfig | None = None
     registry: ToolRegistry | None = None
-    skill_library: SkillLibrary | None = None
+    workflow_library: WorkflowLibrary | None = None
     artifact_store: ArtifactStoreProtocol | None = None  # Shared store for Redis mode
     deps_store: DepsStore | None = None
     deps_installer: PackageInstaller | None = None
@@ -232,7 +232,10 @@ _state = ServerState()
 # Authentication helpers
 # HTTPBearer with auto_error=False returns None instead of raising 401
 # This lets us handle missing credentials ourselves for better error messages
-BEARER_SCHEME = HTTPBearer(auto_error=False) if FASTAPI_AVAILABLE else None
+if FASTAPI_AVAILABLE:
+    BEARER_SCHEME = HTTPBearer(auto_error=False)
+else:
+    BEARER_SCHEME = None
 
 
 def verify_auth_token(provided: str, expected: str) -> bool:
@@ -248,20 +251,16 @@ def verify_auth_token(provided: str, expected: str) -> bool:
     return hmac.compare_digest(provided.encode(), expected.encode())
 
 
-def build_skill_library(config: SessionConfig) -> SkillLibrary | None:
-    """Build skill library from configuration with semantic search."""
-    # Create directory if it doesn't exist (same as artifacts behavior)
+def build_workflow_library(config: SessionConfig) -> WorkflowLibrary | None:
+    """Build workflow library from configuration."""
     try:
-        config.skills_path.mkdir(parents=True, exist_ok=True)
+        config.workflows_path.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        # If we can't create the directory (e.g., read-only filesystem),
-        # return None to signal no skill library is available
-        logger.warning("Cannot create skills directory at %s: %s", config.skills_path, e)
+        logger.warning("Cannot create workflows directory at %s: %s", config.workflows_path, e)
         return None
 
-    # Use file-based store wrapped in skill library
-    store = FileSkillStore(config.skills_path)
-    return create_skill_library(store=store)
+    store = FileWorkflowStore(config.workflows_path)
+    return create_workflow_library(store=store)
 
 
 def create_session(session_id: str) -> Session:
@@ -287,7 +286,7 @@ def create_session(session_id: str) -> Session:
     # Create executor with shared registries but isolated namespace/artifacts
     executor = CodeExecutor(
         registry=_state.registry,
-        skill_library=_state.skill_library,
+        workflow_library=_state.workflow_library,
         artifact_store=artifact_store,
         deps_namespace=deps_namespace,
         default_timeout=_state.config.default_timeout,
@@ -355,7 +354,7 @@ def install_python_deps(deps: list[str]) -> None:
 async def initialize_server(config: SessionConfig) -> None:
     """Initialize the server with shared resources.
 
-    When REDIS_URL is set, uses Redis for tools, skills, and artifacts.
+    When REDIS_URL is set, uses Redis for tools, workflows, and artifacts.
     Otherwise falls back to file-based storage.
     """
     global _state
@@ -371,7 +370,7 @@ async def initialize_server(config: SessionConfig) -> None:
         import redis as redis_lib
 
         from py_code_mode.artifacts import RedisArtifactStore
-        from py_code_mode.skills import RedisSkillStore
+        from py_code_mode.workflows import RedisWorkflowStore
         from py_code_mode.storage import RedisToolStore, registry_from_redis
 
         logger.info("Using Redis backend: %s...", redis_url[:50])
@@ -379,7 +378,7 @@ async def initialize_server(config: SessionConfig) -> None:
 
         # Get prefixes from environment (set by ContainerExecutor), with defaults
         tools_prefix = os.environ.get("REDIS_TOOLS_PREFIX", "tools")
-        skills_prefix = os.environ.get("REDIS_SKILLS_PREFIX", "skills")
+        workflows_prefix = os.environ.get("REDIS_WORKFLOWS_PREFIX", "workflows")
         artifacts_prefix = os.environ.get("REDIS_ARTIFACTS_PREFIX", "artifacts")
 
         # Tools from Redis
@@ -387,11 +386,11 @@ async def initialize_server(config: SessionConfig) -> None:
         registry = await registry_from_redis(tool_store)
         logger.info("  Tools in Redis (%s): %d", tools_prefix, len(tool_store))
 
-        # Skills from Redis with semantic search
-        redis_store = RedisSkillStore(r, prefix=skills_prefix)
-        skill_library = create_skill_library(store=redis_store)
-        skill_count = len(redis_store)
-        logger.info("  Skills in Redis (%s): %d (semantic)", skills_prefix, skill_count)
+        # Workflows from Redis
+        redis_store = RedisWorkflowStore(r, prefix=workflows_prefix)
+        workflow_library = create_workflow_library(store=redis_store)
+        workflow_count = len(redis_store)
+        logger.info("  Workflows in Redis (%s): %d (semantic)", workflows_prefix, workflow_count)
 
         # Artifacts in Redis (shared across sessions)
         artifact_store = RedisArtifactStore(r, prefix=artifacts_prefix)
@@ -416,7 +415,7 @@ async def initialize_server(config: SessionConfig) -> None:
         _state = ServerState(
             config=config,
             registry=registry,
-            skill_library=skill_library,
+            workflow_library=workflow_library,
             artifact_store=artifact_store,
             deps_store=deps_store,
             deps_installer=deps_installer,
@@ -439,7 +438,7 @@ async def initialize_server(config: SessionConfig) -> None:
             logger.info("  TOOLS_PATH not set, no tools available")
             registry = ToolRegistry()
 
-        skill_library = build_skill_library(config)
+        workflow_library = build_workflow_library(config)
 
         # Create shared artifact store (same as Redis mode)
         config.artifacts_path.mkdir(parents=True, exist_ok=True)
@@ -476,7 +475,7 @@ async def initialize_server(config: SessionConfig) -> None:
         _state = ServerState(
             config=config,
             registry=registry,
-            skill_library=skill_library,
+            workflow_library=workflow_library,
             artifact_store=artifact_store,
             deps_store=deps_store,
             deps_installer=deps_installer,
@@ -629,22 +628,22 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
 
     @app.get("/info", response_model=InfoResponseModel, dependencies=[Depends(require_auth)])
     async def info() -> InfoResponseModel:
-        """Get information about available tools and skills."""
+        """Get information about available tools and workflows."""
         tools = []
         if _state.registry:
             for tool in _state.registry.list_tools():
                 tools.append({"name": tool.name, "description": tool.description})
 
-        skills = []
-        if _state.skill_library:
-            for skill in _state.skill_library.list():
-                skills.append({"name": skill.name, "description": skill.description})
+        workflows = []
+        if _state.workflow_library:
+            for workflow in _state.workflow_library.list():
+                workflows.append({"name": workflow.name, "description": workflow.description})
 
         artifacts_path = str(_state.config.artifacts_path) if _state.config else ""
 
         return InfoResponseModel(
             tools=tools,
-            skills=skills,
+            workflows=workflows,
             artifacts_path=artifacts_path,
         )
 
@@ -783,125 +782,89 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         return [tool.to_dict() for tool in tools]
 
     # ==========================================================================
-    # Skills API Endpoints
+    # Workflows API Endpoints
     # ==========================================================================
 
-    @app.get("/api/skills", dependencies=[Depends(require_auth)])
-    async def api_list_skills() -> list[dict[str, Any]]:
-        """Return all skills."""
-        if _state.skill_library is None:
+    @app.get("/api/workflows", dependencies=[Depends(require_auth)])
+    async def api_list_workflows() -> list[dict[str, Any]]:
+        """Return all workflows."""
+        if _state.workflow_library is None:
             return []
 
-        skills = _state.skill_library.list()
+        workflows = _state.workflow_library.list()
         return [
             {
-                "name": skill.name,
-                "description": skill.description,
-                "parameters": [
-                    {
-                        "name": p.name,
-                        "type": p.type,
-                        "description": p.description,
-                        "required": p.required,
-                        "default": p.default,
-                    }
-                    for p in skill.parameters
-                ],
+                "name": workflow.name,
+                "description": workflow.description,
+                "params": {p.name: p.description or p.type for p in workflow.parameters},
             }
-            for skill in skills
+            for workflow in workflows
         ]
 
-    @app.get("/api/skills/search", dependencies=[Depends(require_auth)])
-    async def api_search_skills(query: str, limit: int = 5) -> list[dict[str, Any]]:
-        """Search skills semantically."""
-        if _state.skill_library is None:
+    @app.get("/api/workflows/search", dependencies=[Depends(require_auth)])
+    async def api_search_workflows(query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Search workflows."""
+        if _state.workflow_library is None:
             return []
 
-        skills = _state.skill_library.search(query, limit=limit)
+        workflows = _state.workflow_library.search(query, limit=limit)
         return [
             {
-                "name": skill.name,
-                "description": skill.description,
-                "parameters": [
-                    {
-                        "name": p.name,
-                        "type": p.type,
-                        "description": p.description,
-                        "required": p.required,
-                        "default": p.default,
-                    }
-                    for p in skill.parameters
-                ],
+                "name": workflow.name,
+                "description": workflow.description,
+                "params": {p.name: p.description or p.type for p in workflow.parameters},
             }
-            for skill in skills
+            for workflow in workflows
         ]
 
-    @app.get("/api/skills/{name}", dependencies=[Depends(require_auth)])
-    async def api_get_skill(name: str) -> dict[str, Any] | None:
-        """Get skill by name with full source."""
-        if _state.skill_library is None:
+    @app.get("/api/workflows/{name}", dependencies=[Depends(require_auth)])
+    async def api_get_workflow(name: str) -> dict[str, Any] | None:
+        """Get workflow by name with full source."""
+        if _state.workflow_library is None:
             return None
 
-        skill = _state.skill_library.get(name)
-        if skill is None:
+        workflow = _state.workflow_library.get(name)
+        if workflow is None:
             return None
 
         return {
-            "name": skill.name,
-            "description": skill.description,
-            "parameters": [
-                {
-                    "name": p.name,
-                    "type": p.type,
-                    "description": p.description,
-                    "required": p.required,
-                    "default": p.default,
-                }
-                for p in skill.parameters
-            ],
-            "source": skill.source,
+            "name": workflow.name,
+            "description": workflow.description,
+            "params": {p.name: p.description or p.type for p in workflow.parameters},
+            "source": workflow.source,
         }
 
-    @app.post("/api/skills", dependencies=[Depends(require_auth)])
-    async def api_create_skill(body: CreateSkillRequest) -> dict[str, Any]:
-        """Create a new skill."""
-        if _state.skill_library is None:
-            raise HTTPException(status_code=503, detail="Skill library not initialized")
+    @app.post("/api/workflows", dependencies=[Depends(require_auth)])
+    async def api_create_workflow(body: CreateWorkflowRequest) -> dict[str, Any]:
+        """Create a new workflow."""
+        if _state.workflow_library is None:
+            raise HTTPException(status_code=503, detail="Workflow library not initialized")
 
-        from py_code_mode.skills import PythonSkill
+        from py_code_mode.workflows import PythonWorkflow
 
         try:
-            skill = PythonSkill.from_source(
+            workflow = PythonWorkflow.from_source(
                 name=body.name,
                 source=body.source,
                 description=body.description,
             )
-            _state.skill_library.add(skill)
+            _state.workflow_library.add(workflow)
             return {
-                "name": skill.name,
-                "description": skill.description,
-                "parameters": [
-                    {
-                        "name": p.name,
-                        "type": p.type,
-                        "description": p.description,
-                        "required": p.required,
-                        "default": p.default,
-                    }
-                    for p in skill.parameters
-                ],
-                "source": skill.source,
+                "name": workflow.name,
+                "description": workflow.description,
+                "params": {p.name: p.description or p.type for p in workflow.parameters},
+                "source": workflow.source,
             }
         except (ValueError, SyntaxError) as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-    @app.delete("/api/skills/{name}", dependencies=[Depends(require_auth)])
-    async def api_delete_skill(name: str) -> bool:
-        """Delete a skill."""
-        if _state.skill_library is None:
+    @app.delete("/api/workflows/{name}", dependencies=[Depends(require_auth)])
+    async def api_delete_workflow(name: str) -> bool:
+        """Delete a workflow."""
+        if _state.workflow_library is None:
             return False
 
-        return _state.skill_library.remove(name)
+        return _state.workflow_library.remove(name)
 
     # ==========================================================================
     # Artifacts API Endpoints

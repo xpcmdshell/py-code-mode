@@ -80,33 +80,33 @@ timeout: 10
 
 
 @pytest.fixture
-def skills_dir_with_corruption(tmp_path: Path) -> Path:
-    """Create a skills directory with valid and corrupted Python files."""
-    skills_dir = tmp_path / "skills"
-    skills_dir.mkdir()
+def workflows_dir_with_corruption(tmp_path: Path) -> Path:
+    """Create a workflows directory with valid and corrupted Python files."""
+    workflows_dir = tmp_path / "workflows"
+    workflows_dir.mkdir()
 
-    # Valid skill
-    (skills_dir / "valid_skill.py").write_text('''"""A valid skill."""
+    # Valid workflow
+    (workflows_dir / "valid_workflow.py").write_text('''"""A valid workflow."""
 
 async def run(x: int) -> int:
     return x * 2
 ''')
 
     # Corrupted Python (syntax error)
-    (skills_dir / "syntax_error.py").write_text('''"""Skill with syntax error."""
+    (workflows_dir / "syntax_error.py").write_text('''"""Workflow with syntax error."""
 
 async def run(x: int) -> int
     return x * 2  # Missing colon above
 ''')
 
     # Valid but missing run function
-    (skills_dir / "no_run.py").write_text('''"""Skill without run function."""
+    (workflows_dir / "no_run.py").write_text('''"""Workflow without run function."""
 
 def helper(x: int) -> int:
     return x * 2
 ''')
 
-    return skills_dir
+    return workflows_dir
 
 
 @pytest.fixture
@@ -116,12 +116,12 @@ def mock_redis_with_corruption() -> MagicMock:
     class CorruptRedis:
         def __init__(self):
             self._data = {
-                "skills:__skills__": {
+                "workflows:__workflows__": {
                     "valid": json.dumps(
                         {
                             "name": "valid",
                             "source": "async def run(): pass",
-                            "description": "Valid skill",
+                            "description": "Valid workflow",
                         }
                     ).encode(),
                     "corrupt_json": b"not valid json{{{",
@@ -430,29 +430,29 @@ class TestFileToolStoreErrorHandling:
 # =============================================================================
 
 
-class TestFileSkillStoreErrorHandling:
-    """Tests for FileSkillStore.load() error handling.
+class TestFileWorkflowStoreErrorHandling:
+    """Tests for FileWorkflowStore.load() error handling.
 
     Current behavior (HIGH #10): except Exception -> return None (with warning)
     Fixed behavior: Return None ONLY for FileNotFoundError, raise StorageReadError for others.
     """
 
     def test_load_returns_none_for_missing_file(self, tmp_path: Path):
-        """load() should return None when skill file doesn't exist."""
-        from py_code_mode.skills import FileSkillStore
+        """load() should return None when workflow file doesn't exist."""
+        from py_code_mode.workflows import FileWorkflowStore
 
-        store = FileSkillStore(tmp_path)
+        store = FileWorkflowStore(tmp_path)
         result = store.load("nonexistent")
 
         assert result is None  # Expected behavior
 
     def test_load_raises_for_syntax_error(
-        self, skills_dir_with_corruption: Path, log_capture: pytest.LogCaptureFixture
+        self, workflows_dir_with_corruption: Path, log_capture: pytest.LogCaptureFixture
     ):
         """load() should raise StorageReadError for Python syntax errors."""
-        from py_code_mode.skills import FileSkillStore
+        from py_code_mode.workflows import FileWorkflowStore
 
-        store = FileSkillStore(skills_dir_with_corruption)
+        store = FileWorkflowStore(workflows_dir_with_corruption)
 
         from py_code_mode import errors
 
@@ -471,25 +471,25 @@ class TestFileSkillStoreErrorHandling:
             store.load("syntax_error")
 
 
-class TestFileSkillStoreListAllLogging:
-    """Tests for FileSkillStore.list_all() logging behavior.
+class TestFileWorkflowStoreListAllLogging:
+    """Tests for FileWorkflowStore.list_all() logging behavior.
 
-    Current behavior (MEDIUM #11): Silently skips failed skills (with warning)
+    Current behavior (MEDIUM #11): Silently skips failed workflows (with warning)
     Fixed behavior: Same, but ensure logging is consistent.
     """
 
     def test_list_all_logs_warning_for_corrupt_files(
-        self, skills_dir_with_corruption: Path, log_capture: pytest.LogCaptureFixture
+        self, workflows_dir_with_corruption: Path, log_capture: pytest.LogCaptureFixture
     ):
         """list_all() should log warning for each corrupt file."""
-        from py_code_mode.skills import FileSkillStore
+        from py_code_mode.workflows import FileWorkflowStore
 
-        store = FileSkillStore(skills_dir_with_corruption)
-        skills = store.list_all()
+        store = FileWorkflowStore(workflows_dir_with_corruption)
+        workflows = store.list_all()
 
-        # Valid skill should be loaded
-        skill_names = {s.name for s in skills}
-        assert "valid_skill" in skill_names
+        # Valid workflow should be loaded
+        workflow_names = {s.name for s in workflows}
+        assert "valid_workflow" in workflow_names
 
         # Warning should be logged for syntax_error.py
         assert any("syntax_error" in record.message for record in log_capture.records), (
@@ -498,8 +498,8 @@ class TestFileSkillStoreListAllLogging:
         )
 
 
-class TestRedisSkillStoreErrorHandling:
-    """Tests for RedisSkillStore error handling.
+class TestRedisWorkflowStoreErrorHandling:
+    """Tests for RedisWorkflowStore error handling.
 
     Current behavior (HIGH/MEDIUM #12-13): except Exception -> return None
     Fixed behavior: Return None ONLY for missing key, raise for corruption.
@@ -507,9 +507,9 @@ class TestRedisSkillStoreErrorHandling:
 
     def test_load_returns_none_for_missing_key(self, mock_redis_with_corruption):
         """load() should return None when key doesn't exist."""
-        from py_code_mode.skills import RedisSkillStore
+        from py_code_mode.workflows import RedisWorkflowStore
 
-        store = RedisSkillStore(mock_redis_with_corruption, prefix="skills")
+        store = RedisWorkflowStore(mock_redis_with_corruption, prefix="workflows")
         result = store.load("totally_nonexistent")
 
         assert result is None
@@ -518,9 +518,9 @@ class TestRedisSkillStoreErrorHandling:
         self, mock_redis_with_corruption, log_capture: pytest.LogCaptureFixture
     ):
         """load() should raise StorageReadError for invalid JSON."""
-        from py_code_mode.skills import RedisSkillStore
+        from py_code_mode.workflows import RedisWorkflowStore
 
-        store = RedisSkillStore(mock_redis_with_corruption, prefix="skills")
+        store = RedisWorkflowStore(mock_redis_with_corruption, prefix="workflows")
 
         from py_code_mode import errors
 
@@ -541,10 +541,10 @@ class TestRedisSkillStoreErrorHandling:
     def test_load_raises_for_missing_fields(
         self, mock_redis_with_corruption, log_capture: pytest.LogCaptureFixture
     ):
-        """load() should raise StorageReadError for incomplete skill data."""
-        from py_code_mode.skills import RedisSkillStore
+        """load() should raise StorageReadError for incomplete workflow data."""
+        from py_code_mode.workflows import RedisWorkflowStore
 
-        store = RedisSkillStore(mock_redis_with_corruption, prefix="skills")
+        store = RedisWorkflowStore(mock_redis_with_corruption, prefix="workflows")
 
         from py_code_mode import errors
 
@@ -563,14 +563,14 @@ class TestRedisSkillStoreErrorHandling:
         self, mock_redis_with_corruption, log_capture: pytest.LogCaptureFixture
     ):
         """list_all() should log warning for corrupt entries."""
-        from py_code_mode.skills import RedisSkillStore
+        from py_code_mode.workflows import RedisWorkflowStore
 
-        store = RedisSkillStore(mock_redis_with_corruption, prefix="skills")
-        skills = store.list_all()
+        store = RedisWorkflowStore(mock_redis_with_corruption, prefix="workflows")
+        workflows = store.list_all()
 
-        # Valid skill should be loaded
-        skill_names = {s.name for s in skills}
-        assert "valid" in skill_names
+        # Valid workflow should be loaded
+        workflow_names = {s.name for s in workflows}
+        assert "valid" in workflow_names
 
         # Warnings should be logged for corrupt entries
         log_messages = " ".join(r.message for r in log_capture.records)
@@ -589,41 +589,41 @@ class TestRedisSkillStoreErrorHandling:
 # to use CLIAdapter(tools_path=...) interface before this test can work.
 
 
-class TestServerBuildSkillLibraryUsesLogging:
+class TestServerBuildWorkflowLibraryUsesLogging:
     """Tests that container/server.py uses logging instead of print.
 
     Current behavior (MEDIUM #21): Uses print() for warnings.
     Fixed behavior: Uses logging module.
     """
 
-    def test_build_skill_library_uses_logging_not_print(
+    def test_build_workflow_library_uses_logging_not_print(
         self,
         tmp_path: Path,
         capsys: pytest.CaptureFixture,
         log_capture: pytest.LogCaptureFixture,
     ):
-        """build_skill_library should use logging, not print."""
+        """build_workflow_library should use logging, not print."""
         # This test requires mocking to trigger the OSError path
         # Skip if FastAPI not available
         try:
             from py_code_mode.execution.container.config import SessionConfig
-            from py_code_mode.execution.container.server import build_skill_library
+            from py_code_mode.execution.container.server import build_workflow_library
         except ImportError:
             pytest.skip("FastAPI not installed")
 
         # Create config with a path that will fail
         config = SessionConfig(
-            skills_path=Path("/root/definitely_no_permission"),
+            workflows_path=Path("/root/definitely_no_permission"),
         )
 
         # Mock mkdir to raise OSError
         with patch.object(Path, "mkdir", side_effect=OSError("Permission denied")):
-            _result = build_skill_library(config)
+            _result = build_workflow_library(config)
 
         captured = capsys.readouterr()
         if "Warning:" in captured.out or "Cannot create" in captured.out:
             pytest.fail(
-                f"build_skill_library uses print() for warnings:\n"
+                f"build_workflow_library uses print() for warnings:\n"
                 f"stdout: {captured.out}\n"
                 "Fix: Replace print() in server.py:162 with logging.warning()"
             )
@@ -738,7 +738,7 @@ command: fake_mcp_server
             )
 
 
-# TestEmbedderFallbackLogging removed - SkillStoreWrapper was removed
+# TestEmbedderFallbackLogging removed - WorkflowStoreWrapper was removed
 # in Track B: Wrapper Cleanup. Test the fallback logging directly on FileStorage/RedisStorage.
 
 # TestStorageWrapperErrorPropagation removed - ArtifactStoreWrapper was removed
@@ -781,17 +781,17 @@ class TestDeveloperErrorDiscovery:
         )
 
     @pytest.mark.asyncio
-    async def test_developer_discovers_skill_parse_error_through_logs(
-        self, skills_dir_with_corruption: Path, log_capture: pytest.LogCaptureFixture
+    async def test_developer_discovers_workflow_parse_error_through_logs(
+        self, workflows_dir_with_corruption: Path, log_capture: pytest.LogCaptureFixture
     ):
         """Developer should see specific parse errors in logs."""
-        from py_code_mode.skills import FileSkillStore
+        from py_code_mode.workflows import FileWorkflowStore
 
-        store = FileSkillStore(skills_dir_with_corruption)
-        skills = store.list_all()
+        store = FileWorkflowStore(workflows_dir_with_corruption)
+        workflows = store.list_all()
 
-        # Developer sees some skills loaded
-        assert len(skills) >= 1
+        # Developer sees some workflows loaded
+        assert len(workflows) >= 1
 
         # Developer should see which files failed and why
         log_messages = " ".join(r.message for r in log_capture.records)

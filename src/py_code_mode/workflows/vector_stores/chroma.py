@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
-from py_code_mode.skills.vector_store import ModelInfo, SearchResult  # noqa: E402
+from py_code_mode.workflows.vector_store import ModelInfo, SearchResult  # noqa: E402
 
 try:
     import chromadb
@@ -19,7 +19,7 @@ except ImportError:
     CHROMADB_AVAILABLE = False
 
 if TYPE_CHECKING:
-    from py_code_mode.skills.embeddings import EmbeddingProvider
+    from py_code_mode.workflows.embeddings import EmbeddingProvider
 
 
 # Metadata keys used in ChromaDB collection
@@ -30,7 +30,7 @@ _KEY_VERSION = "version"
 # Metadata keys used in vector documents
 _KEY_CONTENT_HASH = "content_hash"
 _KEY_TYPE = "type"
-_KEY_SKILL_ID = "skill_id"
+_KEY_WORKFLOW_ID = "workflow_id"
 
 # Vector type suffixes
 _TYPE_DESC = "desc"
@@ -40,15 +40,15 @@ _TYPE_CODE = "code"
 class ChromaVectorStore:
     """VectorStore implementation backed by ChromaDB.
 
-    Stores skill embeddings in a persistent ChromaDB collection with two
-    vectors per skill: one for description, one for source code. Supports
+    Stores workflow embeddings in a persistent ChromaDB collection with two
+    vectors per workflow: one for description, one for source code. Supports
     weighted search combining both similarity scores.
 
     Model changes are detected via stored ModelInfo metadata. When the model
     changes (different dimension, name, or version), the collection is cleared.
     """
 
-    COLLECTION_NAME = "skills"
+    COLLECTION_NAME = "workflows"
 
     def __init__(self, path: Path, embedder: EmbeddingProvider) -> None:
         """Initialize ChromaVectorStore.
@@ -122,20 +122,20 @@ class ChromaVectorStore:
             }
         )
 
-    def _desc_id(self, skill_id: str) -> str:
+    def _desc_id(self, workflow_id: str) -> str:
         """Build vector ID for description embedding."""
-        return f"{skill_id}:{_TYPE_DESC}"
+        return f"{workflow_id}:{_TYPE_DESC}"
 
-    def _code_id(self, skill_id: str) -> str:
+    def _code_id(self, workflow_id: str) -> str:
         """Build vector ID for code embedding."""
-        return f"{skill_id}:{_TYPE_CODE}"
+        return f"{workflow_id}:{_TYPE_CODE}"
 
     def add(self, id: str, description: str, source: str, content_hash: str) -> None:
-        """Add or update a skill's embeddings.
+        """Add or update a workflow's embeddings.
 
-        If the skill already exists with the same content_hash, this is a no-op.
+        If the workflow already exists with the same content_hash, this is a no-op.
         """
-        # Check if skill already exists with same hash (skip re-embedding)
+        # Check if workflow already exists with same hash (skip re-embedding)
         existing_hash = self.get_content_hash(id)
         if existing_hash == content_hash:
             return
@@ -153,22 +153,22 @@ class ChromaVectorStore:
                 {
                     _KEY_CONTENT_HASH: content_hash,
                     _KEY_TYPE: _TYPE_DESC,
-                    _KEY_SKILL_ID: id,
+                    _KEY_WORKFLOW_ID: id,
                 },
                 {
                     _KEY_CONTENT_HASH: content_hash,
                     _KEY_TYPE: _TYPE_CODE,
-                    _KEY_SKILL_ID: id,
+                    _KEY_WORKFLOW_ID: id,
                 },
             ],
         )
 
     def remove(self, id: str) -> bool:
-        """Remove a skill's embeddings.
+        """Remove a workflow's embeddings.
 
-        Returns True if the skill was removed, False if it wasn't found.
+        Returns True if the workflow was removed, False if it wasn't found.
         """
-        # Check if skill exists
+        # Check if workflow exists
         if self.get_content_hash(id) is None:
             return False
 
@@ -183,7 +183,7 @@ class ChromaVectorStore:
         desc_weight: float = 0.7,
         code_weight: float = 0.3,
     ) -> list[SearchResult]:
-        """Search for skills by semantic similarity.
+        """Search for workflows by semantic similarity.
 
         Searches both description and code vectors, combining scores with
         the given weights. Returns results sorted by combined score.
@@ -203,8 +203,8 @@ class ChromaVectorStore:
             include=["metadatas", "distances"],
         )
 
-        # Process results - combine desc and code scores per skill
-        skill_scores: dict[str, dict[str, float]] = {}
+        # Process results - combine desc and code scores per workflow
+        workflow_scores: dict[str, dict[str, float]] = {}
 
         if results["ids"] and results["ids"][0]:
             ids = results["ids"][0]
@@ -219,24 +219,24 @@ class ChromaVectorStore:
                 # ChromaDB cosine distance = 1 - similarity for normalized vectors
                 similarity = max(0.0, min(1.0, 1.0 - distance))
 
-                skill_id = metadata.get(_KEY_SKILL_ID, doc_id.rsplit(":", 1)[0])
+                workflow_id = metadata.get(_KEY_WORKFLOW_ID, doc_id.rsplit(":", 1)[0])
                 doc_type = metadata.get(_KEY_TYPE)
 
-                if skill_id not in skill_scores:
-                    skill_scores[skill_id] = {"desc": 0.0, "code": 0.0}
+                if workflow_id not in workflow_scores:
+                    workflow_scores[workflow_id] = {"desc": 0.0, "code": 0.0}
 
                 if doc_type == _TYPE_DESC:
-                    skill_scores[skill_id]["desc"] = similarity
+                    workflow_scores[workflow_id]["desc"] = similarity
                 elif doc_type == _TYPE_CODE:
-                    skill_scores[skill_id]["code"] = similarity
+                    workflow_scores[workflow_id]["code"] = similarity
 
         # Combine scores and build results
         search_results: list[SearchResult] = []
-        for skill_id, scores in skill_scores.items():
+        for workflow_id, scores in workflow_scores.items():
             combined_score = scores["desc"] * desc_weight + scores["code"] * code_weight
             search_results.append(
                 SearchResult(
-                    id=skill_id,
+                    id=workflow_id,
                     score=combined_score,
                     metadata={},
                 )
@@ -247,7 +247,7 @@ class ChromaVectorStore:
         return search_results[:limit]
 
     def get_content_hash(self, id: str) -> str | None:
-        """Get the stored content hash for a skill."""
+        """Get the stored content hash for a workflow."""
         try:
             result = self._collection.get(
                 ids=[self._desc_id(id)],
@@ -257,7 +257,7 @@ class ChromaVectorStore:
                 metadata = result["metadatas"][0]
                 return metadata.get(_KEY_CONTENT_HASH)
         except (KeyError, IndexError):
-            # Malformed result structure - skill doesn't exist
+            # Malformed result structure - workflow doesn't exist
             return None
         except Exception as e:
             logger.debug(f"Failed to get content hash for {id}: {e}")
@@ -275,10 +275,10 @@ class ChromaVectorStore:
             self._collection.delete(ids=all_data["ids"])
 
     def count(self) -> int:
-        """Get the number of skills indexed.
+        """Get the number of workflows indexed.
 
-        Returns the number of unique skills, not vector count.
-        Each skill has 2 vectors (desc + code), so we divide by 2.
+        Returns the number of unique workflows, not vector count.
+        Each workflow has 2 vectors (desc + code), so we divide by 2.
         """
         vector_count = self._collection.count()
         return vector_count // 2

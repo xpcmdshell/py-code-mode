@@ -58,7 +58,7 @@ from pathlib import Path
 from py_code_mode import FileStorage, Session
 from py_code_mode.execution import SubprocessConfig, SubprocessExecutor
 
-# Storage for skills and artifacts only
+# Storage for workflows and artifacts only
 storage = FileStorage(base_path=Path("./data"))
 
 # Executor with tools from config

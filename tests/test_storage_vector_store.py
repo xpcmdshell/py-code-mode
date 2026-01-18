@@ -3,7 +3,7 @@
 Phase 4: Storage Backend Integration
 
 This module tests that FileStorage and RedisStorage properly integrate
-with VectorStore implementations, providing vector stores to SkillLibrary
+with VectorStore implementations, providing vector stores to WorkflowLibrary
 for semantic search.
 
 TDD RED phase: These tests define the interface before implementation.
@@ -12,7 +12,7 @@ They will fail until:
 2. RedisStorage.get_vector_store() is implemented
 3. FileStorageAccess gains vectors_path field
 4. RedisStorageAccess gains vectors_prefix field
-5. Storage.get_skill_library() passes vector_store to create_skill_library()
+5. Storage.get_workflow_library() passes vector_store to create_workflow_library()
 """
 
 from __future__ import annotations
@@ -107,60 +107,60 @@ class TestFileStorageVectorStoreIntegration:
 
 
 # =============================================================================
-# Phase 4.2: FileStorage.get_skill_library() with vector_store
+# Phase 4.2: FileStorage.get_workflow_library() with vector_store
 # =============================================================================
 
 
-class TestFileStorageSkillLibraryVectorStoreIntegration:
-    """Tests for SkillLibrary receiving vector_store from FileStorage."""
+class TestFileStorageWorkflowLibraryVectorStoreIntegration:
+    """Tests for WorkflowLibrary receiving vector_store from FileStorage."""
 
-    def test_skill_library_has_vector_store_attribute(self, tmp_path: Path) -> None:
-        """SkillLibrary created by FileStorage has vector_store attribute.
+    def test_workflow_library_has_vector_store_attribute(self, tmp_path: Path) -> None:
+        """WorkflowLibrary created by FileStorage has vector_store attribute.
 
-        Breaks when: create_skill_library() not called with vector_store parameter.
+        Breaks when: create_workflow_library() not called with vector_store parameter.
         """
         storage = FileStorage(tmp_path)
 
-        library = storage.get_skill_library()
+        library = storage.get_workflow_library()
 
         # Should have vector_store attribute
         assert hasattr(library, "vector_store")
 
-    def test_skill_library_vector_store_matches_get_vector_store(self, tmp_path: Path) -> None:
-        """SkillLibrary.vector_store is same instance as storage.get_vector_store().
+    def test_workflow_library_vector_store_matches_get_vector_store(self, tmp_path: Path) -> None:
+        """WorkflowLibrary.vector_store is same instance as storage.get_vector_store().
 
         Breaks when: Different vector store instances created.
         """
         storage = FileStorage(tmp_path)
 
         vector_store = storage.get_vector_store()
-        library = storage.get_skill_library()
+        library = storage.get_workflow_library()
 
         # Should be the same instance (or both None)
         assert library.vector_store is vector_store
 
-    def test_skill_library_uses_vector_store_for_search(self, tmp_path: Path) -> None:
-        """SkillLibrary.search() uses vector_store when available.
+    def test_workflow_library_uses_vector_store_for_search(self, tmp_path: Path) -> None:
+        """WorkflowLibrary.search() uses vector_store when available.
 
         Breaks when: Vector store not used for semantic search.
         """
-        from py_code_mode.skills import PythonSkill
+        from py_code_mode.workflows import PythonWorkflow
 
         storage = FileStorage(tmp_path)
-        library = storage.get_skill_library()
+        library = storage.get_workflow_library()
 
-        # Add a skill with distinctive description
-        skill = PythonSkill.from_source(
+        # Add a workflow with distinctive description
+        workflow = PythonWorkflow.from_source(
             name="calculate_total",
             source="async def run(numbers): return sum(numbers)",
             description="Add up all numbers in a list",
         )
-        library.add(skill)
+        library.add(workflow)
 
         # Search by semantic meaning
         results = library.search("sum values together")
 
-        # Should find the skill via semantic similarity
+        # Should find the workflow via semantic similarity
         assert len(results) > 0
         assert any(r.name == "calculate_total" for r in results)
 
@@ -310,29 +310,29 @@ class TestRedisStorageAccessVectorsPrefixPlaceholder:
 
 
 class TestStorageVectorStoreIntegration:
-    """Integration tests for storage + vector store + skill library."""
+    """Integration tests for storage + vector store + workflow library."""
 
     def test_file_storage_end_to_end_semantic_search(self, tmp_path: Path) -> None:
-        """Complete workflow: FileStorage -> VectorStore -> SkillLibrary -> search.
+        """Complete workflow: FileStorage -> VectorStore -> WorkflowLibrary -> search.
 
         User journey: Developer uses FileStorage with semantic search.
         Breaks when: Any link in the chain fails.
         """
-        from py_code_mode.skills import PythonSkill
+        from py_code_mode.workflows import PythonWorkflow
 
         storage = FileStorage(tmp_path)
-        library = storage.get_skill_library()
+        library = storage.get_workflow_library()
 
-        # Add skills with semantic descriptions
+        # Add workflows with semantic descriptions
         library.add(
-            PythonSkill.from_source(
+            PythonWorkflow.from_source(
                 name="http_get",
                 source="async def run(url): import requests; return requests.get(url)",
                 description="Fetch data from a URL using HTTP GET request",
             )
         )
         library.add(
-            PythonSkill.from_source(
+            PythonWorkflow.from_source(
                 name="parse_json",
                 source="async def run(text): import json; return json.loads(text)",
                 description="Parse JSON string into Python object",
@@ -344,35 +344,35 @@ class TestStorageVectorStoreIntegration:
 
         # Should find http_get via semantic similarity
         assert len(results) > 0
-        skill_names = [r.name for r in results]
-        assert "http_get" in skill_names
+        workflow_names = [r.name for r in results]
+        assert "http_get" in workflow_names
 
     def test_vector_store_persists_across_storage_instances(self, tmp_path: Path) -> None:
         """Vector store persists when FileStorage recreated.
 
         Breaks when: Vectors not saved to disk, lost on restart.
         """
-        from py_code_mode.skills import PythonSkill
+        from py_code_mode.workflows import PythonWorkflow
 
-        # First session: create skill
+        # First session: create workflow
         storage1 = FileStorage(tmp_path)
-        library1 = storage1.get_skill_library()
+        library1 = storage1.get_workflow_library()
         library1.add(
-            PythonSkill.from_source(
-                name="test_skill",
+            PythonWorkflow.from_source(
+                name="test_workflow",
                 source="async def run(): return 1",
-                description="A test skill for persistence",
+                description="A test workflow for persistence",
             )
         )
 
         # Second session: new storage instance
         storage2 = FileStorage(tmp_path)
-        library2 = storage2.get_skill_library()
+        library2 = storage2.get_workflow_library()
 
-        # Should still find the skill (vectors persisted)
-        results = library2.search("test skill")
+        # Should still find the workflow (vectors persisted)
+        results = library2.search("test workflow")
         assert len(results) > 0
-        assert any(r.name == "test_skill" for r in results)
+        assert any(r.name == "test_workflow" for r in results)
 
     def test_storage_access_includes_vector_store_path(self, tmp_path: Path) -> None:
         """get_serializable_access() includes vectors_path for subprocess.
@@ -400,61 +400,61 @@ class TestStorageVectorStoreIntegration:
 class TestVectorStoreEdgeCases:
     """Edge cases and error handling for vector store integration."""
 
-    def test_skill_library_works_without_vector_store(self, tmp_path: Path) -> None:
-        """SkillLibrary works when vector_store is None (fallback mode).
+    def test_workflow_library_works_without_vector_store(self, tmp_path: Path) -> None:
+        """WorkflowLibrary works when vector_store is None (fallback mode).
 
         Breaks when: Library requires vector store, fails when chromadb unavailable.
         """
-        from py_code_mode.skills import PythonSkill
+        from py_code_mode.workflows import PythonWorkflow
 
         storage = FileStorage(tmp_path)
 
         # Mock vector store being unavailable
         with patch.object(storage, "get_vector_store", return_value=None):
-            library = storage.get_skill_library()
+            library = storage.get_workflow_library()
 
         # Should still work for basic operations
-        skill = PythonSkill.from_source(
+        workflow = PythonWorkflow.from_source(
             name="basic",
             source="async def run(): return 1",
-            description="Basic skill",
+            description="Basic workflow",
         )
-        library.add(skill)
+        library.add(workflow)
 
         # Search should still work (using fallback embedder)
         results = library.search("basic")
         assert len(results) > 0
 
-    def test_vector_store_handles_empty_skills_directory(self, tmp_path: Path) -> None:
-        """Vector store handles empty skills directory gracefully.
+    def test_vector_store_handles_empty_workflows_directory(self, tmp_path: Path) -> None:
+        """Vector store handles empty workflows directory gracefully.
 
         Breaks when: Vector store crashes on empty collection.
         """
         storage = FileStorage(tmp_path)
-        library = storage.get_skill_library()
+        library = storage.get_workflow_library()
 
-        # Search with no skills should return empty
+        # Search with no workflows should return empty
         results = library.search("anything")
         assert results == []
 
-    def test_vector_store_count_matches_skill_count(self, tmp_path: Path) -> None:
-        """vector_store.count() matches number of skills in library.
+    def test_vector_store_count_matches_workflow_count(self, tmp_path: Path) -> None:
+        """vector_store.count() matches number of workflows in library.
 
-        Breaks when: Vector count diverges from skill count.
+        Breaks when: Vector count diverges from workflow count.
         """
-        from py_code_mode.skills import PythonSkill
+        from py_code_mode.workflows import PythonWorkflow
 
         storage = FileStorage(tmp_path)
-        library = storage.get_skill_library()
+        library = storage.get_workflow_library()
         vector_store = storage.get_vector_store()
 
-        # Add skills
+        # Add workflows
         for i in range(3):
             library.add(
-                PythonSkill.from_source(
-                    name=f"skill_{i}",
+                PythonWorkflow.from_source(
+                    name=f"workflow_{i}",
                     source="async def run(): return 1",
-                    description=f"Skill number {i}",
+                    description=f"Workflow number {i}",
                 )
             )
 

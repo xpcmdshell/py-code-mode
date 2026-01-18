@@ -7,7 +7,7 @@ These tests verify the deps configuration architecture where:
 - allow_runtime_deps=False blocks deps.add()/remove() at runtime
 
 Architecture (post executor-ownership refactor):
-- Storage owns: skills, artifacts
+- Storage owns: workflows, artifacts
 - Executor owns: tools, deps (via config.tools_path, config.deps)
 
 Gap 1: Initial Deps + sync_deps_on_start
@@ -458,7 +458,7 @@ class TestMCPServerNoRuntimeDepsFlag:
         storage = tmp_path / "storage"
         storage.mkdir()
         (storage / "tools").mkdir()
-        (storage / "skills").mkdir()
+        (storage / "workflows").mkdir()
         (storage / "artifacts").mkdir()
         (storage / "deps").mkdir()
         return storage
