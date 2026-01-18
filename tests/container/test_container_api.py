@@ -140,6 +140,36 @@ class TestWorkflowsAPI:
         response = client.get("/api/workflows/search", params={"query": "fetch"})
         assert response.status_code == 401
 
+    def test_workflows_endpoints_return_503_if_library_not_initialized(self, tmp_path) -> None:
+        """Workflows endpoints should not silently return empty results if init failed."""
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            pytest.skip("FastAPI not installed")
+
+        from py_code_mode.execution.container.config import SessionConfig
+        from py_code_mode.execution.container.server import create_app
+
+        # Force workflow library init failure: workflows_path exists as a FILE.
+        workflows_path = tmp_path / "workflows"
+        workflows_path.write_text("not a directory")
+
+        config = SessionConfig(
+            artifacts_path=tmp_path / "artifacts",
+            workflows_path=workflows_path,
+        )
+        config.auth_token = "test-token"
+
+        app = create_app(config)
+        with TestClient(app) as client:
+            headers = {"Authorization": "Bearer test-token"}
+
+            resp = client.get("/api/workflows", headers=headers)
+            assert resp.status_code == 503
+
+            resp = client.get("/api/workflows/search", params={"query": "x"}, headers=headers)
+            assert resp.status_code == 503
+
     def test_get_workflow_returns_none_when_not_found(self, auth_client) -> None:
         """GET /api/workflows/{name} returns null when workflow not found."""
         client, token = auth_client

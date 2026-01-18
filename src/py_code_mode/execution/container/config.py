@@ -255,10 +255,15 @@ class ContainerConfig:
         }
 
         # Add port binding
+        bind_ip: str | None = None
+        if self.auth_disabled and not self.auth_token:
+            # Safer default: when auth is disabled, don't publish on all interfaces.
+            bind_ip = "127.0.0.1"
+
         if self.port > 0:
-            config["ports"] = {"8080/tcp": self.port}
+            config["ports"] = {"8080/tcp": (bind_ip, self.port) if bind_ip else self.port}
         else:
-            config["ports"] = {"8080/tcp": None}  # Auto-assign
+            config["ports"] = {"8080/tcp": (bind_ip, None) if bind_ip else None}  # Auto-assign
 
         # Add volumes from storage access
         volumes = {}
