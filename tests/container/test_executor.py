@@ -226,6 +226,28 @@ class TestContainerExecutorVolumes:
         )
 
 
+class TestContainerExecutorNetworking:
+    """Tests for networking configuration."""
+
+    def test_auth_disabled_binds_published_port_to_localhost(self) -> None:
+        """When auth is disabled, published ports should not bind 0.0.0.0."""
+        config = ContainerConfig(port=9000, auth_disabled=True)
+        docker_config = config.to_docker_config()
+        assert docker_config["ports"]["8080/tcp"] == ("127.0.0.1", 9000)
+
+    def test_auth_disabled_binds_auto_port_to_localhost(self) -> None:
+        """When auth is disabled and port=0, auto-assigned ports should bind localhost."""
+        config = ContainerConfig(port=0, auth_disabled=True)
+        docker_config = config.to_docker_config()
+        assert docker_config["ports"]["8080/tcp"] == ("127.0.0.1", None)
+
+    def test_auth_enabled_keeps_default_port_binding(self) -> None:
+        """With auth enabled, preserve existing port binding behavior."""
+        config = ContainerConfig(port=9000, auth_token="secret")
+        docker_config = config.to_docker_config()
+        assert docker_config["ports"]["8080/tcp"] == 9000
+
+
 class TestContainerExecutorEnvironment:
     """Tests for environment configuration."""
 

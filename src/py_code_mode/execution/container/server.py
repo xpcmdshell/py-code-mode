@@ -793,7 +793,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
     async def api_list_workflows() -> list[dict[str, Any]]:
         """Return all workflows."""
         if _state.workflow_library is None:
-            return []
+            raise HTTPException(status_code=503, detail="Workflow library not initialized")
 
         workflows = _state.workflow_library.list()
         return [
@@ -809,7 +809,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
     async def api_search_workflows(query: str, limit: int = 5) -> list[dict[str, Any]]:
         """Search workflows."""
         if _state.workflow_library is None:
-            return []
+            raise HTTPException(status_code=503, detail="Workflow library not initialized")
 
         workflows = _state.workflow_library.search(query, limit=limit)
         return [
@@ -825,7 +825,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
     async def api_get_workflow(name: str) -> dict[str, Any] | None:
         """Get workflow by name with full source."""
         if _state.workflow_library is None:
-            return None
+            raise HTTPException(status_code=503, detail="Workflow library not initialized")
 
         workflow = _state.workflow_library.get(name)
         if workflow is None:
