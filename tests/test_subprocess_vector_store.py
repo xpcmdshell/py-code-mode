@@ -6,14 +6,14 @@ This module tests that build_namespace_setup_code() properly handles
 vector stores, generating code that:
 1. Imports ChromaVectorStore when vectors_path provided
 2. Creates vector store in kernel
-3. Passes vector_store to create_skill_library()
+3. Passes vector_store to create_workflow_library()
 4. Gracefully falls back when chromadb not available
 
 TDD RED phase: These tests define the interface before implementation.
 They will fail until:
 1. build_namespace_setup_code() handles vectors_path
 2. Generated code imports ChromaVectorStore
-3. Generated code passes vector_store to create_skill_library()
+3. Generated code passes vector_store to create_workflow_library()
 4. Generated code handles ImportError for chromadb
 """
 
@@ -40,7 +40,7 @@ class TestNamespaceSetupCodeVectorStoreGeneration:
         Breaks when: Code doesn't import ChromaVectorStore despite vectors_path.
         """
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=Path("/app/vectors"),  # Present
         )
@@ -59,7 +59,7 @@ class TestNamespaceSetupCodeVectorStoreGeneration:
         """
         vectors_path = Path("/test/vectors")
         storage_access = FileStorageAccess(
-            skills_path=Path("/test/skills"),
+            workflows_path=Path("/test/workflows"),
             artifacts_path=Path("/test/artifacts"),
             vectors_path=vectors_path,
         )
@@ -71,21 +71,21 @@ class TestNamespaceSetupCodeVectorStoreGeneration:
         # Should use the provided path
         assert str(vectors_path) in code or repr(str(vectors_path)) in code
 
-    def test_generated_code_passes_vector_store_to_create_skill_library(self) -> None:
-        """Generated code passes vector_store to create_skill_library().
+    def test_generated_code_passes_vector_store_to_create_workflow_library(self) -> None:
+        """Generated code passes vector_store to create_workflow_library().
 
-        Breaks when: create_skill_library() called without vector_store parameter.
+        Breaks when: create_workflow_library() called without vector_store parameter.
         """
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=Path("/app/vectors"),
         )
 
         code = build_namespace_setup_code(storage_access)
 
-        # Should pass vector_store to create_skill_library
-        assert "create_skill_library" in code
+        # Should pass vector_store to create_workflow_library
+        assert "create_workflow_library" in code
         assert "vector_store" in code
 
     def test_generated_code_creates_embedder_for_vector_store(self) -> None:
@@ -94,7 +94,7 @@ class TestNamespaceSetupCodeVectorStoreGeneration:
         Breaks when: ChromaVectorStore created without embedder.
         """
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=Path("/app/vectors"),
         )
@@ -122,7 +122,7 @@ class TestNamespaceSetupCodeVectorStoreFallback:
         Breaks when: ImportError crashes kernel instead of falling back.
         """
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=Path("/app/vectors"),
         )
@@ -135,11 +135,11 @@ class TestNamespaceSetupCodeVectorStoreFallback:
     def test_generated_code_sets_vector_store_none_on_import_error(self) -> None:
         """Generated code sets vector_store=None when chromadb unavailable.
 
-        Breaks when: create_skill_library() called without vector_store parameter
+        Breaks when: create_workflow_library() called without vector_store parameter
         on fallback path.
         """
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=Path("/app/vectors"),
         )
@@ -156,7 +156,7 @@ class TestNamespaceSetupCodeVectorStoreFallback:
         Breaks when: Code generation has syntax errors.
         """
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=Path("/app/vectors"),
         )
@@ -184,7 +184,7 @@ class TestNamespaceSetupCodeWithoutVectorStore:
         Breaks when: Unnecessary import added even without vector store.
         """
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=None,  # No vector store
         )
@@ -194,21 +194,21 @@ class TestNamespaceSetupCodeWithoutVectorStore:
         # Should not import ChromaVectorStore
         assert "ChromaVectorStore" not in code
 
-    def test_generated_code_without_vectors_path_still_creates_skill_library(self) -> None:
-        """Generated code creates SkillLibrary without vector_store.
+    def test_generated_code_without_vectors_path_still_creates_workflow_library(self) -> None:
+        """Generated code creates WorkflowLibrary without vector_store.
 
-        Breaks when: SkillLibrary creation requires vector_store.
+        Breaks when: WorkflowLibrary creation requires vector_store.
         """
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=None,
         )
 
         code = build_namespace_setup_code(storage_access)
 
-        # Should still create skill library (without vector_store)
-        assert "create_skill_library" in code or "SkillLibrary" in code
+        # Should still create workflow library (without vector_store)
+        assert "create_workflow_library" in code or "WorkflowLibrary" in code
 
 
 # =============================================================================
@@ -230,16 +230,16 @@ class TestSubprocessVectorStoreIntegration:
         """
         from py_code_mode.execution.subprocess import SubprocessExecutor
         from py_code_mode.execution.subprocess.config import SubprocessConfig
-        from py_code_mode.skills import PythonSkill
         from py_code_mode.storage import FileStorage
+        from py_code_mode.workflows import PythonWorkflow
 
         # Setup storage with vector store
         storage = FileStorage(tmp_path / "storage")
-        library = storage.get_skill_library()
+        library = storage.get_workflow_library()
 
-        # Add skill with semantic description
+        # Add workflow with semantic description
         library.add(
-            PythonSkill.from_source(
+            PythonWorkflow.from_source(
                 name="fetch_url",
                 source="async def run(url): import requests; return requests.get(url).text",
                 description="Download content from a web URL using HTTP",
@@ -257,7 +257,7 @@ class TestSubprocessVectorStoreIntegration:
             await executor.start(storage=storage)
 
             # Search should use vector store for semantic similarity
-            result = await executor.run('skills.search("get webpage")')
+            result = await executor.run('workflows.search("get webpage")')
 
             assert result.error is None, f"Search failed: {result.error}"
             # Should find fetch_url via semantic similarity
@@ -293,19 +293,19 @@ class TestSubprocessVectorStoreIntegration:
         try:
             await executor.start(storage=storage)
 
-            # Create skill in subprocess
+            # Create workflow in subprocess
             create_code = """
-skills.create(
-    name="test_skill",
+workflows.create(
+    name="test_workflow",
     source="async def run(): return 1",
-    description="Test skill for fallback"
+    description="Test workflow for fallback"
 )
 """
             result = await executor.run(create_code)
             assert result.error is None
 
             # Search should still work (using fallback embedder)
-            result = await executor.run('skills.search("test")')
+            result = await executor.run('workflows.search("test")')
             assert result.error is None
             assert len(str(result.value)) > 0
 
@@ -328,7 +328,7 @@ class TestStorageAccessVectorStoreReconstruction:
         """
         vectors_path = Path("/app/vectors")
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=vectors_path,
         )
@@ -342,7 +342,7 @@ class TestStorageAccessVectorStoreReconstruction:
         Breaks when: None value causes serialization errors.
         """
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=None,
         )
@@ -357,7 +357,7 @@ class TestStorageAccessVectorStoreReconstruction:
         """
         vectors_path = Path("/specific/vectors/location")
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=vectors_path,
         )
@@ -382,7 +382,7 @@ class TestVectorStoreCodeGenerationEdgeCases:
         Breaks when: Code assumes vectors directory exists, crashes on startup.
         """
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=Path("/nonexistent/vectors"),
         )
@@ -401,7 +401,7 @@ class TestVectorStoreCodeGenerationEdgeCases:
         # Path with spaces and quotes
         vectors_path = Path('/app/vectors with spaces/"quotes"')
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=vectors_path,
         )
@@ -422,7 +422,7 @@ class TestVectorStoreCodeGenerationEdgeCases:
         Breaks when: Multiple embedder instances created wastefully.
         """
         storage_access = FileStorageAccess(
-            skills_path=Path("/app/skills"),
+            workflows_path=Path("/app/workflows"),
             artifacts_path=Path("/app/artifacts"),
             vectors_path=Path("/app/vectors"),
         )

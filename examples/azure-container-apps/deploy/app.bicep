@@ -98,8 +98,8 @@ resource sessionApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: '/workspace/configs/tools.yaml'
             }
             {
-              name: 'SKILLS_PATH'
-              value: '/workspace/configs/skills'
+              name: 'WORKFLOWS_PATH'
+              value: '/workspace/configs/workflows'
             }
             {
               name: 'ARTIFACTS_PATH'
@@ -110,8 +110,8 @@ resource sessionApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: 'pycodemode:tools'
             }
             {
-              name: 'REDIS_SKILLS_PREFIX'
-              value: 'pycodemode:skills'
+              name: 'REDIS_WORKFLOWS_PREFIX'
+              value: 'pycodemode:workflows'
             }
             {
               name: 'REDIS_ARTIFACTS_PREFIX'

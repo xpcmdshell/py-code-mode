@@ -25,7 +25,7 @@ from py_code_mode import JsonSchema, ToolDefinition
 os.environ["ACCELERATE_DISABLE"] = "1"
 
 # Singleton Embedder to avoid OOM from multiple model loads in parallel xdist workers
-from py_code_mode.skills.embeddings import Embedder
+from py_code_mode.workflows.embeddings import Embedder
 
 _SHARED_EMBEDDER = None
 _original_embedder_init = Embedder.__init__
@@ -716,8 +716,8 @@ def temp_storage_dir(tmp_path: Any) -> Any:
     tools_dir = storage_root / "tools"
     tools_dir.mkdir()
 
-    skills_dir = storage_root / "skills"
-    skills_dir.mkdir()
+    workflows_dir = storage_root / "workflows"
+    workflows_dir.mkdir()
 
     artifacts_dir = storage_root / "artifacts"
     artifacts_dir.mkdir()
@@ -750,8 +750,8 @@ recipes:
 
 
 @pytest.fixture
-def sample_skill_source() -> str:
-    """Sample skill source code for testing."""
+def sample_workflow_source() -> str:
+    """Sample workflow source code for testing."""
     return '''"""Double a number."""
 
 async def run(n: int) -> int:

@@ -64,14 +64,14 @@ args: "-s {url}"
 
 ### 2. Storage + Executor + Session
 
-Storage handles skills and artifacts. Tools come from executor config:
+Storage handles workflows and artifacts. Tools come from executor config:
 
 ```python
 from pathlib import Path
 from py_code_mode import Session, FileStorage
 from py_code_mode.execution import SubprocessExecutor, SubprocessConfig
 
-# File-based storage for skills and artifacts
+# File-based storage for workflows and artifacts
 storage = FileStorage(base_path=Path("./configs"))
 
 # Executor config loads tools from tools_path
@@ -182,12 +182,12 @@ async with Session(storage=storage) as session:
     result = await session.run('tools.curl(url="...")')
 ```
 
-### Add Skills (Code Recipes)
+### Add Workflows (Code Recipes)
 
-Skills are reusable code snippets the agent can invoke:
+Workflows are reusable code snippets the agent can invoke:
 
 ```python
-# configs/skills/fetch_json.py
+# configs/workflows/fetch_json.py
 async def run(url: str) -> dict:
     """Fetch JSON from a URL and parse it."""
     import json
@@ -195,18 +195,18 @@ async def run(url: str) -> dict:
     return json.loads(response)
 ```
 
-Skills are automatically loaded from the directory when using `FileStorage`:
+Workflows are automatically loaded from the directory when using `FileStorage`:
 
 ```python
 from pathlib import Path
 from py_code_mode import Session, FileStorage
 
-# Skills loaded from configs/skills/
+# Workflows loaded from configs/workflows/
 storage = FileStorage(base_path=Path("./configs"))
 
 async with Session(storage=storage) as session:
-    # Agent can use: skills.fetch_json(url="...")
-    result = await session.run('skills.fetch_json(url="https://api.example.com")')
+    # Agent can use: workflows.fetch_json(url="...")
+    result = await session.run('workflows.fetch_json(url="https://api.example.com")')
 ```
 
 ## Next Steps

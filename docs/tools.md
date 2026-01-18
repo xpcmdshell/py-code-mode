@@ -215,7 +215,7 @@ from pathlib import Path
 from py_code_mode import Session, FileStorage
 from py_code_mode.execution import InProcessConfig, InProcessExecutor
 
-# Storage for skills and artifacts
+# Storage for workflows and artifacts
 storage = FileStorage(base_path=Path("./storage"))
 
 # Executor loads tools from tools_path

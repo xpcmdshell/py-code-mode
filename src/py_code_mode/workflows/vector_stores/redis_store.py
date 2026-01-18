@@ -10,11 +10,11 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Skill ID validation
-_VALID_SKILL_ID = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+# Workflow ID validation
+_VALID_WORKFLOW_ID = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 _MAX_ID_LENGTH = 128
 
-from py_code_mode.skills.vector_store import ModelInfo, SearchResult  # noqa: E402
+from py_code_mode.workflows.vector_store import ModelInfo, SearchResult  # noqa: E402
 
 try:
     import redis.exceptions
@@ -30,7 +30,7 @@ except ImportError:
     REDIS_AVAILABLE = False
 
 if TYPE_CHECKING:
-    from py_code_mode.skills.embeddings import EmbeddingProvider
+    from py_code_mode.workflows.embeddings import EmbeddingProvider
 
 
 # Metadata keys
@@ -42,13 +42,13 @@ _KEY_VERSION = "version"
 _FIELD_DESC_VECTOR = "desc_vector"
 _FIELD_CODE_VECTOR = "code_vector"
 _FIELD_CONTENT_HASH = "content_hash"
-_FIELD_SKILL_ID = "skill_id"
+_FIELD_WORKFLOW_ID = "workflow_id"
 
 
 class RedisVectorStore:
     """VectorStore implementation backed by Redis with RediSearch.
 
-    Stores skill embeddings in Redis using RediSearch vector fields. Each skill
+    Stores workflow embeddings in Redis using RediSearch vector fields. Each workflow
     has two vectors (description and code) stored in a single hash. Supports
     weighted search combining both similarity scores.
 
@@ -63,7 +63,7 @@ class RedisVectorStore:
         redis: Redis,
         embedder: EmbeddingProvider,
         prefix: str = "vectors",
-        index_name: str = "skills_idx",
+        index_name: str = "workflows_idx",
     ) -> None:
         """Initialize RedisVectorStore.
 
@@ -71,7 +71,7 @@ class RedisVectorStore:
             redis: Connected Redis client.
             embedder: Embedding provider for generating vectors.
             prefix: Key prefix for stored documents (default: "vectors").
-            index_name: RediSearch index name (default: "skills_idx").
+            index_name: RediSearch index name (default: "workflows_idx").
 
         Raises:
             ImportError: If redis is not installed.
@@ -189,7 +189,7 @@ class RedisVectorStore:
                 },
             ),
             TextField(_FIELD_CONTENT_HASH),
-            TagField(_FIELD_SKILL_ID),
+            TagField(_FIELD_WORKFLOW_ID),
         )
 
         definition = IndexDefinition(
@@ -202,28 +202,30 @@ class RedisVectorStore:
             definition=definition,
         )
 
-    def _doc_key(self, skill_id: str) -> str:
-        """Build Redis key for a skill document."""
-        return f"{self._doc_prefix}:{skill_id}"
+    def _doc_key(self, workflow_id: str) -> str:
+        """Build Redis key for a workflow document."""
+        return f"{self._doc_prefix}:{workflow_id}"
 
-    def _validate_skill_id(self, skill_id: str) -> None:
-        """Validate skill ID format.
+    def _validate_workflow_id(self, workflow_id: str) -> None:
+        """Validate workflow ID format.
 
         Args:
-            skill_id: The skill ID to validate.
+            workflow_id: The workflow ID to validate.
 
         Raises:
-            ValueError: If skill ID is empty, too long, or has invalid format.
+            ValueError: If workflow ID is empty, too long, or has invalid format.
         """
-        if not skill_id or len(skill_id) > _MAX_ID_LENGTH:
-            raise ValueError(f"Invalid skill ID length: {len(skill_id) if skill_id else 0}")
-        if not _VALID_SKILL_ID.match(skill_id):
-            raise ValueError(f"Invalid skill ID format: {skill_id!r}")
+        if not workflow_id or len(workflow_id) > _MAX_ID_LENGTH:
+            raise ValueError(
+                f"Invalid workflow ID length: {len(workflow_id) if workflow_id else 0}"
+            )
+        if not _VALID_WORKFLOW_ID.match(workflow_id):
+            raise ValueError(f"Invalid workflow ID format: {workflow_id!r}")
 
         # Defense-in-depth: explicit check for characters that would break Redis keys
         redis_unsafe = frozenset(":{}[]")
-        if any(c in skill_id for c in redis_unsafe):
-            raise ValueError(f"Skill ID contains unsafe characters: {skill_id!r}")
+        if any(c in workflow_id for c in redis_unsafe):
+            raise ValueError(f"Workflow ID contains unsafe characters: {workflow_id!r}")
 
     def _vector_to_bytes(self, vector: list[float]) -> bytes:
         """Convert vector to bytes for Redis storage.
@@ -244,22 +246,22 @@ class RedisVectorStore:
         return np.array(vector, dtype=np.float32).tobytes()
 
     def add(self, id: str, description: str, source: str, content_hash: str) -> None:
-        """Add or update a skill's embeddings.
+        """Add or update a workflow's embeddings.
 
-        If the skill already exists with the same content_hash, this is a no-op.
+        If the workflow already exists with the same content_hash, this is a no-op.
 
         Args:
-            id: Unique identifier for the skill.
-            description: Skill description text to embed.
-            source: Skill source code to embed.
+            id: Unique identifier for the workflow.
+            description: Workflow description text to embed.
+            source: Workflow source code to embed.
             content_hash: Hash of description + source for change detection.
 
         Raises:
-            ValueError: If skill ID format is invalid.
+            ValueError: If workflow ID format is invalid.
         """
-        self._validate_skill_id(id)
+        self._validate_workflow_id(id)
 
-        # Check if skill already exists with same hash (skip re-embedding)
+        # Check if workflow already exists with same hash (skip re-embedding)
         existing_hash = self.get_content_hash(id)
         if existing_hash == content_hash:
             return
@@ -276,25 +278,25 @@ class RedisVectorStore:
                 _FIELD_DESC_VECTOR: self._vector_to_bytes(desc_vector),
                 _FIELD_CODE_VECTOR: self._vector_to_bytes(code_vector),
                 _FIELD_CONTENT_HASH: content_hash,
-                _FIELD_SKILL_ID: id,
+                _FIELD_WORKFLOW_ID: id,
             },
         )
 
     def remove(self, id: str) -> bool:
-        """Remove a skill's embeddings.
+        """Remove a workflow's embeddings.
 
         Args:
-            id: Unique identifier for the skill.
+            id: Unique identifier for the workflow.
 
         Returns:
-            True if the skill was removed, False if it wasn't in the store.
+            True if the workflow was removed, False if it wasn't in the store.
 
         Raises:
-            ValueError: If skill ID format is invalid.
+            ValueError: If workflow ID format is invalid.
         """
-        self._validate_skill_id(id)
+        self._validate_workflow_id(id)
 
-        # Check if skill exists
+        # Check if workflow exists
         if self.get_content_hash(id) is None:
             return False
 
@@ -309,7 +311,7 @@ class RedisVectorStore:
         desc_weight: float = 0.7,
         code_weight: float = 0.3,
     ) -> list[SearchResult]:
-        """Search for skills by semantic similarity.
+        """Search for workflows by semantic similarity.
 
         Searches both description and code vectors, combining scores with
         the given weights. Returns results sorted by combined score.
@@ -340,30 +342,30 @@ class RedisVectorStore:
         # Query for code similarity
         code_scores = self._knn_search(_FIELD_CODE_VECTOR, query_bytes, fetch_limit, "code_score")
 
-        # Combine scores per skill
-        skill_scores: dict[str, dict[str, float]] = {}
+        # Combine scores per workflow
+        workflow_scores: dict[str, dict[str, float]] = {}
 
-        for skill_id, distance in desc_scores.items():
+        for workflow_id, distance in desc_scores.items():
             # RediSearch cosine distance: 0 = identical, 2 = opposite
             # Convert to similarity: 1 - (distance / 2)
             similarity = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
-            if skill_id not in skill_scores:
-                skill_scores[skill_id] = {"desc": 0.0, "code": 0.0}
-            skill_scores[skill_id]["desc"] = similarity
+            if workflow_id not in workflow_scores:
+                workflow_scores[workflow_id] = {"desc": 0.0, "code": 0.0}
+            workflow_scores[workflow_id]["desc"] = similarity
 
-        for skill_id, distance in code_scores.items():
+        for workflow_id, distance in code_scores.items():
             similarity = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
-            if skill_id not in skill_scores:
-                skill_scores[skill_id] = {"desc": 0.0, "code": 0.0}
-            skill_scores[skill_id]["code"] = similarity
+            if workflow_id not in workflow_scores:
+                workflow_scores[workflow_id] = {"desc": 0.0, "code": 0.0}
+            workflow_scores[workflow_id]["code"] = similarity
 
         # Build results with combined scores
         results: list[SearchResult] = []
-        for skill_id, scores in skill_scores.items():
+        for workflow_id, scores in workflow_scores.items():
             combined_score = scores["desc"] * desc_weight + scores["code"] * code_weight
             results.append(
                 SearchResult(
-                    id=skill_id,
+                    id=workflow_id,
                     score=combined_score,
                     metadata={},
                 )
@@ -385,12 +387,12 @@ class RedisVectorStore:
             score_alias: Alias for the distance score in results.
 
         Returns:
-            Dict mapping skill_id to distance score.
+            Dict mapping workflow_id to distance score.
         """
         query_str = f"*=>[KNN {limit} @{field} $vec AS {score_alias}]"
         q = (
             Query(query_str)
-            .return_fields(_FIELD_SKILL_ID, score_alias)
+            .return_fields(_FIELD_WORKFLOW_ID, score_alias)
             .sort_by(score_alias)
             .dialect(2)
         )
@@ -406,37 +408,37 @@ class RedisVectorStore:
 
         scores: dict[str, float] = {}
         for doc in results.docs:
-            skill_id = getattr(doc, _FIELD_SKILL_ID, None)
+            workflow_id = getattr(doc, _FIELD_WORKFLOW_ID, None)
             score = getattr(doc, score_alias, None)
 
-            if skill_id is None or score is None:
+            if workflow_id is None or score is None:
                 continue
 
             # Handle bytes vs string
-            if isinstance(skill_id, bytes):
-                skill_id = skill_id.decode()
+            if isinstance(workflow_id, bytes):
+                workflow_id = workflow_id.decode()
             if isinstance(score, bytes):
                 score = float(score.decode())
             else:
                 score = float(score)
 
-            scores[skill_id] = score
+            scores[workflow_id] = score
 
         return scores
 
     def get_content_hash(self, id: str) -> str | None:
-        """Get the stored content hash for a skill.
+        """Get the stored content hash for a workflow.
 
         Args:
-            id: Unique identifier for the skill.
+            id: Unique identifier for the workflow.
 
         Returns:
-            The content hash if the skill exists, None otherwise.
+            The content hash if the workflow exists, None otherwise.
 
         Raises:
-            ValueError: If skill ID format is invalid.
+            ValueError: If workflow ID format is invalid.
         """
-        self._validate_skill_id(id)
+        self._validate_workflow_id(id)
         value = self._redis.hget(self._doc_key(id), _FIELD_CONTENT_HASH)
         if value is None:
             return None
@@ -477,12 +479,12 @@ class RedisVectorStore:
         self._ensure_index_exists()
 
     def count(self) -> int:
-        """Get the number of skills indexed in the store.
+        """Get the number of workflows indexed in the store.
 
         Returns:
-            Number of unique skills with embeddings.
+            Number of unique workflows with embeddings.
         """
-        # Count documents in the index (each skill is one document)
+        # Count documents in the index (each workflow is one document)
         try:
             info = self._redis.ft(self._index_name).info()
             # info is a dict-like object, num_docs gives total documents

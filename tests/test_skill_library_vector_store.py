@@ -1,7 +1,7 @@
-"""Tests for SkillLibrary VectorStore integration - TDD RED phase.
+"""Tests for WorkflowLibrary VectorStore integration - TDD RED phase.
 
 These tests define the new behavior we want:
-- SkillLibrary accepts vector_store parameter
+- WorkflowLibrary accepts vector_store parameter
 - Search delegates to VectorStore when provided
 - Content hash change detection skips re-embedding when unchanged
 - Fallback to in-memory when vector_store=None
@@ -12,14 +12,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from py_code_mode.skills import PythonSkill
-from py_code_mode.skills.vector_store import ModelInfo, SearchResult, VectorStore
+from py_code_mode.workflows import PythonWorkflow
+from py_code_mode.workflows.vector_store import ModelInfo, SearchResult, VectorStore
 
 
-def _make_skill(name: str, description: str, code: str) -> PythonSkill:
-    """Helper to create a PythonSkill from minimal info."""
+def _make_workflow(name: str, description: str, code: str) -> PythonWorkflow:
+    """Helper to create a PythonWorkflow from minimal info."""
     source = f'"""{description}"""\n\nasync def run():\n    {code}'
-    return PythonSkill.from_source(name=name, source=source, description=description)
+    return PythonWorkflow.from_source(name=name, source=source, description=description)
 
 
 @dataclass
@@ -73,12 +73,12 @@ class MockVectorStore:
         """Record search call and return mock results."""
         self.search_calls.append((query, limit, desc_weight, code_weight))
 
-        # Return all stored skills as results (mock similarity)
+        # Return all stored workflows as results (mock similarity)
         results = []
-        for skill_id, data in self._store.items():
+        for workflow_id, data in self._store.items():
             # Mock score based on presence of query term in description
             score = 0.8 if query.lower() in data["description"].lower() else 0.5
-            results.append(SearchResult(id=skill_id, score=score, metadata={"mock": True}))
+            results.append(SearchResult(id=workflow_id, score=score, metadata={"mock": True}))
 
         # Sort by score descending
         results.sort(key=lambda r: r.score, reverse=True)
@@ -99,50 +99,50 @@ class MockVectorStore:
         self._store.clear()
 
     def count(self) -> int:
-        """Return count of stored skills."""
+        """Return count of stored workflows."""
         return len(self._store)
 
 
-class TestSkillLibraryParameterAcceptance:
-    """Test that SkillLibrary accepts vector_store parameter."""
+class TestWorkflowLibraryParameterAcceptance:
+    """Test that WorkflowLibrary accepts vector_store parameter."""
 
     def test_accepts_vector_store_parameter(self) -> None:
-        """SkillLibrary constructor should accept vector_store parameter.
+        """WorkflowLibrary constructor should accept vector_store parameter.
 
-        This test will FAIL because SkillLibrary doesn't accept vector_store yet.
+        This test will FAIL because WorkflowLibrary doesn't accept vector_store yet.
         """
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
         # This should work but will fail - parameter doesn't exist yet
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
         assert library.vector_store is vector_store
 
     def test_works_with_vector_store_none(self) -> None:
-        """SkillLibrary should work with vector_store=None (current behavior).
+        """WorkflowLibrary should work with vector_store=None (current behavior).
 
         This ensures backward compatibility.
         """
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
 
         # This should work - None is default
-        library = SkillLibrary(embedder=embedder, vector_store=None)
+        library = WorkflowLibrary(embedder=embedder, vector_store=None)
 
         assert library.vector_store is None
 
     def test_works_with_vector_store_instance(self) -> None:
-        """SkillLibrary should work with a VectorStore instance."""
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+        """WorkflowLibrary should work with a VectorStore instance."""
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
         # Should store the vector_store
         assert isinstance(library.vector_store, VectorStore)
@@ -156,16 +156,16 @@ class TestSearchDelegation:
 
         This test will FAIL because delegation logic doesn't exist yet.
         """
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        # Add a skill (so search has something to find)
-        skill = _make_skill("test", "test skill", "pass")
-        library.add(skill)
+        # Add a workflow (so search has something to find)
+        workflow = _make_workflow("test", "test workflow", "pass")
+        library.add(workflow)
 
         # Search should delegate to vector_store
         library.search("test")
@@ -176,46 +176,46 @@ class TestSearchDelegation:
         assert query == "test"
         assert limit == 10  # default
 
-    def test_search_returns_python_skill_objects(self) -> None:
-        """search() should return PythonSkill objects, not SearchResult.
+    def test_search_returns_python_workflow_objects(self) -> None:
+        """search() should return PythonWorkflow objects, not SearchResult.
 
-        VectorStore.search() returns SearchResult, but SkillLibrary.search()
-        should map those back to PythonSkill objects.
+        VectorStore.search() returns SearchResult, but WorkflowLibrary.search()
+        should map those back to PythonWorkflow objects.
         """
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        skill = _make_skill(
+        workflow = _make_workflow(
             "fetch_url", "Fetch content from a URL", "return requests.get(url).text"
         )
-        library.add(skill)
+        library.add(workflow)
 
         results = library.search("download")
 
-        # Should return PythonSkill objects
+        # Should return PythonWorkflow objects
         assert len(results) >= 1
-        assert all(isinstance(r, PythonSkill) for r in results)
+        assert all(isinstance(r, PythonWorkflow) for r in results)
         assert results[0].name == "fetch_url"
 
     def test_search_respects_limit_parameter(self) -> None:
         """search(limit=N) should pass limit to vector_store.search()."""
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        # Add multiple skills
+        # Add multiple workflows
         for i in range(5):
-            library.add(_make_skill(f"skill_{i}", f"skill {i}", "pass"))
+            library.add(_make_workflow(f"workflow_{i}", f"workflow {i}", "pass"))
 
         # Search with custom limit
-        results = library.search("skill", limit=3)
+        results = library.search("workflow", limit=3)
 
         # Verify limit was passed through
         assert len(vector_store.search_calls) == 1
@@ -227,7 +227,7 @@ class TestSearchDelegation:
 
     def test_search_passes_ranking_config_weights(self) -> None:
         """search() should pass RankingConfig weights to vector_store.search()."""
-        from py_code_mode.skills import MockEmbedder, RankingConfig, SkillLibrary
+        from py_code_mode.workflows import MockEmbedder, RankingConfig, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
@@ -235,14 +235,14 @@ class TestSearchDelegation:
         # Custom ranking config
         ranking = RankingConfig(description_weight=0.8, code_weight=0.2)
 
-        library = SkillLibrary(
+        library = WorkflowLibrary(
             embedder=embedder,
             vector_store=vector_store,
             ranking=ranking,
         )
 
-        skill = _make_skill("test", "test", "pass")
-        library.add(skill)
+        workflow = _make_workflow("test", "test", "pass")
+        library.add(workflow)
 
         library.search("test")
 
@@ -252,143 +252,143 @@ class TestSearchDelegation:
         assert desc_weight == 0.8
         assert code_weight == 0.2
 
-    def test_search_filters_missing_skills(self) -> None:
-        """search() should filter out SearchResults whose IDs aren't in _skills.
+    def test_search_filters_missing_workflows(self) -> None:
+        """search() should filter out SearchResults whose IDs aren't in _workflows.
 
-        VectorStore might return stale results for deleted skills.
-        SkillLibrary should filter those out.
+        VectorStore might return stale results for deleted workflows.
+        WorkflowLibrary should filter those out.
         """
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        # Add skill to vector_store directly (bypassing library)
-        vector_store.add("stale_skill", "stale", "pass", "hash123")
+        # Add workflow to vector_store directly (bypassing library)
+        vector_store.add("stale_workflow", "stale", "pass", "hash123")
 
         # Search - should not crash, should filter out the stale result
         results = library.search("stale")
 
-        # Should be empty (skill not in library._skills)
+        # Should be empty (workflow not in library._workflows)
         assert len(results) == 0
 
 
 class TestContentHashChangeDetection:
     """Test content hash change detection to skip re-embedding."""
 
-    def test_index_skill_computes_content_hash(self) -> None:
-        """_index_skill should compute content hash for the skill.
+    def test_index_workflow_computes_content_hash(self) -> None:
+        """_index_workflow should compute content hash for the workflow.
 
         This test will FAIL because hash computation doesn't exist yet.
         """
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
-        from py_code_mode.skills.vector_store import compute_content_hash
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
+        from py_code_mode.workflows.vector_store import compute_content_hash
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        skill = _make_skill("test", "test skill", "pass")
+        workflow = _make_workflow("test", "test workflow", "pass")
 
-        # Index the skill
-        library.add(skill)
+        # Index the workflow
+        library.add(workflow)
 
         # Verify vector_store.add was called with correct hash
         assert len(vector_store.add_calls) == 1
         id, desc, source, content_hash = vector_store.add_calls[0]
 
-        expected_hash = compute_content_hash(skill.description, skill.source)
+        expected_hash = compute_content_hash(workflow.description, workflow.source)
         assert content_hash == expected_hash
 
-    def test_unchanged_skill_skips_re_embedding(self) -> None:
-        """When skill content hasn't changed, skip re-embedding.
+    def test_unchanged_workflow_skips_re_embedding(self) -> None:
+        """When workflow content hasn't changed, skip re-embedding.
 
         If vector_store.get_content_hash() returns same hash as current content,
         don't call vector_store.add() again.
         """
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
-        from py_code_mode.skills.vector_store import compute_content_hash
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
+        from py_code_mode.workflows.vector_store import compute_content_hash
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        skill = _make_skill("test", "test skill", "pass")
+        workflow = _make_workflow("test", "test workflow", "pass")
 
         # First add - should call vector_store.add()
-        library.add(skill)
+        library.add(workflow)
         assert len(vector_store.add_calls) == 1
 
         # Store the hash in vector_store (simulating it was already embedded)
-        expected_hash = compute_content_hash(skill.description, skill.source)
+        expected_hash = compute_content_hash(workflow.description, workflow.source)
         vector_store._store["test"]["hash"] = expected_hash
 
-        # Re-index same skill (e.g., during refresh)
-        library._index_skill(skill)
+        # Re-index same workflow (e.g., during refresh)
+        library._index_workflow(workflow)
 
         # Should check hash but NOT call add() again (hash matches)
         assert len(vector_store.get_content_hash_calls) >= 1
         assert len(vector_store.add_calls) == 1  # Still just one add call
 
-    def test_changed_skill_triggers_re_embedding(self) -> None:
-        """When skill content changes, re-embed it.
+    def test_changed_workflow_triggers_re_embedding(self) -> None:
+        """When workflow content changes, re-embed it.
 
         If vector_store.get_content_hash() returns different hash,
         call vector_store.add() with new embeddings.
         """
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
-        from py_code_mode.skills.vector_store import compute_content_hash
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
+        from py_code_mode.workflows.vector_store import compute_content_hash
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        skill_v1 = _make_skill("test", "version 1", "pass")
+        workflow_v1 = _make_workflow("test", "version 1", "pass")
 
         # First add
-        library.add(skill_v1)
+        library.add(workflow_v1)
         assert len(vector_store.add_calls) == 1
 
         # Store old hash
-        old_hash = compute_content_hash(skill_v1.description, skill_v1.source)
+        old_hash = compute_content_hash(workflow_v1.description, workflow_v1.source)
         vector_store._store["test"]["hash"] = old_hash
 
         # Create modified version (different description)
-        skill_v2 = _make_skill("test", "version 2 updated", "pass")
+        workflow_v2 = _make_workflow("test", "version 2 updated", "pass")
 
         # Re-index with new content
-        library._index_skill(skill_v2)
+        library._index_workflow(workflow_v2)
 
         # Should detect hash change and call add() again
         assert len(vector_store.add_calls) == 2
         _, _, _, new_hash = vector_store.add_calls[1]
 
-        expected_new_hash = compute_content_hash(skill_v2.description, skill_v2.source)
+        expected_new_hash = compute_content_hash(workflow_v2.description, workflow_v2.source)
         assert new_hash == expected_new_hash
         assert new_hash != old_hash
 
-    def test_new_skill_always_added_to_vector_store(self) -> None:
-        """New skills (not in vector_store) should always get added."""
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+    def test_new_workflow_always_added_to_vector_store(self) -> None:
+        """New workflows (not in vector_store) should always get added."""
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        skill = _make_skill("new_skill", "brand new", "pass")
+        workflow = _make_workflow("new_workflow", "brand new", "pass")
 
-        # vector_store.get_content_hash() will return None (skill doesn't exist)
-        library.add(skill)
+        # vector_store.get_content_hash() will return None (workflow doesn't exist)
+        library.add(workflow)
 
         # Should add to vector_store
         assert len(vector_store.add_calls) == 1
-        assert vector_store.add_calls[0][0] == "new_skill"
+        assert vector_store.add_calls[0][0] == "new_workflow"
 
 
 class TestFallbackBehavior:
@@ -396,15 +396,15 @@ class TestFallbackBehavior:
 
     def test_vector_store_none_uses_in_memory_vectors(self) -> None:
         """When vector_store=None, should use existing in-memory behavior."""
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
 
         # No vector_store provided
-        library = SkillLibrary(embedder=embedder)
+        library = WorkflowLibrary(embedder=embedder)
 
-        skill = _make_skill("test", "test skill", "pass")
-        library.add(skill)
+        workflow = _make_workflow("test", "test workflow", "pass")
+        library.add(workflow)
 
         # Should have populated in-memory vectors
         assert "test" in library._description_vectors
@@ -412,151 +412,153 @@ class TestFallbackBehavior:
 
     def test_vector_store_none_search_uses_cosine_similarity(self) -> None:
         """When vector_store=None, search() should use existing cosine_similarity logic."""
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
-        library = SkillLibrary(embedder=embedder)  # No vector_store
+        library = WorkflowLibrary(embedder=embedder)  # No vector_store
 
-        # Add skills
-        skill1 = _make_skill("fetch_url", "Fetch content from URL", "return requests.get(url).text")
-        skill2 = _make_skill("parse_json", "Parse JSON string", "return json.loads(text)")
-        library.add(skill1)
-        library.add(skill2)
+        # Add workflows
+        workflow1 = _make_workflow(
+            "fetch_url", "Fetch content from URL", "return requests.get(url).text"
+        )
+        workflow2 = _make_workflow("parse_json", "Parse JSON string", "return json.loads(text)")
+        library.add(workflow1)
+        library.add(workflow2)
 
         # Search should work (using in-memory cosine similarity)
         results = library.search("download")
 
         # Should return results (exact results depend on embeddings)
         assert isinstance(results, list)
-        assert all(isinstance(r, PythonSkill) for r in results)
+        assert all(isinstance(r, PythonWorkflow) for r in results)
 
 
-class TestCreateSkillLibraryFactory:
-    """Test create_skill_library() factory accepts vector_store parameter."""
+class TestCreateWorkflowLibraryFactory:
+    """Test create_workflow_library() factory accepts vector_store parameter."""
 
     def test_factory_accepts_vector_store_parameter(self) -> None:
-        """create_skill_library() should accept vector_store parameter.
+        """create_workflow_library() should accept vector_store parameter.
 
         This test will FAIL because the factory doesn't accept it yet.
         """
-        from py_code_mode.skills import MockEmbedder, create_skill_library
+        from py_code_mode.workflows import MockEmbedder, create_workflow_library
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
         # This should work but will fail
-        library = create_skill_library(embedder=embedder, vector_store=vector_store)
+        library = create_workflow_library(embedder=embedder, vector_store=vector_store)
 
         assert library.vector_store is vector_store
 
-    def test_factory_passes_vector_store_to_skill_library(self) -> None:
-        """Factory should pass vector_store to SkillLibrary constructor."""
-        from py_code_mode.skills import MockEmbedder, create_skill_library
+    def test_factory_passes_vector_store_to_workflow_library(self) -> None:
+        """Factory should pass vector_store to WorkflowLibrary constructor."""
+        from py_code_mode.workflows import MockEmbedder, create_workflow_library
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = create_skill_library(embedder=embedder, vector_store=vector_store)
+        library = create_workflow_library(embedder=embedder, vector_store=vector_store)
 
         # Library should have the vector_store
         assert library.vector_store is vector_store
 
 
-class TestIndexSkillIntegration:
-    """Test _index_skill integrates with vector_store."""
+class TestIndexWorkflowIntegration:
+    """Test _index_workflow integrates with vector_store."""
 
-    def test_index_skill_adds_to_vector_store_when_provided(self) -> None:
-        """_index_skill should add to vector_store when provided."""
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+    def test_index_workflow_adds_to_vector_store_when_provided(self) -> None:
+        """_index_workflow should add to vector_store when provided."""
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        skill = _make_skill("test", "test skill", "pass")
+        workflow = _make_workflow("test", "test workflow", "pass")
 
-        # Index directly (bypassing add, to test _index_skill in isolation)
-        library._index_skill(skill)
+        # Index directly (bypassing add, to test _index_workflow in isolation)
+        library._index_workflow(workflow)
 
         # Should have called vector_store.add()
         assert len(vector_store.add_calls) == 1
 
-    def test_index_skill_still_adds_to_skills_dict(self) -> None:
-        """_index_skill should still add to _skills dict for get() by name."""
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+    def test_index_workflow_still_adds_to_workflows_dict(self) -> None:
+        """_index_workflow should still add to _workflows dict for get() by name."""
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        skill = _make_skill("test", "test skill", "pass")
-        library._index_skill(skill)
+        workflow = _make_workflow("test", "test workflow", "pass")
+        library._index_workflow(workflow)
 
-        # Should be in _skills dict
-        assert "test" in library._skills
+        # Should be in _workflows dict
+        assert "test" in library._workflows
         assert library.get("test") is not None
 
-    def test_refresh_indexes_only_new_and_changed_skills(self) -> None:
-        """refresh() should only index new/changed skills, skipping unchanged ones.
+    def test_refresh_indexes_only_new_and_changed_workflows(self) -> None:
+        """refresh() should only index new/changed workflows, skipping unchanged ones.
 
-        When refresh() is called, unchanged skills are skipped via content hash
-        checking. Only new skills (hash not found) or changed skills (hash mismatch)
+        When refresh() is called, unchanged workflows are skipped via content hash
+        checking. Only new workflows (hash not found) or changed workflows (hash mismatch)
         are re-indexed.
         """
-        from py_code_mode.skills import MemorySkillStore, MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MemoryWorkflowStore, MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
-        store = MemorySkillStore()
+        store = MemoryWorkflowStore()
 
-        # Populate store with skills
-        skill1 = _make_skill("skill1", "first skill", "pass")
-        skill2 = _make_skill("skill2", "second skill", "pass")
-        store.save(skill1)
-        store.save(skill2)
+        # Populate store with workflows
+        workflow1 = _make_workflow("workflow1", "first workflow", "pass")
+        workflow2 = _make_workflow("workflow2", "second workflow", "pass")
+        store.save(workflow1)
+        store.save(workflow2)
 
         # Create library - should index on construction
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store, store=store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store, store=store)
 
-        # Should have indexed both skills
+        # Should have indexed both workflows
         initial_add_count = len(vector_store.add_calls)
         assert initial_add_count == 2
 
-        # Add another skill to store (bypassing library)
-        skill3 = _make_skill("skill3", "third skill", "pass")
-        store.save(skill3)
+        # Add another workflow to store (bypassing library)
+        workflow3 = _make_workflow("workflow3", "third workflow", "pass")
+        store.save(workflow3)
 
         # Refresh to pick up changes
         library.refresh()
 
-        # Should have indexed only the NEW skill (skill3)
-        # Unchanged skills (skill1, skill2) are skipped via content hash match
-        # Total adds should be initial + 1 (only skill3)
+        # Should have indexed only the NEW workflow (workflow3)
+        # Unchanged workflows (workflow1, workflow2) are skipped via content hash match
+        # Total adds should be initial + 1 (only workflow3)
         assert len(vector_store.add_calls) == initial_add_count + 1
 
-        # Verify the new skill was indexed
+        # Verify the new workflow was indexed
         last_add = vector_store.add_calls[-1]
-        assert last_add[0] == "skill3"  # id is first element
+        assert last_add[0] == "workflow3"  # id is first element
 
 
-class TestRemoveSkillVectorStore:
+class TestRemoveWorkflowVectorStore:
     """Test that remove() cleans up vector_store."""
 
     def test_remove_deletes_from_vector_store(self) -> None:
         """remove() should delete embeddings from vector_store."""
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        skill = _make_skill("test", "test skill", "pass")
-        library.add(skill)
+        workflow = _make_workflow("test", "test workflow", "pass")
+        library.add(workflow)
 
-        # Remove the skill
+        # Remove the workflow
         result = library.remove("test")
 
         assert result is True
@@ -564,22 +566,22 @@ class TestRemoveSkillVectorStore:
         assert len(vector_store.remove_calls) == 1
         assert vector_store.remove_calls[0] == "test"
 
-    def test_remove_still_removes_from_skills_dict(self) -> None:
-        """remove() should still remove from _skills dict (existing behavior)."""
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+    def test_remove_still_removes_from_workflows_dict(self) -> None:
+        """remove() should still remove from _workflows dict (existing behavior)."""
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        skill = _make_skill("test", "test skill", "pass")
-        library.add(skill)
+        workflow = _make_workflow("test", "test workflow", "pass")
+        library.add(workflow)
 
         library.remove("test")
 
-        # Should be gone from _skills
-        assert "test" not in library._skills
+        # Should be gone from _workflows
+        assert "test" not in library._workflows
         assert library.get("test") is None
 
 
@@ -610,38 +612,38 @@ class TestVectorStoreProtocolCompliance:
 class TestWarmStartupCaching:
     """Test that vector_store caching works across library instances."""
 
-    def test_warm_startup_skips_embedding_for_unchanged_skills(self) -> None:
-        """Warm startup should skip re-embedding unchanged skills.
+    def test_warm_startup_skips_embedding_for_unchanged_workflows(self) -> None:
+        """Warm startup should skip re-embedding unchanged workflows.
 
-        When SkillLibrary restarts with existing vector_store, unchanged skills
+        When WorkflowLibrary restarts with existing vector_store, unchanged workflows
         should NOT be re-embedded.
 
-        Scenario: Application restarts, creates new SkillLibrary with same vector_store.
+        Scenario: Application restarts, creates new WorkflowLibrary with same vector_store.
         Expected: Embeddings cached in vector_store are reused, not regenerated.
 
         This test will FAIL because refresh() calls clear() which defeats caching.
         """
-        from py_code_mode.skills import MemorySkillStore, MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MemoryWorkflowStore, MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
-        store = MemorySkillStore()
+        store = MemoryWorkflowStore()
 
-        # Pre-populate store with a skill
-        skill = _make_skill(
+        # Pre-populate store with a workflow
+        workflow = _make_workflow(
             "fetch_url", "Fetch content from a URL", "return requests.get(url).text"
         )
-        store.save(skill)
+        store.save(workflow)
 
-        # First startup: create library, indexes the skill
-        SkillLibrary(embedder=embedder, vector_store=vector_store, store=store)
+        # First startup: create library, indexes the workflow
+        WorkflowLibrary(embedder=embedder, vector_store=vector_store, store=store)
 
         # Verify first startup called add() once
-        assert len(vector_store.add_calls) == 1, "First startup should embed the skill"
+        assert len(vector_store.add_calls) == 1, "First startup should embed the workflow"
 
-        # SIMULATE RESTART: Create NEW SkillLibrary instance with SAME vector_store
+        # SIMULATE RESTART: Create NEW WorkflowLibrary instance with SAME vector_store
         # (This is what happens when app restarts with persistent ChromaDB)
-        SkillLibrary(embedder=embedder, vector_store=vector_store, store=store)
+        WorkflowLibrary(embedder=embedder, vector_store=vector_store, store=store)
 
         # BUG: refresh() calls clear() which wipes the cache, so add() is called AGAIN
         # EXPECTED: add() should NOT be called again (content hash matches)
@@ -655,25 +657,29 @@ class TestEndToEndVectorStoreWorkflow:
     """Integration test: end-to-end workflow with VectorStore."""
 
     def test_add_search_remove_workflow(self) -> None:
-        """Full workflow: add skills, search, remove.
+        """Full workflow: add workflows, search, remove.
 
         This is the user journey test that exercises the full integration.
         """
-        from py_code_mode.skills import MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
 
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store)
 
-        # Add skills
-        skill1 = _make_skill("fetch_url", "Fetch content from URL", "return requests.get(url).text")
-        skill2 = _make_skill("parse_json", "Parse JSON string", "return json.loads(text)")
-        skill3 = _make_skill("write_file", "Write text to file", "Path(path).write_text(content)")
+        # Add workflows
+        workflow1 = _make_workflow(
+            "fetch_url", "Fetch content from URL", "return requests.get(url).text"
+        )
+        workflow2 = _make_workflow("parse_json", "Parse JSON string", "return json.loads(text)")
+        workflow3 = _make_workflow(
+            "write_file", "Write text to file", "Path(path).write_text(content)"
+        )
 
-        library.add(skill1)
-        library.add(skill2)
-        library.add(skill3)
+        library.add(workflow1)
+        library.add(workflow2)
+        library.add(workflow3)
 
         # Search should delegate to vector_store
         results = library.search("download")
@@ -683,38 +689,38 @@ class TestEndToEndVectorStoreWorkflow:
         # Verify vector_store was used
         assert len(vector_store.search_calls) >= 1
 
-        # Remove a skill
+        # Remove a workflow
         library.remove("fetch_url")
 
         # Should have removed from vector_store
         assert "fetch_url" in vector_store.remove_calls
 
-        # Search shouldn't find removed skill
+        # Search shouldn't find removed workflow
         results = library.search("download")
         assert not any(r.name == "fetch_url" for r in results)
 
     def test_store_backed_library_with_vector_store(self) -> None:
-        """SkillLibrary with both store and vector_store.
+        """WorkflowLibrary with both store and vector_store.
 
         This tests the three-layer architecture:
-        - SkillStore: persistence
+        - WorkflowStore: persistence
         - VectorStore: embedding cache
-        - SkillLibrary: orchestration
+        - WorkflowLibrary: orchestration
         """
-        from py_code_mode.skills import MemorySkillStore, MockEmbedder, SkillLibrary
+        from py_code_mode.workflows import MemoryWorkflowStore, MockEmbedder, WorkflowLibrary
 
         embedder = MockEmbedder(dimension=384)
         vector_store = MockVectorStore()
-        store = MemorySkillStore()
+        store = MemoryWorkflowStore()
 
         # Populate store
-        skill1 = _make_skill("skill1", "first", "pass")
-        skill2 = _make_skill("skill2", "second", "pass")
-        store.save(skill1)
-        store.save(skill2)
+        workflow1 = _make_workflow("workflow1", "first", "pass")
+        workflow2 = _make_workflow("workflow2", "second", "pass")
+        store.save(workflow1)
+        store.save(workflow2)
 
         # Create library with both store and vector_store
-        library = SkillLibrary(embedder=embedder, vector_store=vector_store, store=store)
+        library = WorkflowLibrary(embedder=embedder, vector_store=vector_store, store=store)
 
         # Should have loaded from store and indexed in vector_store
         assert len(library) == 2
@@ -725,9 +731,9 @@ class TestEndToEndVectorStoreWorkflow:
         assert len(results) >= 1
         assert len(vector_store.search_calls) >= 1
 
-        # Add new skill - should go to both store and vector_store
-        skill3 = _make_skill("skill3", "third", "pass")
-        library.add(skill3)
+        # Add new workflow - should go to both store and vector_store
+        workflow3 = _make_workflow("workflow3", "third", "pass")
+        library.add(workflow3)
 
-        assert store.exists("skill3")
-        assert any(call[0] == "skill3" for call in vector_store.add_calls)
+        assert store.exists("workflow3")
+        assert any(call[0] == "workflow3" for call in vector_store.add_calls)

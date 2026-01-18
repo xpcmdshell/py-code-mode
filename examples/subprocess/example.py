@@ -30,13 +30,13 @@ from pathlib import Path
 from py_code_mode import FileStorage, Session
 from py_code_mode.execution import SubprocessConfig, SubprocessExecutor
 
-# Shared tools and skills directory
+# Shared tools and workflows directory
 HERE = Path(__file__).parent
 SHARED = HERE.parent / "shared"
 
 
 async def main() -> None:
-    # Storage for skills and artifacts only
+    # Storage for workflows and artifacts only
     storage = FileStorage(base_path=SHARED)
 
     # Configure subprocess executor with tools from config
@@ -71,10 +71,10 @@ async def main() -> None:
         result = await session.run("tools.list()")
         print(f"  Available tools: {result.value}")
 
-        # Searching for skills
-        print("\nSearching for skills...")
-        result = await session.run('skills.search("fetch")')
-        print(f"  Found skills: {result.value}")
+        # Searching for workflows
+        print("\nSearching for workflows...")
+        result = await session.run('workflows.search("fetch")')
+        print(f"  Found workflows: {result.value}")
 
         # Demonstrate stdout capture
         print("\nStdout capture...")

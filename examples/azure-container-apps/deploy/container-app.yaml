@@ -43,8 +43,8 @@ properties:
           - name: TOOLS_CONFIG
             value: /workspace/configs/tools.yaml
           # Skills directory
-          - name: SKILLS_DIR
-            value: /workspace/configs/skills
+          - name: WORKFLOWS_DIR
+            value: /workspace/configs/workflows
           # Artifact storage path
           - name: ARTIFACTS_PATH
             value: /workspace/artifacts
@@ -91,7 +91,7 @@ properties:
         storageType: AzureFile
         storageName: artifacts-share  # Must be created first
 
-      # Configuration files (tools.yaml, skills/)
+      # Configuration files (tools.yaml, workflows/)
       - name: configs
         storageType: AzureFile
         storageName: configs-share  # Must be created first

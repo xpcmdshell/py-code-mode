@@ -2,7 +2,7 @@
 
 This module provides the KERNEL_INIT_CODE constant - a Python code string that
 is executed in the kernel subprocess to set up the RPC mechanism and proxy
-namespaces for tools, skills, artifacts, and deps.
+namespaces for tools, workflows, artifacts, and deps.
 
 The proxies forward all namespace operations to the host via the stdin channel,
 which allows the host to control access to storage and tools while maintaining
@@ -92,12 +92,12 @@ class NamespaceError(RPCError):
         self.__traceback__ = None  # Suppress traceback - error is from host, not kernel
 
 
-class SkillError(NamespaceError):
-    """Error in skills namespace operation."""
+class WorkflowError(NamespaceError):
+    """Error in workflows namespace operation."""
     def __init__(
         self, operation: str, message: str, original_type: str = "RuntimeError"
     ) -> None:
-        super().__init__("skills", operation, message, original_type)
+        super().__init__("workflows", operation, message, original_type)
 
 
 class ToolError(NamespaceError):
@@ -153,10 +153,10 @@ class SyncResult(NamedTuple):
     failed: tuple[str, ...]
 
 
-class Skill(NamedTuple):
-    """Lightweight Skill for kernel-side use.
+class Workflow(NamedTuple):
+    """Lightweight Workflow for kernel-side use.
 
-    Mirrors py_code_mode.skills.skill.PythonSkill structure.
+    Mirrors py_code_mode.workflows.workflow.PythonWorkflow structure.
     """
     name: str
     description: str
@@ -280,8 +280,8 @@ def _rpc_call(method: str, **params) -> Any:
 
                 # Map namespace to error class, suppress traceback (from None)
                 # The error originated host-side, kernel traceback is just RPC plumbing
-                if namespace == "skills":
-                    raise SkillError(operation, message, error_type) from None
+                if namespace == "workflows":
+                    raise WorkflowError(operation, message, error_type) from None
                 elif namespace == "tools":
                     raise ToolError(operation, message, error_type) from None
                 elif namespace == "artifacts":
@@ -401,54 +401,54 @@ class ToolsProxy:
         return _rpc_call("tools.search", query=query, limit=limit)
 
 
-class SkillsProxy:
-    """Proxy for invoking host skills.
+class WorkflowsProxy:
+    """Proxy for invoking host workflows.
 
     Supports:
-    - skills.invoke("name", arg=value) - invoke a skill
-    - skills.search("query") - search for skills
-    - skills.list() - list all skills
-    - skills.get("name") - get skill details
-    - skills.create("name", source, description) - create a skill
-    - skills.skill_name(arg=value) - direct invocation syntax
+    - workflows.invoke("name", arg=value) - invoke a workflow
+    - workflows.search("query") - search for workflows
+    - workflows.list() - list all workflows
+    - workflows.get("name") - get workflow details
+    - workflows.create("name", source, description) - create a workflow
+    - workflows.workflow_name(arg=value) - direct invocation syntax
     """
 
-    def invoke(self, skill_name: str, **kwargs) -> Any:
-        """Invoke a skill by name.
+    def invoke(self, workflow_name: str, **kwargs) -> Any:
+        """Invoke a workflow by name.
 
-        Gets skill source from host and executes it locally in the kernel.
-        This ensures skills can import packages installed at runtime.
-        Handles async skills by running them with asyncio.run().
+        Gets workflow source from host and executes it locally in the kernel.
+        This ensures workflows can import packages installed at runtime.
+        Handles async workflows by running them with asyncio.run().
 
         Args:
-            skill_name: Name of the skill to invoke.
-            **kwargs: Arguments to pass to the skill's run() function.
+            workflow_name: Name of the workflow to invoke.
+            **kwargs: Arguments to pass to the workflow's run() function.
 
-        Note: Uses skill_name (not name) to avoid collision with skills
+        Note: Uses workflow_name (not name) to avoid collision with workflows
         that have a 'name' parameter.
         """
         import asyncio
 
-        skill = _rpc_call("skills.get", name=skill_name)
-        if skill is None:
-            raise ValueError(f"Skill not found: {{skill_name}}")
+        workflow = _rpc_call("workflows.get", name=workflow_name)
+        if workflow is None:
+            raise ValueError(f"Workflow not found: {{workflow_name}}")
 
-        source = skill.get("source")
+        source = workflow.get("source")
         if not source:
-            raise ValueError(f"Skill has no source: {{skill_name}}")
+            raise ValueError(f"Workflow has no source: {{workflow_name}}")
 
-        skill_namespace = {{
+        workflow_namespace = {{
             "tools": tools,
-            "skills": skills,
+            "workflows": workflows,
             "artifacts": artifacts,
             "deps": deps,
         }}
-        code = compile(source, f"<skill:{{skill_name}}>", "exec")
-        exec(code, skill_namespace)
+        code = compile(source, f"<workflow:{{workflow_name}}>", "exec")
+        exec(code, workflow_namespace)
 
-        run_func = skill_namespace.get("run")
+        run_func = workflow_namespace.get("run")
         if not callable(run_func):
-            raise ValueError(f"Skill {{skill_name}} has no run() function")
+            raise ValueError(f"Workflow {{workflow_name}} has no run() function")
 
         result = run_func(**kwargs)
         if asyncio.iscoroutine(result):
@@ -466,15 +466,15 @@ class SkillsProxy:
             return asyncio.run(result)
         return result
 
-    def search(self, query: str, limit: int = 5) -> list[Skill]:
-        """Search for skills matching query.
+    def search(self, query: str, limit: int = 5) -> list[Workflow]:
+        """Search for workflows matching query.
 
         Returns:
-            List of Skill objects matching the query.
+            List of Workflow objects matching the query.
         """
-        result = _rpc_call("skills.search", query=query, limit=limit)
+        result = _rpc_call("workflows.search", query=query, limit=limit)
         return [
-            Skill(
+            Workflow(
                 name=s["name"],
                 description=s.get("description", ""),
                 params=s.get("params", {{}}),
@@ -482,15 +482,15 @@ class SkillsProxy:
             for s in result
         ]
 
-    def list(self) -> list[Skill]:
-        """List all available skills.
+    def list(self) -> list[Workflow]:
+        """List all available workflows.
 
         Returns:
-            List of Skill objects.
+            List of Workflow objects.
         """
-        result = _rpc_call("skills.list")
+        result = _rpc_call("workflows.list")
         return [
-            Skill(
+            Workflow(
                 name=s["name"],
                 description=s.get("description", ""),
                 params=s.get("params", {{}}),
@@ -499,35 +499,36 @@ class SkillsProxy:
         ]
 
     def get(self, name: str) -> dict[str, Any] | None:
-        """Get a skill by name.
+        """Get a workflow by name.
 
-        Returns full skill details including source.
+        Returns full workflow details including source.
         """
-        return _rpc_call("skills.get", name=name)
+        return _rpc_call("workflows.get", name=name)
 
-    def create(self, name: str, source: str, description: str = "") -> Skill:
-        """Create and save a new skill.
+    def create(self, name: str, source: str, description: str = "") -> Workflow:
+        """Create and save a new workflow.
 
         Returns:
-            Skill object for the created skill.
+            Workflow object for the created workflow.
         """
-        result = _rpc_call("skills.create", name=name, source=source, description=description)
-        return Skill(
+        result = _rpc_call("workflows.create", name=name, source=source, description=description)
+        return Workflow(
             name=result["name"],
             description=result.get("description", ""),
             params=result.get("params", {{}}),
         )
 
     def delete(self, name: str) -> bool:
-        """Delete a skill."""
-        return _rpc_call("skills.delete", name=name)
+        """Delete a workflow."""
+        return _rpc_call("workflows.delete", name=name)
 
     def __getattr__(self, name: str) -> Any:
-        """Allow skills.skill_name(...) syntax."""
+        """Allow workflows.workflow_name(...) syntax."""
         if name.startswith("_"):
             raise AttributeError(name)
-        # Return a callable that invokes the skill
+        # Return a callable that invokes the workflow
         return lambda **kwargs: self.invoke(name, **kwargs)
+
 
 
 class ArtifactsProxy:
@@ -654,11 +655,11 @@ class DepsProxy:
 
 # Inject proxies as globals
 tools = ToolsProxy()
-skills = SkillsProxy()
+workflows = WorkflowsProxy()
 artifacts = ArtifactsProxy()
 deps = DepsProxy()
 
-print("RPC initialized: tools, skills, artifacts, deps are available (via stdin channel)")
+print("RPC initialized: tools, workflows, artifacts, deps are available (via stdin channel)")
 '''
 
 

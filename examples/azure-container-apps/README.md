@@ -19,7 +19,7 @@ Production deployment of py-code-mode on Azure Container Apps with Redis-backed 
 |          |                                                 v                            |
 |  +-------+-------+                              +------------------------+              |
 |  | User (HTTPS)  |                              | Azure Cache for Redis  |              |
-|  +---------------+                              | - tools, skills        |              |
+|  +---------------+                              | - tools, workflows        |              |
 |                                                 | - artifacts, deps      |              |
 |                                                 +------------------------+              |
 +-----------------------------------------------------------------------------------------+
@@ -32,7 +32,7 @@ Production deployment of py-code-mode on Azure Container Apps with Redis-backed 
 1. User sends request to Agent Server (external HTTPS endpoint)
 2. Agent Server authenticates to Session Server using Bearer token
 3. Session Server executes code with tools from Redis
-4. Artifacts and skills persist to Redis for cross-session access
+4. Artifacts and workflows persist to Redis for cross-session access
 
 ## Prerequisites
 
@@ -81,9 +81,9 @@ docker push <acr>.azurecr.io/py-code-mode-session:latest
 docker push <acr>.azurecr.io/py-code-mode-agent:latest
 ```
 
-### 3. Bootstrap Redis with Tools/Skills/Deps
+### 3. Bootstrap Redis with Tools/Workflows/Deps
 
-Before deploying the apps, populate Redis with tools, skills, and pre-configured dependencies:
+Before deploying the apps, populate Redis with tools, workflows, and pre-configured dependencies:
 
 ```bash
 # Get Redis connection string from infrastructure output
@@ -97,12 +97,12 @@ python -m py_code_mode.cli.store bootstrap \
     --prefix pycodemode:tools \
     --type tools
 
-# Bootstrap skills
+# Bootstrap workflows
 python -m py_code_mode.cli.store bootstrap \
-    --source ./examples/shared/skills \
+    --source ./examples/shared/workflows \
     --target "$REDIS_URL" \
-    --prefix pycodemode:skills \
-    --type skills
+    --prefix pycodemode:workflows \
+    --type workflows
 
 # Bootstrap deps (pre-configure Python packages)
 python -m py_code_mode.cli.store bootstrap \
@@ -143,7 +143,7 @@ AGENT_URL=$(az containerapp show --name agent-server --resource-group my-resourc
 # Submit a task
 curl -X POST "https://$AGENT_URL/task" \
     -H "Content-Type: application/json" \
-    -d '{"task": "List available tools and skills"}'
+    -d '{"task": "List available tools and workflows"}'
 
 # Check health
 curl "https://$AGENT_URL/health"
@@ -158,14 +158,14 @@ All persistent data is stored in Azure Cache for Redis:
 | Data Type | Redis Key Pattern | Description |
 |-----------|-------------------|-------------|
 | Tools | `agent:tools:*` | CLI tool definitions (YAML) |
-| Skills | `agent:skills:*` | Reusable Python skills |
+| Workflows | `agent:workflows:*` | Reusable Python workflows |
 | Artifacts | `agent:artifacts:*` | Persisted data from agent sessions |
 | Dependencies | `agent:deps` | Pre-configured Python packages |
 
-**Why Redis instead of Azure Files for tools/skills?**
+**Why Redis instead of Azure Files for tools/workflows?**
 - Faster access (in-memory vs file I/O)
 - Better for distributed deployments (multiple replicas)
-- Atomic operations for skill creation
+- Atomic operations for workflow creation
 - Semantic search support via embeddings
 
 Azure Files is still used for:
@@ -220,11 +220,11 @@ recipes:
 
 ### Skill Definitions
 
-Skills are Python files with an `async def run()` function:
+Workflows are Python files with an `async def run()` function:
 
 ```python
-# examples/shared/skills/analyze_repo.py
-"""Analyze a GitHub repository - demonstrates multi-tool skill workflow."""
+# examples/shared/workflows/analyze_repo.py
+"""Analyze a GitHub repository - demonstrates multi-tool workflow workflow."""
 
 import json
 
@@ -255,7 +255,7 @@ async def run(repo: str) -> dict:
     }
 ```
 
-Agents invoke skills with: `skills.invoke("analyze_repo", repo="anthropics/claude-code")`
+Agents invoke workflows with: `workflows.invoke("analyze_repo", repo="anthropics/claude-code")`
 
 ### Pre-configured Dependencies
 
@@ -370,7 +370,7 @@ scale:
 - Session server scales based on code execution load
 - Agent server scales based on concurrent user requests
 - Redis handles concurrent connections from all replicas
-- Artifacts and skills are shared across all replicas via Redis
+- Artifacts and workflows are shared across all replicas via Redis
 
 ## Monitoring
 
@@ -438,14 +438,14 @@ az containerapp show --name agent-server --resource-group my-rg \
     --query "properties.template.containers[0].env[?name=='SESSION_AUTH_TOKEN']"
 ```
 
-### Tools/Skills not found
+### Tools/Workflows not found
 
 Verify data was bootstrapped to Redis:
 ```bash
 # Connect to Redis and check keys
 redis-cli -h <redis>.redis.cache.windows.net -p 6380 --tls -a <key>
 > KEYS agent:tools:*
-> KEYS agent:skills:*
+> KEYS agent:workflows:*
 ```
 
 ### Connection refused from agent
@@ -512,11 +512,11 @@ Run the agent locally against a local Redis:
 # Start Redis
 docker run -d --name redis -p 6379:6379 redis:7-alpine
 
-# Bootstrap tools and skills
+# Bootstrap tools and workflows
 REDIS_URL=redis://localhost:6379 python -m py_code_mode.store bootstrap \
     --source ../shared/tools --target redis://localhost:6379 --prefix agent:tools --type tools
 REDIS_URL=redis://localhost:6379 python -m py_code_mode.store bootstrap \
-    --source ../shared/skills --target redis://localhost:6379 --prefix agent:skills
+    --source ../shared/workflows --target redis://localhost:6379 --prefix agent:workflows
 
 # Run agent
 cd examples/azure-container-apps

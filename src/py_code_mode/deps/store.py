@@ -15,7 +15,7 @@ __all__ = [
 import hashlib
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from redis import Redis
@@ -392,7 +392,7 @@ class RedisDepsStore:
 
     def list(self) -> list[str]:
         """Return list of all packages."""
-        members = self._redis.smembers(self._key)
+        members = cast(set[str | bytes], self._redis.smembers(self._key))
         if not members:
             return []
         # Decode bytes if needed

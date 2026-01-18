@@ -1,4 +1,4 @@
-"""Unified storage backend protocol for skills and artifacts.
+"""Unified storage backend protocol for workflows and artifacts.
 
 This module provides a protocol that unifies storage under a single interface,
 enabling swapping between FileStorage and RedisStorage.
@@ -15,28 +15,28 @@ from urllib.parse import quote
 
 from py_code_mode.artifacts import ArtifactStoreProtocol, FileArtifactStore, RedisArtifactStore
 from py_code_mode.execution.protocol import FileStorageAccess, RedisStorageAccess
-from py_code_mode.skills import (
-    FileSkillStore,
-    RedisSkillStore,
-    SkillLibrary,
-    SkillStore,
+from py_code_mode.workflows import (
+    FileWorkflowStore,
+    RedisWorkflowStore,
     VectorStore,
-    create_skill_library,
+    WorkflowLibrary,
+    WorkflowStore,
+    create_workflow_library,
 )
 
 # Import ChromaVectorStore at module level for test mocking support
 # The actual import in get_vector_store() handles the ImportError gracefully
 try:
-    from py_code_mode.skills.vector_stores.chroma import ChromaVectorStore
+    from py_code_mode.workflows.vector_stores.chroma import ChromaVectorStore
 except ImportError:
     ChromaVectorStore = None  # type: ignore[misc, assignment]
 
 # Import RedisVectorStore at module level for test mocking support
 try:
-    from py_code_mode.skills.vector_stores.redis_store import (
+    from py_code_mode.workflows.vector_stores.redis_store import (
         REDIS_AVAILABLE as REDIS_VECTOR_AVAILABLE,
     )
-    from py_code_mode.skills.vector_stores.redis_store import (
+    from py_code_mode.workflows.vector_stores.redis_store import (
         RedisVectorStore,
     )
 except ImportError:
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 class StorageBackend(Protocol):
     """Protocol for unified storage backend.
 
-    Provides skills and artifacts storage under a single interface.
+    Provides workflows and artifacts storage under a single interface.
     Tools and deps are owned by executors (via config), not storage.
     """
 
@@ -65,10 +65,10 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def get_skill_library(self) -> SkillLibrary:
-        """Return SkillLibrary for in-process execution.
+    def get_workflow_library(self) -> WorkflowLibrary:
+        """Return WorkflowLibrary for in-process execution.
 
-        This method provides a library of skills loaded from storage for executors.
+        This method provides a library of workflows loaded from storage for executors.
         """
         ...
 
@@ -81,7 +81,7 @@ class StorageBackend(Protocol):
 
 
 class FileStorage:
-    """File-based storage using directories for skills and artifacts.
+    """File-based storage using directories for workflows and artifacts.
 
     Tools and deps are owned by executors (via config), not storage.
     """
@@ -92,13 +92,13 @@ class FileStorage:
         """Initialize file storage.
 
         Args:
-            base_path: Base directory for storage. Will create skills/, artifacts/ subdirs.
+            base_path: Base directory for storage. Will create workflows/, artifacts/ subdirs.
         """
         self._base_path = Path(base_path) if isinstance(base_path, str) else base_path
         self._base_path.mkdir(parents=True, exist_ok=True)
 
-        # Lazy-initialized stores (skills and artifacts only)
-        self._skill_library: SkillLibrary | None = None
+        # Lazy-initialized stores (workflows and artifacts only)
+        self._workflow_library: WorkflowLibrary | None = None
         self._artifact_store: FileArtifactStore | None = None
         self._vector_store: VectorStore | None | object = FileStorage._UNINITIALIZED
 
@@ -107,11 +107,11 @@ class FileStorage:
         """Get the root storage path."""
         return self._base_path
 
-    def _get_skills_path(self) -> Path:
-        """Get the skills directory path."""
-        skills_path = self._base_path / "skills"
-        skills_path.mkdir(parents=True, exist_ok=True)
-        return skills_path
+    def _get_workflows_path(self) -> Path:
+        """Get the workflows directory path."""
+        workflows_path = self._base_path / "workflows"
+        workflows_path.mkdir(parents=True, exist_ok=True)
+        return workflows_path
 
     def _get_artifacts_path(self) -> Path:
         """Get the artifacts directory path."""
@@ -141,7 +141,7 @@ class FileStorage:
             self._vector_store = None
         else:
             try:
-                from py_code_mode.skills import Embedder
+                from py_code_mode.workflows import Embedder
 
                 vectors_path = self._get_vectors_path()
                 embedder = Embedder()
@@ -157,19 +157,19 @@ class FileStorage:
         vectors_path = base_path / "vectors"
 
         return FileStorageAccess(
-            skills_path=base_path / "skills",
+            workflows_path=base_path / "workflows",
             artifacts_path=base_path / "artifacts",
             vectors_path=vectors_path if vectors_path.exists() else None,
         )
 
-    def get_skill_library(self) -> SkillLibrary:
-        """Return SkillLibrary for in-process execution."""
-        if self._skill_library is None:
-            skills_path = self._get_skills_path()
-            raw_store = FileSkillStore(skills_path)
+    def get_workflow_library(self) -> WorkflowLibrary:
+        """Return WorkflowLibrary for in-process execution."""
+        if self._workflow_library is None:
+            workflows_path = self._get_workflows_path()
+            raw_store = FileWorkflowStore(workflows_path)
             vector_store = self.get_vector_store()
             try:
-                self._skill_library = create_skill_library(
+                self._workflow_library = create_workflow_library(
                     store=raw_store,
                     vector_store=vector_store,
                 )
@@ -178,14 +178,14 @@ class FileStorage:
                     "Semantic search dependencies not available, falling back to MockEmbedder. "
                     "Install with: pip install sentence-transformers scikit-learn"
                 )
-                from py_code_mode.skills import MockEmbedder
+                from py_code_mode.workflows import MockEmbedder
 
-                self._skill_library = SkillLibrary(
+                self._workflow_library = WorkflowLibrary(
                     embedder=MockEmbedder(),
                     store=raw_store,
                     vector_store=vector_store,
                 )
-        return self._skill_library
+        return self._workflow_library
 
     def get_artifact_store(self) -> ArtifactStoreProtocol:
         """Return artifact store for in-process execution."""
@@ -193,10 +193,10 @@ class FileStorage:
             self._artifact_store = FileArtifactStore(self._get_artifacts_path())
         return self._artifact_store
 
-    def get_skill_store(self) -> SkillStore:
-        """Return the underlying SkillStore for direct access."""
-        skills_path = self._get_skills_path()
-        return FileSkillStore(skills_path)
+    def get_workflow_store(self) -> WorkflowStore:
+        """Return the underlying WorkflowStore for direct access."""
+        workflows_path = self._get_workflows_path()
+        return FileWorkflowStore(workflows_path)
 
     def to_bootstrap_config(self) -> dict[str, str]:
         """Serialize storage configuration for subprocess bootstrap.
@@ -213,7 +213,7 @@ class FileStorage:
 
 
 class RedisStorage:
-    """Redis-based storage for skills and artifacts.
+    """Redis-based storage for workflows and artifacts.
 
     Tools and deps are owned by executors (via config), not storage.
     """
@@ -249,13 +249,18 @@ class RedisStorage:
             self._redis = RedisClient.from_url(url)
             self._url = url
         else:
+            if redis is None:
+                raise ValueError("Redis client must be provided when url is None")
             self._redis = redis
             self._url = None  # Will be reconstructed if needed
 
+        if self._redis is None:
+            raise ValueError("Redis client is required")
+
         self._prefix = prefix
 
-        # Lazy-initialized stores (skills and artifacts only)
-        self._skill_library: SkillLibrary | None = None
+        # Lazy-initialized stores (workflows and artifacts only)
+        self._workflow_library: WorkflowLibrary | None = None
         self._artifact_store: RedisArtifactStore | None = None
         self._vector_store: VectorStore | None | object = RedisStorage._UNINITIALIZED
 
@@ -309,7 +314,7 @@ class RedisStorage:
             self._vector_store = None
         else:
             try:
-                from py_code_mode.skills import Embedder
+                from py_code_mode.workflows import Embedder
 
                 embedder = Embedder()
                 self._vector_store = RedisVectorStore(
@@ -345,18 +350,18 @@ class RedisStorage:
         )
         return RedisStorageAccess(
             redis_url=redis_url,
-            skills_prefix=f"{prefix}:skills",
+            workflows_prefix=f"{prefix}:workflows",
             artifacts_prefix=f"{prefix}:artifacts",
             vectors_prefix=vectors_prefix,
         )
 
-    def get_skill_library(self) -> SkillLibrary:
-        """Return SkillLibrary for in-process execution."""
-        if self._skill_library is None:
-            raw_store = RedisSkillStore(self._redis, prefix=f"{self._prefix}:skills")
+    def get_workflow_library(self) -> WorkflowLibrary:
+        """Return WorkflowLibrary for in-process execution."""
+        if self._workflow_library is None:
+            raw_store = RedisWorkflowStore(self._redis, prefix=f"{self._prefix}:workflows")
             vector_store = self.get_vector_store()
             try:
-                self._skill_library = create_skill_library(
+                self._workflow_library = create_workflow_library(
                     store=raw_store,
                     vector_store=vector_store,
                 )
@@ -365,14 +370,14 @@ class RedisStorage:
                     "Semantic search dependencies not available, falling back to MockEmbedder. "
                     "Install with: pip install sentence-transformers scikit-learn"
                 )
-                from py_code_mode.skills import MockEmbedder
+                from py_code_mode.workflows import MockEmbedder
 
-                self._skill_library = SkillLibrary(
+                self._workflow_library = WorkflowLibrary(
                     embedder=MockEmbedder(),
                     store=raw_store,
                     vector_store=vector_store,
                 )
-        return self._skill_library
+        return self._workflow_library
 
     def get_artifact_store(self) -> ArtifactStoreProtocol:
         """Return artifact store for in-process execution."""
@@ -382,9 +387,9 @@ class RedisStorage:
             )
         return self._artifact_store
 
-    def get_skill_store(self) -> SkillStore:
-        """Return the underlying SkillStore for direct access."""
-        return RedisSkillStore(self._redis, prefix=f"{self._prefix}:skills")
+    def get_workflow_store(self) -> WorkflowStore:
+        """Return the underlying WorkflowStore for direct access."""
+        return RedisWorkflowStore(self._redis, prefix=f"{self._prefix}:workflows")
 
     def to_bootstrap_config(self) -> dict[str, str]:
         """Serialize storage configuration for subprocess bootstrap.

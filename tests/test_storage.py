@@ -50,17 +50,17 @@ class TestGetSerializableAccess:
 
         # NOTE: tools_path tests removed - tools now owned by executors, not storage
 
-        def test_skills_path_is_always_set(self, tmp_path: Path) -> None:
-            """skills_path is always set (points to skills/ subdirectory).
+        def test_workflows_path_is_always_set(self, tmp_path: Path) -> None:
+            """workflows_path is always set (points to workflows/ subdirectory).
 
-            Breaks when: skills_path is None or points to wrong location.
+            Breaks when: workflows_path is None or points to wrong location.
             """
             storage = FileStorage(tmp_path)
 
             result = storage.get_serializable_access()
 
-            expected_skills_path = tmp_path / "skills"
-            assert result.skills_path == expected_skills_path
+            expected_workflows_path = tmp_path / "workflows"
+            assert result.workflows_path == expected_workflows_path
 
         def test_artifacts_path_is_always_set(self, tmp_path: Path) -> None:
             """artifacts_path is always set (points to artifacts/ subdirectory).
@@ -83,9 +83,9 @@ class TestGetSerializableAccess:
 
             result = storage.get_serializable_access()
 
-            # skills_path may be None if skills directory doesn't exist
-            if result.skills_path is not None:
-                assert result.skills_path.is_absolute()
+            # workflows_path may be None if workflows directory doesn't exist
+            if result.workflows_path is not None:
+                assert result.workflows_path.is_absolute()
             assert result.artifacts_path.is_absolute()
 
         def test_access_descriptor_is_frozen_dataclass(self, tmp_path: Path) -> None:
@@ -173,8 +173,8 @@ class TestGetSerializableAccess:
 
         # NOTE: tools_prefix test removed - tools now owned by executors, not storage
 
-        def test_skills_prefix_is_correctly_formatted(self, mock_redis: MockRedisClient) -> None:
-            """skills_prefix follows {prefix}:skills format.
+        def test_workflows_prefix_is_correctly_formatted(self, mock_redis: MockRedisClient) -> None:
+            """workflows_prefix follows {prefix}:workflows format.
 
             Breaks when: Prefix format doesn't match expected pattern.
             """
@@ -182,7 +182,7 @@ class TestGetSerializableAccess:
 
             result = storage.get_serializable_access()
 
-            assert result.skills_prefix == "myapp:skills"
+            assert result.workflows_prefix == "myapp:workflows"
 
         def test_artifacts_prefix_is_correctly_formatted(self, mock_redis: MockRedisClient) -> None:
             """artifacts_prefix follows {prefix}:artifacts format.
@@ -279,4 +279,4 @@ class TestGetSerializableAccess:
 
 # NOTE: TestStorageBackendExecutionMethods was removed in the executor-ownership refactor.
 # storage.get_tool_registry() was removed - tools are now owned by executors via config.
-# storage.get_skill_library() tests remain in test_skills.py and test_semantic.py.
+# storage.get_workflow_library() tests remain in test_workflows.py and test_semantic.py.

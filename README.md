@@ -5,21 +5,21 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Give your AI agents code execution with persistent skills and tool integration.
+Give your AI agents code execution with persistent workflows and tool integration.
 
 ## The Core Idea
 
 Multi-step agent workflows are fragile. Each step requires a new LLM call that can hallucinate, pick the wrong tool, or lose context.
 
-**py-code-mode takes a different approach:** Agents write Python code. When a workflow succeeds, they save it as a **skill**. Next time they need that capability, they invoke the skill directly—no re-planning required.
+**py-code-mode takes a different approach:** Agents write Python code. When a workflow succeeds, they save it as a **workflow**. Next time they need that capability, they invoke the workflow directly—no re-planning required.
 
 ```
 First time:  Problem → Iterate → Success → Save as Skill
-Next time:   Search Skills → Found! → Invoke (no iteration needed)
+Next time:   Search Workflows → Found! → Invoke (no iteration needed)
 Later:       Skill A + Skill B → Compose into Skill C
 ```
 
-Over time, agents build a library of reliable capabilities. Simple skills become building blocks for complex workflows.
+Over time, agents build a library of reliable capabilities. Simple workflows become building blocks for complex workflows.
 
 ![py-code-mode Architecture](./docs/architecture.jpg)
 
@@ -28,19 +28,19 @@ Over time, agents build a library of reliable capabilities. Simple skills become
 ```python
 from py_code_mode import Session
 
-# One line setup - auto-discovers tools/, skills/, artifacts/, requirements.txt
+# One line setup - auto-discovers tools/, workflows/, artifacts/, requirements.txt
 async with Session.from_base("./.code-mode") as session:
     result = await session.run('''
-# Search for existing skills
-results = skills.search("github analysis")
+# Search for existing workflows
+results = workflows.search("github analysis")
 
 # Or create a new workflow
 import json
 repo_data = tools.curl.get(url="https://api.github.com/repos/anthropics/anthropic-sdk-python")
 parsed = json.loads(repo_data)
 
-# Save successful workflows as skills
-skills.create(
+# Save successful workflows as workflows
+workflows.create(
     name="fetch_repo_stars",
     source="""async def run(owner: str, repo: str) -> int:
     import json
@@ -87,8 +87,8 @@ claude mcp add py-code-mode -- uvx --from git+https://github.com/xpcmdshell/py-c
 
 ## Features
 
-- **Skill persistence** - Save working code as reusable skills, invoke later without re-planning
-- **Semantic search** - Find relevant skills and tools by natural language description
+- **Skill persistence** - Save working code as reusable workflows, invoke later without re-planning
+- **Semantic search** - Find relevant workflows and tools by natural language description
 - **Tool integration** - Wrap CLI commands, MCP servers, and HTTP APIs as callable functions
 - **Process isolation** - SubprocessExecutor runs code in a separate process with clean venv
 - **Multiple storage backends** - FileStorage for local dev, RedisStorage for distributed deployments
@@ -99,7 +99,7 @@ claude mcp add py-code-mode -- uvx --from git+https://github.com/xpcmdshell/py-c
 When agents write code, four namespaces are available:
 
 **tools**: CLI commands, MCP servers, and REST APIs wrapped as callable functions
-**skills**: Reusable Python workflows with semantic search
+**workflows**: Reusable Python workflows with semantic search
 **artifacts**: Persistent data storage across sessions
 **deps**: Runtime Python package management
 
@@ -108,12 +108,12 @@ When agents write code, four namespaces are available:
 tools.curl.get(url="https://api.example.com/data")
 tools.jq.query(filter=".key", input=json_data)
 
-# Skills: reusable workflows
-analysis = skills.invoke("analyze_repo", owner="anthropics", repo="anthropic-sdk-python")
+# Workflows: reusable workflows
+analysis = workflows.invoke("analyze_repo", owner="anthropics", repo="anthropic-sdk-python")
 
-# Skills can build on other skills
+# Workflows can build on other workflows
 async def run(repos: list) -> dict:
-    summaries = [skills.invoke("analyze_repo", **parse_repo(r)) for r in repos]
+    summaries = [workflows.invoke("analyze_repo", **parse_repo(r)) for r in repos]
     return {"total": len(summaries), "results": summaries}
 
 # Artifacts: persistent storage
@@ -130,7 +130,7 @@ For programmatic access without code strings, Session also provides facade metho
 ```python
 # Direct API access (useful for MCP servers, framework integrations)
 tools = await session.list_tools()
-skills = await session.search_skills("github analysis")
+workflows = await session.search_workflows("github analysis")
 await session.save_artifact("data", {"key": "value"})
 ```
 
@@ -151,7 +151,7 @@ For MCP server installation, see [Getting Started](./docs/getting-started.md).
 
 **Core Concepts:**
 - **[Tools](./docs/tools.md)** - CLI, MCP, and REST API adapters
-- **[Skills](./docs/skills.md)** - Creating, composing, and managing workflows
+- **[Workflows](./docs/workflows.md)** - Creating, composing, and managing workflows
 - **[Artifacts](./docs/artifacts.md)** - Persistent data storage patterns
 - **[Dependencies](./docs/dependencies.md)** - Managing Python packages
 

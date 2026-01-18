@@ -1,10 +1,10 @@
 # Storage
 
-Storage backends determine where skills and artifacts persist. Tools and dependencies are now owned by executors (via config).
+Storage backends determine where workflows and artifacts persist. Tools and dependencies are now owned by executors (via config).
 
 ## FileStorage
 
-Stores skills and artifacts in local directories. Good for development and single-instance deployments.
+Stores workflows and artifacts in local directories. Good for development and single-instance deployments.
 
 ```python
 from pathlib import Path
@@ -17,7 +17,7 @@ storage = FileStorage(base_path=Path("./data"))
 
 ```
 ./data/
-├── skills/         # Skill .py files
+├── workflows/         # Workflow .py files
 ├── artifacts/      # Saved data
 └── vectors/        # Embedding cache (if chromadb installed)
 ```
@@ -29,11 +29,11 @@ storage = FileStorage(base_path=Path("./data"))
 - ✓ Local development
 - ✓ Single-agent deployments
 - ✓ Simple setup with no external dependencies
-- ✓ Version control integration (commit skills to git)
+- ✓ Version control integration (commit workflows to git)
 
 ### Limitations
 
-- Single-instance only (no skill sharing between agents)
+- Single-instance only (no workflow sharing between agents)
 - No automatic backup
 - Manual synchronization if running multiple instances
 
@@ -41,7 +41,7 @@ storage = FileStorage(base_path=Path("./data"))
 
 ## RedisStorage
 
-Stores data in Redis. Enables skill sharing across multiple agent instances.
+Stores data in Redis. Enables workflow sharing across multiple agent instances.
 
 ```python
 from py_code_mode import RedisStorage
@@ -52,7 +52,7 @@ storage = RedisStorage(url="redis://localhost:6379", prefix="my-agents")
 ### Key Structure
 
 ```
-{prefix}:skills:{name}         # Skill source code
+{prefix}:workflows:{name}         # Workflow source code
 {prefix}:artifacts:{name}      # Artifact data
 {prefix}:vectors:*             # Embedding cache (if RediSearch available)
 ```
@@ -62,9 +62,9 @@ storage = RedisStorage(url="redis://localhost:6379", prefix="my-agents")
 ### When to Use
 
 - ✓ Multi-instance deployments
-- ✓ Skill sharing across agents
+- ✓ Workflow sharing across agents
 - ✓ Cloud deployments
-- ✓ Need centralized skill library
+- ✓ Need centralized workflow library
 
 ### Configuration
 
@@ -85,13 +85,13 @@ RedisStorage(
 
 ## One Agent Learns, All Agents Benefit
 
-**The power of RedisStorage:** When one agent creates a skill, it's immediately available to all other agents sharing the same Redis storage.
+**The power of RedisStorage:** When one agent creates a workflow, it's immediately available to all other agents sharing the same Redis storage.
 
 ```python
 # Agent Instance 1
 async with Session(storage=redis_storage) as session:
     await session.run('''
-skills.create(
+workflows.create(
     name="analyze_sentiment",
     source="""async def run(text: str) -> dict:
         # Implementation
@@ -103,8 +103,8 @@ skills.create(
 
 # Agent Instance 2 (different process, different machine)
 async with Session(storage=redis_storage) as session:
-    # Skill is already available!
-    result = await session.run('skills.invoke("analyze_sentiment", text="Great product!")')
+    # Workflow is already available!
+    result = await session.run('workflows.invoke("analyze_sentiment", text="Great product!")')
 ```
 
 ---
@@ -135,7 +135,7 @@ Use the CLI tools for migration (recommended):
 
 ```bash
 python -m py_code_mode.store bootstrap \
-  --source ./skills \
+  --source ./workflows \
   --target redis://localhost:6379 \
   --prefix production
 ```
@@ -146,36 +146,36 @@ python -m py_code_mode.store bootstrap \
 python -m py_code_mode.store pull \
   --target redis://localhost:6379 \
   --prefix production \
-  --dest ./skills-backup
+  --dest ./workflows-backup
 ```
 
 ---
 
 ## CLI Tools for Storage Management
 
-Bootstrap skills from file to Redis:
+Bootstrap workflows from file to Redis:
 
 ```bash
 python -m py_code_mode.store bootstrap \
-  --source ./skills \
+  --source ./workflows \
   --target redis://localhost:6379 \
   --prefix production
 ```
 
-Pull skills from Redis to file:
+Pull workflows from Redis to file:
 
 ```bash
 python -m py_code_mode.store pull \
   --target redis://localhost:6379 \
   --prefix production \
-  --dest ./skills-review
+  --dest ./workflows-review
 ```
 
 Compare file and Redis storage:
 
 ```bash
 python -m py_code_mode.store diff \
-  --source ./skills \
+  --source ./workflows \
   --target redis://localhost:6379 \
   --prefix production
 ```
@@ -187,13 +187,13 @@ python -m py_code_mode.store diff \
 ### Development
 
 - Use FileStorage for local development
-- Commit skills to version control
-- Use feature branches for experimental skills
+- Commit workflows to version control
+- Use feature branches for experimental workflows
 
 ### Production
 
 - Use RedisStorage for multi-instance deployments
-- Set appropriate TTLs if skills should expire
+- Set appropriate TTLs if workflows should expire
 - Use prefixes to isolate environments (dev/staging/prod)
 - Regular backups to file storage
 
@@ -203,16 +203,16 @@ python -m py_code_mode.store diff \
 - Consider separate Redis instances for hard isolation
 - Monitor Redis memory usage
 
-### Skill Lifecycle
+### Workflow Lifecycle
 
 ```python
-# Development: Create skills in file storage
-file_storage = FileStorage(base_path=Path("./skills"))
+# Development: Create workflows in file storage
+file_storage = FileStorage(base_path=Path("./workflows"))
 
-# Review: Pull skills for code review
+# Review: Pull workflows for code review
 # (use CLI tools)
 
-# Promotion: Push vetted skills to production
+# Promotion: Push vetted workflows to production
 redis_storage = RedisStorage(url="redis://prod-redis:6379", prefix="prod")
 # (use CLI tools to bootstrap)
 ```
@@ -242,4 +242,4 @@ def create_session(storage_type: str, tools_path: Path):
     return Session(storage=storage, executor=executor)
 ```
 
-All session features work with any storage backend - the choice only affects where skills and artifacts persist. Tools and deps come from executor config.
+All session features work with any storage backend - the choice only affects where workflows and artifacts persist. Tools and deps come from executor config.

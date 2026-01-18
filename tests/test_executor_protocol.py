@@ -146,7 +146,7 @@ recipes:
       message: {}
 """)
 
-        # Create storage (for skills/artifacts only)
+        # Create storage (for workflows/artifacts only)
         storage = FileStorage(tmp_path)
 
         # Configure executor with tools_path
@@ -165,8 +165,8 @@ recipes:
         await executor.close()
 
     @pytest.mark.asyncio
-    async def test_uses_storage_skills_via_get_skill_library(self, tmp_path: Path) -> None:
-        """InProcessExecutor uses storage.get_skill_library() for skills."""
+    async def test_uses_storage_workflows_via_get_workflow_library(self, tmp_path: Path) -> None:
+        """InProcessExecutor uses storage.get_workflow_library() for workflows."""
         from py_code_mode.execution.in_process import InProcessExecutor
         from py_code_mode.storage.backends import FileStorage
 
@@ -175,8 +175,8 @@ recipes:
         executor = InProcessExecutor()
         await executor.start(storage=storage)
 
-        # Should have skills namespace
-        result = await executor.run("'skills' in dir()")
+        # Should have workflows namespace
+        result = await executor.run("'workflows' in dir()")
         assert result.value is True
 
         await executor.close()
@@ -226,7 +226,7 @@ class TestInProcessExecutorRejectsOldTypes:
         from py_code_mode.execution.protocol import FileStorageAccess
 
         storage_access = FileStorageAccess(
-            skills_path=tmp_path / "skills",
+            workflows_path=tmp_path / "workflows",
             artifacts_path=tmp_path / "artifacts",
         )
 
@@ -247,7 +247,7 @@ class TestInProcessExecutorRejectsOldTypes:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
 
@@ -344,7 +344,7 @@ class TestContainerExecutorAcceptsStorageBackend:
         # NOTE: tools_prefix and deps_prefix removed - tools/deps now owned by executors
         expected_access = RedisStorageAccess(
             redis_url="redis://localhost:6379/0",
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
         storage.get_serializable_access = MagicMock(return_value=expected_access)
@@ -388,7 +388,7 @@ class TestContainerExecutorRejectsOldTypes:
         from py_code_mode.execution.protocol import FileStorageAccess
 
         storage_access = FileStorageAccess(
-            skills_path=tmp_path / "skills",
+            workflows_path=tmp_path / "workflows",
             artifacts_path=tmp_path / "artifacts",
         )
 
@@ -495,7 +495,7 @@ class TestSubprocessExecutorRejectsOldTypes:
         from py_code_mode.execution.subprocess.config import SubprocessConfig
 
         storage_access = FileStorageAccess(
-            skills_path=tmp_path / "skills",
+            workflows_path=tmp_path / "workflows",
             artifacts_path=tmp_path / "artifacts",
         )
 

@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from py_code_mode.artifacts import ArtifactStoreProtocol
     from py_code_mode.deps import DepsNamespace
-    from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
+    from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
     from py_code_mode.tools import ToolsNamespace
 
 
@@ -33,13 +33,13 @@ class NamespaceBundle:
 
     Provides the four namespaces needed for code execution:
     - tools: ToolsNamespace for tool access
-    - skills: SkillsNamespace for skill access
+    - workflows: WorkflowsNamespace for workflow access
     - artifacts: ArtifactStoreProtocol for artifact storage
     - deps: DepsNamespace for dependency management
     """
 
     tools: ToolsNamespace
-    skills: SkillsNamespace
+    workflows: WorkflowsNamespace
     artifacts: ArtifactStoreProtocol
     deps: DepsNamespace
 
@@ -58,7 +58,7 @@ async def bootstrap_namespaces(config: dict[str, Any]) -> NamespaceBundle:
                 - tools_path is optional; if provided, tools load from that directory
 
     Returns:
-        NamespaceBundle with tools, skills, artifacts namespaces.
+        NamespaceBundle with tools, workflows, artifacts namespaces.
 
     Raises:
         ValueError: If config["type"] is unknown or missing.
@@ -80,8 +80,7 @@ async def _load_tools_namespace(tools_path_str: str | None) -> ToolsNamespace:
 
     if tools_path_str:
         tools_path = Path(tools_path_str)
-        registry = ToolRegistry()
-        await registry.load_from_directory(tools_path)
+        registry = await ToolRegistry.from_dir(str(tools_path))
         return ToolsNamespace(registry)
 
     return ToolsNamespace(ToolRegistry())
@@ -94,19 +93,19 @@ def _build_namespace_bundle(
     artifact_store: ArtifactStoreProtocol,
 ) -> NamespaceBundle:
     """Wire up namespaces into a NamespaceBundle."""
-    from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
+    from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
 
     namespace_dict: dict[str, Any] = {}
-    skills_ns = SkillsNamespace(storage.get_skill_library(), namespace_dict)
+    workflows_ns = WorkflowsNamespace(storage.get_workflow_library(), namespace_dict)
 
     namespace_dict["tools"] = tools_ns
-    namespace_dict["skills"] = skills_ns
+    namespace_dict["workflows"] = workflows_ns
     namespace_dict["artifacts"] = artifact_store
     namespace_dict["deps"] = deps_ns
 
     return NamespaceBundle(
         tools=tools_ns,
-        skills=skills_ns,
+        workflows=workflows_ns,
         artifacts=artifact_store,
         deps=deps_ns,
     )

@@ -4,7 +4,7 @@ These tests define the Redis vector store behavior through failing tests.
 Tests fail because RedisVectorStore doesn't exist yet.
 
 RedisVectorStore uses Redis with RediSearch module for distributed vector storage,
-enabling multiple agents to share skill embeddings across deployments.
+enabling multiple agents to share workflow embeddings across deployments.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import pytest
 if TYPE_CHECKING:
     from redis import Redis
 
-    from py_code_mode.skills.embeddings import EmbeddingProvider
+    from py_code_mode.workflows.embeddings import EmbeddingProvider
 
 
 @pytest.fixture
@@ -59,16 +59,16 @@ class TestRedisVectorStoreImport:
     def test_redis_vector_store_importable_when_redis_available(self) -> None:
         """RedisVectorStore should be importable when redis is installed."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         assert RedisVectorStore is not None
 
     def test_redis_vector_store_satisfies_protocol(self, redis_client: Redis) -> None:
         """RedisVectorStore should implement VectorStore protocol."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.embeddings import MockEmbedder
-        from py_code_mode.skills.vector_store import VectorStore
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.embeddings import MockEmbedder
+        from py_code_mode.workflows.vector_store import VectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         # Protocol compliance via isinstance check
         embedder = MockEmbedder()
@@ -88,7 +88,7 @@ class TestRedisVectorStoreInitialization:
     @pytest.fixture
     def mock_embedder(self) -> EmbeddingProvider:
         """Mock embedder with consistent behavior."""
-        from py_code_mode.skills.embeddings import MockEmbedder
+        from py_code_mode.workflows.embeddings import MockEmbedder
 
         return MockEmbedder(dimension=384)
 
@@ -97,13 +97,13 @@ class TestRedisVectorStoreInitialization:
     ) -> None:
         """Should create RediSearch index with vector fields on initialization."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         store = RedisVectorStore(
             redis=redis_client,
             embedder=mock_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
 
         # Index should be created (verify via count - empty index returns 0)
@@ -114,13 +114,13 @@ class TestRedisVectorStoreInitialization:
     ) -> None:
         """Should persist ModelInfo in index for validation."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         store = RedisVectorStore(
             redis=redis_client,
             embedder=mock_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
 
         # Should be able to retrieve model info
@@ -135,13 +135,13 @@ class TestRedisVectorStoreInitialization:
     ) -> None:
         """Index should be configured for cosine similarity search."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         store = RedisVectorStore(
             redis=redis_client,
             embedder=mock_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
 
         # Implementation should use COSINE distance metric
@@ -153,17 +153,17 @@ class TestRedisVectorStoreInitialization:
     ) -> None:
         """Should reuse existing index if model matches."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.embeddings import MockEmbedder
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.embeddings import MockEmbedder
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         # Create first store and add data
         store1 = RedisVectorStore(
             redis=redis_client,
             embedder=mock_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
-        store1.add("skill1", "Test skill", "async def run(): pass", "hash1")
+        store1.add("workflow1", "Test workflow", "async def run(): pass", "hash1")
         assert store1.count() == 1
 
         # Create second store with same config - should reuse index
@@ -171,13 +171,13 @@ class TestRedisVectorStoreInitialization:
         store2 = RedisVectorStore(
             redis=redis_client,
             embedder=same_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
 
         # Data should still be present
         assert store2.count() == 1
-        assert store2.get_content_hash("skill1") == "hash1"
+        assert store2.get_content_hash("workflow1") == "hash1"
 
 
 class TestRedisVectorStoreModelValidation:
@@ -186,14 +186,14 @@ class TestRedisVectorStoreModelValidation:
     @pytest.fixture
     def mock_embedder(self) -> EmbeddingProvider:
         """Mock embedder with consistent behavior."""
-        from py_code_mode.skills.embeddings import MockEmbedder
+        from py_code_mode.workflows.embeddings import MockEmbedder
 
         return MockEmbedder(dimension=384)
 
     @pytest.fixture
     def different_embedder(self) -> EmbeddingProvider:
         """Different embedder to trigger model change."""
-        from py_code_mode.skills.embeddings import MockEmbedder
+        from py_code_mode.workflows.embeddings import MockEmbedder
 
         # Different dimension means different model
         return MockEmbedder(dimension=768)
@@ -206,18 +206,18 @@ class TestRedisVectorStoreModelValidation:
     ) -> None:
         """Should detect when model dimension changes."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         # Create store with first embedder (384-dim)
         store1 = RedisVectorStore(
             redis=redis_client,
             embedder=mock_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
         store1.add(
-            id="skill1",
-            description="Test skill",
+            id="workflow1",
+            description="Test workflow",
             source="async def run(): pass",
             content_hash="abc123",
         )
@@ -227,8 +227,8 @@ class TestRedisVectorStoreModelValidation:
         store2 = RedisVectorStore(
             redis=redis_client,
             embedder=different_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
 
         # Model change should have cleared vectors
@@ -239,19 +239,19 @@ class TestRedisVectorStoreModelValidation:
     ) -> None:
         """Should keep vectors when reopening with same model."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.embeddings import MockEmbedder
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.embeddings import MockEmbedder
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         # Create store and add vectors
         store1 = RedisVectorStore(
             redis=redis_client,
             embedder=mock_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
         store1.add(
-            id="skill1",
-            description="Test skill",
+            id="workflow1",
+            description="Test workflow",
             source="async def run(): pass",
             content_hash="abc123",
         )
@@ -264,8 +264,8 @@ class TestRedisVectorStoreModelValidation:
         store2 = RedisVectorStore(
             redis=redis_client,
             embedder=same_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
 
         # Vectors should be preserved
@@ -279,19 +279,19 @@ class TestRedisVectorStoreModelValidation:
     ) -> None:
         """Model change should clear entire index, not partial."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
-        # Add multiple skills
+        # Add multiple workflows
         store1 = RedisVectorStore(
             redis=redis_client,
             embedder=mock_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
         for i in range(5):
             store1.add(
-                id=f"skill{i}",
-                description=f"Skill {i}",
+                id=f"workflow{i}",
+                description=f"Workflow {i}",
                 source=f"async def run(): return {i}",
                 content_hash=f"hash{i}",
             )
@@ -301,8 +301,8 @@ class TestRedisVectorStoreModelValidation:
         store2 = RedisVectorStore(
             redis=redis_client,
             embedder=different_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
 
         # All vectors should be cleared
@@ -315,7 +315,7 @@ class TestRedisVectorStoreCRUD:
     @pytest.fixture
     def mock_embedder(self) -> EmbeddingProvider:
         """Mock embedder for testing."""
-        from py_code_mode.skills.embeddings import MockEmbedder
+        from py_code_mode.workflows.embeddings import MockEmbedder
 
         return MockEmbedder(dimension=384)
 
@@ -323,7 +323,7 @@ class TestRedisVectorStoreCRUD:
     def store(self, redis_client: Redis, mock_embedder: EmbeddingProvider):
         """Fresh RedisVectorStore for each test."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         return RedisVectorStore(
             redis=redis_client,
@@ -341,31 +341,31 @@ class TestRedisVectorStoreCRUD:
             content_hash="abc123def456",
         )
 
-        # Verify skill was indexed
+        # Verify workflow was indexed
         assert store.count() == 1
 
     def test_add_stores_content_hash(self, store) -> None:
         """add() should persist content hash for change detection."""
         store.add(
-            id="skill1",
-            description="Test skill",
+            id="workflow1",
+            description="Test workflow",
             source="async def run(): pass",
             content_hash="contenthash123",
         )
 
         # Should be able to retrieve stored hash
-        stored_hash = store.get_content_hash("skill1")
+        stored_hash = store.get_content_hash("workflow1")
         assert stored_hash == "contenthash123"
 
     def test_get_content_hash_returns_none_for_nonexistent(self, store) -> None:
-        """get_content_hash() should return None for skills not in index."""
-        hash_value = store.get_content_hash("nonexistent_skill")
+        """get_content_hash() should return None for workflows not in index."""
+        hash_value = store.get_content_hash("nonexistent_workflow")
         assert hash_value is None
 
-    def test_add_overwrites_existing_skill(self, store) -> None:
-        """Adding same skill ID should update vectors, not duplicate."""
+    def test_add_overwrites_existing_workflow(self, store) -> None:
+        """Adding same workflow ID should update vectors, not duplicate."""
         store.add(
-            id="skill1",
+            id="workflow1",
             description="Original description",
             source="async def run(): return 1",
             content_hash="hash1",
@@ -373,57 +373,57 @@ class TestRedisVectorStoreCRUD:
         assert store.count() == 1
 
         store.add(
-            id="skill1",
+            id="workflow1",
             description="Updated description",
             source="async def run(): return 2",
             content_hash="hash2",
         )
 
-        # Should still be 1 skill (updated, not duplicated)
+        # Should still be 1 workflow (updated, not duplicated)
         assert store.count() == 1
 
         # Hash should be updated
-        assert store.get_content_hash("skill1") == "hash2"
+        assert store.get_content_hash("workflow1") == "hash2"
 
-    def test_remove_deletes_skill_vectors(self, store) -> None:
+    def test_remove_deletes_workflow_vectors(self, store) -> None:
         """remove() should delete both description and code vectors."""
         store.add(
-            id="skill1",
+            id="workflow1",
             description="Test",
             source="async def run(): pass",
             content_hash="hash1",
         )
         assert store.count() == 1
 
-        result = store.remove("skill1")
+        result = store.remove("workflow1")
 
         assert result is True
         assert store.count() == 0
-        assert store.get_content_hash("skill1") is None
+        assert store.get_content_hash("workflow1") is None
 
     def test_remove_returns_false_for_nonexistent(self, store) -> None:
-        """remove() should return False if skill not in index."""
+        """remove() should return False if workflow not in index."""
         result = store.remove("nonexistent")
         assert result is False
 
-    def test_count_reflects_indexed_skills(self, store) -> None:
-        """count() should return number of unique skills indexed."""
+    def test_count_reflects_indexed_workflows(self, store) -> None:
+        """count() should return number of unique workflows indexed."""
         assert store.count() == 0
 
-        store.add("skill1", "desc1", "code1", "hash1")
+        store.add("workflow1", "desc1", "code1", "hash1")
         assert store.count() == 1
 
-        store.add("skill2", "desc2", "code2", "hash2")
+        store.add("workflow2", "desc2", "code2", "hash2")
         assert store.count() == 2
 
-        store.remove("skill1")
+        store.remove("workflow1")
         assert store.count() == 1
 
     def test_clear_removes_all_vectors(self, store) -> None:
-        """clear() should remove all indexed skills and drop index."""
-        # Add multiple skills
+        """clear() should remove all indexed workflows and drop index."""
+        # Add multiple workflows
         for i in range(5):
-            store.add(f"skill{i}", f"desc{i}", f"code{i}", f"hash{i}")
+            store.add(f"workflow{i}", f"desc{i}", f"code{i}", f"hash{i}")
         assert store.count() == 5
 
         store.clear()
@@ -437,15 +437,15 @@ class TestRedisVectorStoreSimilaritySearch:
     @pytest.fixture
     def mock_embedder(self) -> EmbeddingProvider:
         """Mock embedder for deterministic testing."""
-        from py_code_mode.skills.embeddings import MockEmbedder
+        from py_code_mode.workflows.embeddings import MockEmbedder
 
         return MockEmbedder(dimension=384)
 
     @pytest.fixture
     def store(self, redis_client: Redis, mock_embedder: EmbeddingProvider):
-        """Fresh store with sample skills."""
+        """Fresh store with sample workflows."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         store = RedisVectorStore(
             redis=redis_client,
@@ -454,7 +454,7 @@ class TestRedisVectorStoreSimilaritySearch:
             index_name="test_idx",
         )
 
-        # Add diverse skills for search testing
+        # Add diverse workflows for search testing
         store.add(
             id="port_scanner",
             description="Scan network ports using nmap",
@@ -487,7 +487,7 @@ class TestRedisVectorStoreSimilaritySearch:
             code_weight=0.3,
         )
 
-        from py_code_mode.skills.vector_store import SearchResult
+        from py_code_mode.workflows.vector_store import SearchResult
 
         assert isinstance(results, list)
         assert all(isinstance(r, SearchResult) for r in results)
@@ -574,7 +574,7 @@ class TestRedisVectorStoreSimilaritySearch:
     ) -> None:
         """search() on empty index should return empty list."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         empty_store = RedisVectorStore(
             redis=redis_client,
@@ -592,8 +592,8 @@ class TestRedisVectorStoreSimilaritySearch:
 
         assert results == []
 
-    def test_search_result_contains_skill_id(self, store) -> None:
-        """SearchResult.id should contain the skill identifier."""
+    def test_search_result_contains_workflow_id(self, store) -> None:
+        """SearchResult.id should contain the workflow identifier."""
         results = store.search(
             query="network",
             limit=10,
@@ -601,7 +601,7 @@ class TestRedisVectorStoreSimilaritySearch:
             code_weight=0.3,
         )
 
-        # IDs should be skill names we added
+        # IDs should be workflow names we added
         result_ids = {r.id for r in results}
         assert result_ids.issubset({"port_scanner", "web_scraper", "file_reader"})
 
@@ -612,7 +612,7 @@ class TestRedisVectorStoreContentHashInvalidation:
     @pytest.fixture
     def embedder_with_call_tracking(self):
         """Embedder that tracks how many times embed() is called."""
-        from py_code_mode.skills.embeddings import MockEmbedder
+        from py_code_mode.workflows.embeddings import MockEmbedder
 
         embedder = MockEmbedder(dimension=384)
 
@@ -630,9 +630,9 @@ class TestRedisVectorStoreContentHashInvalidation:
     def test_same_content_hash_skips_re_embedding(
         self, redis_client: Redis, embedder_with_call_tracking
     ) -> None:
-        """Adding skill with same hash should skip embedding (idempotent)."""
+        """Adding workflow with same hash should skip embedding (idempotent)."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         store = RedisVectorStore(
             redis=redis_client,
@@ -643,8 +643,8 @@ class TestRedisVectorStoreContentHashInvalidation:
 
         # First add: should embed
         store.add(
-            id="skill1",
-            description="Test skill",
+            id="workflow1",
+            description="Test workflow",
             source="async def run(): pass",
             content_hash="stable_hash",
         )
@@ -652,8 +652,8 @@ class TestRedisVectorStoreContentHashInvalidation:
 
         # Add again with same hash: should NOT re-embed
         store.add(
-            id="skill1",
-            description="Test skill",
+            id="workflow1",
+            description="Test workflow",
             source="async def run(): pass",
             content_hash="stable_hash",
         )
@@ -664,9 +664,9 @@ class TestRedisVectorStoreContentHashInvalidation:
     def test_different_content_hash_triggers_re_embedding(
         self, redis_client: Redis, embedder_with_call_tracking
     ) -> None:
-        """Adding skill with different hash should re-embed."""
+        """Adding workflow with different hash should re-embed."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         store = RedisVectorStore(
             redis=redis_client,
@@ -677,7 +677,7 @@ class TestRedisVectorStoreContentHashInvalidation:
 
         # First add
         store.add(
-            id="skill1",
+            id="workflow1",
             description="Original description",
             source="async def run(): return 1",
             content_hash="hash_v1",
@@ -686,7 +686,7 @@ class TestRedisVectorStoreContentHashInvalidation:
 
         # Update with different hash: should re-embed
         store.add(
-            id="skill1",
+            id="workflow1",
             description="Updated description",
             source="async def run(): return 2",
             content_hash="hash_v2",
@@ -702,7 +702,7 @@ class TestRedisVectorStorePersistence:
     @pytest.fixture
     def mock_embedder(self) -> EmbeddingProvider:
         """Mock embedder."""
-        from py_code_mode.skills.embeddings import MockEmbedder
+        from py_code_mode.workflows.embeddings import MockEmbedder
 
         return MockEmbedder(dimension=384)
 
@@ -711,18 +711,18 @@ class TestRedisVectorStorePersistence:
     ) -> None:
         """Vectors should persist in Redis and reload on next connection."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.embeddings import MockEmbedder
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.embeddings import MockEmbedder
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         # Create store, add data
         store1 = RedisVectorStore(
             redis=redis_client,
             embedder=mock_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
-        store1.add("skill1", "Network scanner", "nmap code", "hash1")
-        store1.add("skill2", "File reader", "file code", "hash2")
+        store1.add("workflow1", "Network scanner", "nmap code", "hash1")
+        store1.add("workflow2", "File reader", "file code", "hash2")
         assert store1.count() == 2
 
         # Create new store instance (simulates reconnection)
@@ -730,29 +730,29 @@ class TestRedisVectorStorePersistence:
         store2 = RedisVectorStore(
             redis=redis_client,
             embedder=fresh_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
 
         # Vectors should be reloaded from Redis
         assert store2.count() == 2
-        assert store2.get_content_hash("skill1") == "hash1"
-        assert store2.get_content_hash("skill2") == "hash2"
+        assert store2.get_content_hash("workflow1") == "hash1"
+        assert store2.get_content_hash("workflow2") == "hash2"
 
     def test_model_metadata_persists_across_sessions(
         self, redis_client: Redis, mock_embedder: EmbeddingProvider
     ) -> None:
         """Model info should persist and be validated on reconnect."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.embeddings import MockEmbedder
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.embeddings import MockEmbedder
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         # First session
         store1 = RedisVectorStore(
             redis=redis_client,
             embedder=mock_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
         model_info1 = store1.get_model_info()
 
@@ -761,8 +761,8 @@ class TestRedisVectorStorePersistence:
         store2 = RedisVectorStore(
             redis=redis_client,
             embedder=same_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
         model_info2 = store2.get_model_info()
 
@@ -774,15 +774,15 @@ class TestRedisVectorStorePersistence:
     ) -> None:
         """Search should work on vectors loaded from Redis."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.embeddings import MockEmbedder
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.embeddings import MockEmbedder
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
-        # First session: add skills
+        # First session: add workflows
         store1 = RedisVectorStore(
             redis=redis_client,
             embedder=mock_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
         store1.add(
             "port_scanner",
@@ -796,8 +796,8 @@ class TestRedisVectorStorePersistence:
         store2 = RedisVectorStore(
             redis=redis_client,
             embedder=fresh_embedder,
-            prefix="skills",
-            index_name="skills_idx",
+            prefix="workflows",
+            index_name="workflows_idx",
         )
 
         results = store2.search(
@@ -807,7 +807,7 @@ class TestRedisVectorStorePersistence:
             code_weight=0.3,
         )
 
-        # Should find the persisted skill
+        # Should find the persisted workflow
         assert len(results) > 0
         assert any(r.id == "port_scanner" for r in results)
 
@@ -818,16 +818,16 @@ class TestRedisVectorStoreIndexIsolation:
     @pytest.fixture
     def mock_embedder(self) -> EmbeddingProvider:
         """Mock embedder."""
-        from py_code_mode.skills.embeddings import MockEmbedder
+        from py_code_mode.workflows.embeddings import MockEmbedder
 
         return MockEmbedder(dimension=384)
 
-    def test_different_prefixes_isolate_skills(
+    def test_different_prefixes_isolate_workflows(
         self, redis_client: Redis, mock_embedder: EmbeddingProvider
     ) -> None:
-        """Skills in different prefixes should not interfere."""
+        """Workflows in different prefixes should not interfere."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         # Create two stores with different prefixes
         store1 = RedisVectorStore(
@@ -844,42 +844,42 @@ class TestRedisVectorStoreIndexIsolation:
             index_name="project_b_idx",
         )
 
-        # Add skills to each
-        store1.add("skill1", "Project A skill", "code1", "hash1")
-        store2.add("skill2", "Project B skill", "code2", "hash2")
+        # Add workflows to each
+        store1.add("workflow1", "Project A workflow", "code1", "hash1")
+        store2.add("workflow2", "Project B workflow", "code2", "hash2")
 
-        # Each store should only see its own skills
+        # Each store should only see its own workflows
         assert store1.count() == 1
         assert store2.count() == 1
-        assert store1.get_content_hash("skill1") == "hash1"
-        assert store1.get_content_hash("skill2") is None
-        assert store2.get_content_hash("skill2") == "hash2"
-        assert store2.get_content_hash("skill1") is None
+        assert store1.get_content_hash("workflow1") == "hash1"
+        assert store1.get_content_hash("workflow2") is None
+        assert store2.get_content_hash("workflow2") == "hash2"
+        assert store2.get_content_hash("workflow1") is None
 
     def test_different_index_names_create_separate_indexes(
         self, redis_client: Redis, mock_embedder: EmbeddingProvider
     ) -> None:
         """Different index names should create independent search indexes."""
         pytest.importorskip("redis")
-        from py_code_mode.skills.vector_stores.redis_store import RedisVectorStore
+        from py_code_mode.workflows.vector_stores.redis_store import RedisVectorStore
 
         # Create two stores with same prefix but different index names
         store1 = RedisVectorStore(
             redis=redis_client,
             embedder=mock_embedder,
-            prefix="skills",
+            prefix="workflows",
             index_name="idx_v1",
         )
 
         store2 = RedisVectorStore(
             redis=redis_client,
             embedder=mock_embedder,
-            prefix="skills",
+            prefix="workflows",
             index_name="idx_v2",
         )
 
-        # Add skills to first index
-        store1.add("skill1", "First index skill", "code1", "hash1")
+        # Add workflows to first index
+        store1.add("workflow1", "First index workflow", "code1", "hash1")
 
         # Second index should be empty
         assert store1.count() == 1

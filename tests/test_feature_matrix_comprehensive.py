@@ -6,18 +6,18 @@ masking bugs where features silently fail when directories don't exist.
 The "from scratch" scenario is the most common real-world case:
     1. Developer creates new project
     2. Points py-code-mode at empty directory
-    3. Expects skills.create(), artifacts.save() to work
-    4. Expects created skills to persist across sessions
+    3. Expects workflows.create(), artifacts.save() to work
+    4. Expects created workflows to persist across sessions
 
 Test Matrix:
     - Storage: FileStorage, RedisStorage (mock)
     - Executor: InProcessExecutor, ContainerExecutor (if Docker)
     - Directory conditions: empty, partial, populated
-    - Features: 12 (tools: 4, skills: 4, artifacts: 4)
+    - Features: 12 (tools: 4, workflows: 4, artifacts: 4)
 
 Critical tests:
     - "From scratch" scenario - empty dir, all features work
-    - Persistence across sessions - skills/artifacts survive close/reopen
+    - Persistence across sessions - workflows/artifacts survive close/reopen
     - Directory auto-creation - save() creates missing dirs
 """
 
@@ -46,20 +46,20 @@ def empty_base_dir(tmp_path: Path) -> Path:
     """Base directory exists but NO subdirs created.
 
     This is the critical "from scratch" scenario that was previously masked
-    by fixtures that pre-create tools/, skills/, artifacts/ directories.
+    by fixtures that pre-create tools/, workflows/, artifacts/ directories.
     """
     # tmp_path already exists (pytest creates it)
     # Explicitly verify no subdirs exist
     assert not (tmp_path / "tools").exists()
-    assert not (tmp_path / "skills").exists()
+    assert not (tmp_path / "workflows").exists()
     assert not (tmp_path / "artifacts").exists()
     return tmp_path
 
 
 @pytest.fixture
-def partial_dir_skills_only(tmp_path: Path) -> Path:
-    """Only skills/ exists - tests tools and artifacts without their dirs."""
-    (tmp_path / "skills").mkdir()
+def partial_dir_workflows_only(tmp_path: Path) -> Path:
+    """Only workflows/ exists - tests tools and artifacts without their dirs."""
+    (tmp_path / "workflows").mkdir()
     return tmp_path
 
 
@@ -80,11 +80,11 @@ def populated_dir(tmp_path: Path) -> tuple[Path, Path]:
         Tuple of (base_path, tools_path) for storage and executor config.
     """
     tools_dir = tmp_path / "tools"
-    skills_dir = tmp_path / "skills"
+    workflows_dir = tmp_path / "workflows"
     artifacts_dir = tmp_path / "artifacts"
 
     tools_dir.mkdir()
-    skills_dir.mkdir()
+    workflows_dir.mkdir()
     artifacts_dir.mkdir()
 
     # Sample tool
@@ -96,8 +96,8 @@ args: "{text}"
 description: Echo text back
 """)
 
-    # Sample skill
-    (skills_dir / "double.py").write_text('''"""Double a number."""
+    # Sample workflow
+    (workflows_dir / "double.py").write_text('''"""Double a number."""
 
 async def run(n: int) -> int:
     return n * 2
@@ -157,7 +157,7 @@ class TestFromScratchScenario:
 
         This test WILL FAIL if:
         - Directory auto-creation is broken
-        - skills.list() crashes on missing skills/
+        - workflows.list() crashes on missing workflows/
         - artifacts.save() fails to create artifacts/
         - Persistence doesn't work
         """
@@ -171,31 +171,31 @@ class TestFromScratchScenario:
             assert isinstance(result.value, list), f"tools.list() returned {type(result.value)}"
             # Empty list is expected - no tools defined yet
 
-            # 2. Verify skills namespace exists (empty is fine)
-            result = await session.run("skills.list()")
-            assert result.is_ok, f"skills.list() failed on empty dir: {result.error}"
-            assert result.value is not None, "skills.list() returned None"
-            assert isinstance(result.value, list), f"skills.list() returned {type(result.value)}"
+            # 2. Verify workflows namespace exists (empty is fine)
+            result = await session.run("workflows.list()")
+            assert result.is_ok, f"workflows.list() failed on empty dir: {result.error}"
+            assert result.value is not None, "workflows.list() returned None"
+            assert isinstance(result.value, list), f"workflows.list() returned {type(result.value)}"
 
-            # 3. Create a skill - this MUST create skills/ directory
+            # 3. Create a workflow - this MUST create workflows/ directory
             result = await session.run("""
-skills.create(
+workflows.create(
     name="triple",
     description="Triple a number",
     source="async def run(n: int) -> int:\\n    return n * 3"
 )
 """)
-            assert result.is_ok, f"skills.create() failed: {result.error}"
+            assert result.is_ok, f"workflows.create() failed: {result.error}"
 
-            # 4. Verify skill appears in list
-            result = await session.run("skills.list()")
+            # 4. Verify workflow appears in list
+            result = await session.run("workflows.list()")
             assert result.is_ok
-            skill_names = [s["name"] for s in result.value]
-            assert "triple" in skill_names, f"Created skill not in list: {skill_names}"
+            workflow_names = [s["name"] for s in result.value]
+            assert "triple" in workflow_names, f"Created workflow not in list: {workflow_names}"
 
-            # 5. Invoke the created skill
-            result = await session.run("skills.triple(n=7)")
-            assert result.is_ok, f"skills.triple() failed: {result.error}"
+            # 5. Invoke the created workflow
+            result = await session.run("workflows.triple(n=7)")
+            assert result.is_ok, f"workflows.triple() failed: {result.error}"
             assert result.value == 21, f"Expected 21, got {result.value}"
 
             # 6. Save an artifact - this MUST create artifacts/ directory
@@ -215,37 +215,37 @@ skills.create(
             assert len(result.value) >= 1, "Artifact not in list"
 
         # Session closed. Verify files exist on disk.
-        skills_dir = empty_base_dir / "skills"
+        workflows_dir = empty_base_dir / "workflows"
         artifacts_dir = empty_base_dir / "artifacts"
 
-        assert skills_dir.exists(), "skills/ directory was not created"
-        assert (skills_dir / "triple.py").exists(), "Skill file was not persisted"
+        assert workflows_dir.exists(), "workflows/ directory was not created"
+        assert (workflows_dir / "triple.py").exists(), "Workflow file was not persisted"
         assert artifacts_dir.exists(), "artifacts/ directory was not created"
 
     @pytest.mark.asyncio
-    async def test_skills_persist_across_sessions(self, empty_base_dir: Path) -> None:
-        """Skills created in one session are available in the next.
+    async def test_workflows_persist_across_sessions(self, empty_base_dir: Path) -> None:
+        """Workflows created in one session are available in the next.
 
         This test WILL FAIL if:
-        - Skills are only stored in memory
-        - FileSkillStore doesn't save to disk
-        - SkillLibrary doesn't reload from store on new session
+        - Workflows are only stored in memory
+        - FileWorkflowStore doesn't save to disk
+        - WorkflowLibrary doesn't reload from store on new session
         """
         storage = FileStorage(empty_base_dir)
 
-        # Session 1: Create a skill
+        # Session 1: Create a workflow
         async with Session(storage=storage) as session:
             result = await session.run("""
-skills.create(
+workflows.create(
     name="quadruple",
     description="Multiply by 4",
     source="async def run(n: int) -> int:\\n    return n * 4"
 )
 """)
-            assert result.is_ok, f"skills.create() failed: {result.error}"
+            assert result.is_ok, f"workflows.create() failed: {result.error}"
 
             # Verify it works in this session
-            result = await session.run("skills.quadruple(n=5)")
+            result = await session.run("workflows.quadruple(n=5)")
             assert result.is_ok
             assert result.value == 20
 
@@ -254,17 +254,17 @@ skills.create(
         storage2 = FileStorage(empty_base_dir)
 
         async with Session(storage=storage2) as session:
-            # Skill should be visible in list
-            result = await session.run("skills.list()")
+            # Workflow should be visible in list
+            result = await session.run("workflows.list()")
             assert result.is_ok
-            skill_names = [s["name"] for s in result.value]
-            assert "quadruple" in skill_names, (
-                f"Skill not persisted across sessions. Found: {skill_names}"
+            workflow_names = [s["name"] for s in result.value]
+            assert "quadruple" in workflow_names, (
+                f"Workflow not persisted across sessions. Found: {workflow_names}"
             )
 
-            # Skill should be callable
-            result = await session.run("skills.quadruple(n=10)")
-            assert result.is_ok, f"Persisted skill failed: {result.error}"
+            # Workflow should be callable
+            result = await session.run("workflows.quadruple(n=10)")
+            assert result.is_ok, f"Persisted workflow failed: {result.error}"
             assert result.value == 40
 
     @pytest.mark.asyncio
@@ -299,7 +299,7 @@ skills.create(
         """From scratch scenario works with container executor too.
 
         Verifies that the container receives proper storage access configuration:
-        - skills_path is created and mounted read-write
+        - workflows_path is created and mounted read-write
         - artifacts_path is created and mounted read-write
         - Environment variables set for container's SessionConfig
         """
@@ -310,9 +310,9 @@ skills.create(
         executor = ContainerExecutor(config)
 
         async with Session(storage=storage, executor=executor) as session:
-            # Skills should work
-            result = await session.run("skills.list()")
-            assert result.is_ok, f"skills.list() failed in container: {result.error}"
+            # Workflows should work
+            result = await session.run("workflows.list()")
+            assert result.is_ok, f"workflows.list() failed in container: {result.error}"
 
             # Artifacts should work
             result = await session.run('artifacts.save("container_test.txt", b"hello", "test")')
@@ -333,16 +333,16 @@ class TestDirectoryAutoCreation:
     """
 
     @pytest.mark.asyncio
-    async def test_skills_create_creates_directory(self, empty_base_dir: Path) -> None:
-        """skills.create() creates skills/ directory if missing."""
+    async def test_workflows_create_creates_directory(self, empty_base_dir: Path) -> None:
+        """workflows.create() creates workflows/ directory if missing."""
         storage = FileStorage(empty_base_dir)
 
-        assert not (empty_base_dir / "skills").exists()
+        assert not (empty_base_dir / "workflows").exists()
 
         async with Session(storage=storage) as session:
             result = await session.run("""
-skills.create(
-    name="test_skill",
+workflows.create(
+    name="test_workflow",
     description="Test",
     source="async def run() -> str:\\n    return 'ok'"
 )
@@ -350,7 +350,9 @@ skills.create(
             assert result.is_ok, f"Failed: {result.error}"
 
         # Directory should now exist
-        assert (empty_base_dir / "skills").exists(), "skills/ not created by skills.create()"
+        assert (empty_base_dir / "workflows").exists(), (
+            "workflows/ not created by workflows.create()"
+        )
 
     @pytest.mark.asyncio
     async def test_artifacts_save_creates_directory(self, empty_base_dir: Path) -> None:
@@ -405,26 +407,26 @@ class TestEmptyDirectoryListings:
             assert result.value == []
 
     @pytest.mark.asyncio
-    async def test_skills_list_on_missing_directory(self, empty_base_dir: Path) -> None:
-        """skills.list() returns [] when skills/ doesn't exist."""
+    async def test_workflows_list_on_missing_directory(self, empty_base_dir: Path) -> None:
+        """workflows.list() returns [] when workflows/ doesn't exist."""
         storage = FileStorage(empty_base_dir)
 
         async with Session(storage=storage) as session:
-            result = await session.run("skills.list()")
+            result = await session.run("workflows.list()")
 
-            assert result.is_ok, f"skills.list() crashed: {result.error}"
-            assert result.value is not None, "skills.list() returned None"
+            assert result.is_ok, f"workflows.list() crashed: {result.error}"
+            assert result.value is not None, "workflows.list() returned None"
             assert isinstance(result.value, list)
             assert result.value == []
 
     @pytest.mark.asyncio
-    async def test_skills_list_on_empty_directory(self, empty_base_dir: Path) -> None:
-        """skills.list() returns [] when skills/ exists but is empty."""
-        (empty_base_dir / "skills").mkdir()
+    async def test_workflows_list_on_empty_directory(self, empty_base_dir: Path) -> None:
+        """workflows.list() returns [] when workflows/ exists but is empty."""
+        (empty_base_dir / "workflows").mkdir()
         storage = FileStorage(empty_base_dir)
 
         async with Session(storage=storage) as session:
-            result = await session.run("skills.list()")
+            result = await session.run("workflows.list()")
 
             assert result.is_ok
             assert result.value == []
@@ -478,14 +480,14 @@ class TestMissingResourceErrors:
             assert any(x in error_lower for x in ["nonexistent", "not found", "attribute"])
 
     @pytest.mark.asyncio
-    async def test_skill_not_found_gives_clear_error(self, empty_base_dir: Path) -> None:
-        """Calling non-existent skill gives clear error."""
+    async def test_workflow_not_found_gives_clear_error(self, empty_base_dir: Path) -> None:
+        """Calling non-existent workflow gives clear error."""
         storage = FileStorage(empty_base_dir)
 
         async with Session(storage=storage) as session:
-            result = await session.run("skills.nonexistent_skill()")
+            result = await session.run("workflows.nonexistent_workflow()")
 
-            assert not result.is_ok, "Expected error for missing skill"
+            assert not result.is_ok, "Expected error for missing workflow"
             assert result.error is not None
             error_lower = result.error.lower()
             assert any(x in error_lower for x in ["nonexistent", "not found", "attribute"])
@@ -516,12 +518,14 @@ class TestPartialDirectoryConditions:
     """Test behavior when some directories exist but others don't."""
 
     @pytest.mark.asyncio
-    async def test_skills_work_without_tools_directory(self, partial_dir_skills_only: Path) -> None:
-        """Skills work even when tools/ doesn't exist."""
-        storage = FileStorage(partial_dir_skills_only)
+    async def test_workflows_work_without_tools_directory(
+        self, partial_dir_workflows_only: Path
+    ) -> None:
+        """Workflows work even when tools/ doesn't exist."""
+        storage = FileStorage(partial_dir_workflows_only)
 
-        # Add a skill to the existing skills dir
-        (partial_dir_skills_only / "skills" / "add.py").write_text('''
+        # Add a workflow to the existing workflows dir
+        (partial_dir_workflows_only / "workflows" / "add.py").write_text('''
 """Add two numbers."""
 
 async def run(a: int, b: int) -> int:
@@ -533,16 +537,16 @@ async def run(a: int, b: int) -> int:
             result = await session.run("tools.list()")
             assert result.is_ok
 
-            # skills should work
-            result = await session.run("skills.add(a=1, b=2)")
+            # workflows should work
+            result = await session.run("workflows.add(a=1, b=2)")
             assert result.is_ok
             assert result.value == 3
 
     @pytest.mark.asyncio
-    async def test_artifacts_work_without_skills_directory(
+    async def test_artifacts_work_without_workflows_directory(
         self, partial_dir_artifacts_only: Path
     ) -> None:
-        """Artifacts work even when skills/ doesn't exist."""
+        """Artifacts work even when workflows/ doesn't exist."""
         storage = FileStorage(partial_dir_artifacts_only)
 
         async with Session(storage=storage) as session:
@@ -550,8 +554,8 @@ async def run(a: int, b: int) -> int:
             result = await session.run('artifacts.save("test.json", {"ok": True}, "Test")')
             assert result.is_ok
 
-            # skills.list() should work (empty)
-            result = await session.run("skills.list()")
+            # workflows.list() should work (empty)
+            result = await session.run("workflows.list()")
             assert result.is_ok
 
 
@@ -572,29 +576,29 @@ class TestRedisStorageFromScratch:
         return RedisStorage(redis=mock_redis, prefix="test")
 
     @pytest.mark.asyncio
-    async def test_skills_create_and_persist_in_redis(self, redis_storage) -> None:
-        """Skills can be created and retrieved from Redis storage."""
+    async def test_workflows_create_and_persist_in_redis(self, redis_storage) -> None:
+        """Workflows can be created and retrieved from Redis storage."""
         async with Session(storage=redis_storage) as session:
-            # Create skill
+            # Create workflow
             result = await session.run("""
-skills.create(
-    name="redis_skill",
-    description="Test skill",
+workflows.create(
+    name="redis_workflow",
+    description="Test workflow",
     source="async def run() -> str:\\n    return 'from redis'"
 )
 """)
-            assert result.is_ok, f"skills.create() failed: {result.error}"
+            assert result.is_ok, f"workflows.create() failed: {result.error}"
 
-            # Invoke skill
-            result = await session.run("skills.redis_skill()")
+            # Invoke workflow
+            result = await session.run("workflows.redis_workflow()")
             assert result.is_ok
             assert result.value == "from redis"
 
             # Verify in list
-            result = await session.run("skills.list()")
+            result = await session.run("workflows.list()")
             assert result.is_ok
             names = [s["name"] for s in result.value]
-            assert "redis_skill" in names
+            assert "redis_workflow" in names
 
     @pytest.mark.asyncio
     async def test_artifacts_save_and_load_in_redis(self, redis_storage) -> None:
@@ -632,13 +636,13 @@ class TestExecutorMatrix:
             return _create_container_executor()
 
     @pytest.mark.asyncio
-    async def test_skills_list_works_with_executor(self, executor, empty_base_dir: Path) -> None:
-        """skills.list() works across executors."""
+    async def test_workflows_list_works_with_executor(self, executor, empty_base_dir: Path) -> None:
+        """workflows.list() works across executors."""
         storage = FileStorage(empty_base_dir)
 
         async with Session(storage=storage, executor=executor) as session:
-            result = await session.run("skills.list()")
-            assert result.is_ok, f"skills.list() failed with {type(executor)}: {result.error}"
+            result = await session.run("workflows.list()")
+            assert result.is_ok, f"workflows.list() failed with {type(executor)}: {result.error}"
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
@@ -704,39 +708,39 @@ class TestCompleteFeatureMatrix:
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_skills_list_feature(self, storage_and_executor) -> None:
-        """skills.list() works across all combinations."""
+    async def test_workflows_list_feature(self, storage_and_executor) -> None:
+        """workflows.list() works across all combinations."""
         storage, executor = storage_and_executor
         async with Session(storage=storage, executor=executor) as session:
-            result = await session.run("skills.list()")
-            assert result.is_ok, f"skills.list() failed: {result.error}"
+            result = await session.run("workflows.list()")
+            assert result.is_ok, f"workflows.list() failed: {result.error}"
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_skills_search_feature(self, storage_and_executor) -> None:
-        """skills.search() works across all combinations."""
+    async def test_workflows_search_feature(self, storage_and_executor) -> None:
+        """workflows.search() works across all combinations."""
         storage, executor = storage_and_executor
         async with Session(storage=storage, executor=executor) as session:
-            result = await session.run('skills.search("test")')
-            assert result.is_ok, f"skills.search() failed: {result.error}"
+            result = await session.run('workflows.search("test")')
+            assert result.is_ok, f"workflows.search() failed: {result.error}"
             assert isinstance(result.value, list)
 
     @pytest.mark.asyncio
-    async def test_skills_create_feature(self, storage_and_executor) -> None:
-        """skills.create() works across all combinations."""
+    async def test_workflows_create_feature(self, storage_and_executor) -> None:
+        """workflows.create() works across all combinations."""
         storage, executor = storage_and_executor
         async with Session(storage=storage, executor=executor) as session:
             result = await session.run("""
-skills.create(
+workflows.create(
     name="matrix_test",
-    description="Matrix test skill",
+    description="Matrix test workflow",
     source="async def run() -> str:\\n    return 'matrix'"
 )
 """)
-            assert result.is_ok, f"skills.create() failed: {result.error}"
+            assert result.is_ok, f"workflows.create() failed: {result.error}"
 
             # Verify it's callable
-            result = await session.run("skills.matrix_test()")
+            result = await session.run("workflows.matrix_test()")
             assert result.is_ok
             assert result.value == "matrix"
 

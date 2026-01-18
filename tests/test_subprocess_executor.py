@@ -1077,7 +1077,7 @@ class TestSubprocessExecutorLifecycle:
 
     @pytest.mark.asyncio
     async def test_start_with_storage_injects_namespaces(self, tmp_path: Path) -> None:
-        """start() with storage injects tools, skills, artifacts namespaces."""
+        """start() with storage injects tools, workflows, artifacts namespaces."""
         from py_code_mode.execution.subprocess import SubprocessExecutor
         from py_code_mode.storage.backends import FileStorage
 
@@ -1097,7 +1097,7 @@ class TestSubprocessExecutorLifecycle:
             result = await executor.run("'tools' in dir()")
             assert result.value in (True, "True")
 
-            result = await executor.run("'skills' in dir()")
+            result = await executor.run("'workflows' in dir()")
             assert result.value in (True, "True")
 
             result = await executor.run("'artifacts' in dir()")
@@ -1563,7 +1563,7 @@ class TestSubprocessExecutorReset:
 
     @pytest.mark.asyncio
     async def test_reset_preserves_injected_namespaces(self, executor) -> None:
-        """reset() preserves tools, skills, artifacts namespaces."""
+        """reset() preserves tools, workflows, artifacts namespaces."""
         # Verify namespaces exist before reset
         result = await executor.run("'tools' in dir()")
         assert result.value in (True, "True")
@@ -1574,7 +1574,7 @@ class TestSubprocessExecutorReset:
         result = await executor.run("'tools' in dir()")
         assert result.value in (True, "True")
 
-        result = await executor.run("'skills' in dir()")
+        result = await executor.run("'workflows' in dir()")
         assert result.value in (True, "True")
 
         result = await executor.run("'artifacts' in dir()")

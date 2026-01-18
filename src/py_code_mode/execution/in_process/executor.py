@@ -25,12 +25,12 @@ from py_code_mode.deps import (
     collect_configured_deps,
 )
 from py_code_mode.execution.in_process.config import InProcessConfig
-from py_code_mode.execution.in_process.skills_namespace import SkillsNamespace
+from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
 from py_code_mode.execution.protocol import Capability, validate_storage_not_access
 from py_code_mode.execution.registry import register_backend
-from py_code_mode.skills import SkillLibrary
 from py_code_mode.tools import ToolRegistry, ToolsNamespace, load_tools_from_path
 from py_code_mode.types import ExecutionResult
+from py_code_mode.workflows import WorkflowLibrary
 
 if TYPE_CHECKING:
     from py_code_mode.artifacts import ArtifactStoreProtocol
@@ -47,7 +47,7 @@ class InProcessExecutor:
     """Runs Python code with persistent state in the same process.
 
     Variables, functions, and imports persist across runs.
-    Optionally injects tools.*, skills.*, and artifacts.* namespaces.
+    Optionally injects tools.*, workflows.*, and artifacts.* namespaces.
 
     Capabilities:
     - TIMEOUT: Yes (via asyncio.wait_for)
@@ -58,7 +58,7 @@ class InProcessExecutor:
     Usage:
         executor = await InProcessExecutor.create(
             tools="./tools/",
-            skills="./skills/",
+            workflows="./workflows/",
         )
         result = await executor.run('tools.nmap(target="scanme.nmap.org")')
     """
@@ -76,14 +76,14 @@ class InProcessExecutor:
     def __init__(
         self,
         registry: ToolRegistry | None = None,
-        skill_library: SkillLibrary | None = None,
+        workflow_library: WorkflowLibrary | None = None,
         artifact_store: ArtifactStoreProtocol | None = None,
         deps_namespace: DepsNamespace | None = None,
         default_timeout: float | None = 30.0,
         config: InProcessConfig | None = None,
     ) -> None:
         self._registry = registry
-        self._skill_library = skill_library
+        self._workflow_library = workflow_library
         self._artifact_store: ArtifactStoreProtocol | None = artifact_store
         self._deps_namespace: DepsNamespace | None = deps_namespace
         self._config = config or InProcessConfig()
@@ -95,9 +95,9 @@ class InProcessExecutor:
         if registry is not None:
             self._namespace["tools"] = ToolsNamespace(registry)
 
-        # Inject skills namespace if skill_library provided
-        if skill_library is not None:
-            self._namespace["skills"] = SkillsNamespace(skill_library, self._namespace)
+        # Inject workflows namespace if workflow_library provided
+        if workflow_library is not None:
+            self._namespace["workflows"] = WorkflowsNamespace(workflow_library, self._namespace)
 
         # Inject artifacts namespace if artifact_store provided
         if artifact_store is not None:
@@ -150,12 +150,12 @@ class InProcessExecutor:
 
         timeout = timeout if timeout is not None else self._default_timeout
 
-        # Store loop reference for tool/skill calls from thread context
+        # Store loop reference for tool/workflow calls from thread context
         loop = asyncio.get_running_loop()
         if "tools" in self._namespace:
             self._namespace["tools"].set_loop(loop)
-        if "skills" in self._namespace:
-            self._namespace["skills"].set_loop(loop)
+        if "workflows" in self._namespace:
+            self._namespace["workflows"].set_loop(loop)
 
         # Run in thread to allow timeout cancellation
         try:
@@ -227,13 +227,13 @@ class InProcessExecutor:
     async def reset(self) -> None:
         """Reset session state.
 
-        Clears all user-defined variables but preserves tools, skills, artifacts, deps namespaces.
+        Clears all user-defined variables but preserves tools/workflows/artifacts/deps namespaces.
         """
         # Store namespace items we want to preserve
         preserved = {
             "__builtins__": self._namespace.get("__builtins__"),
             "tools": self._namespace.get("tools"),
-            "skills": self._namespace.get("skills"),
+            "workflows": self._namespace.get("workflows"),
             "artifacts": self._namespace.get("artifacts"),
             "deps": self._namespace.get("deps"),
         }
@@ -253,11 +253,11 @@ class InProcessExecutor:
         """Start executor and configure from config and storage backend.
 
         Tools and deps are loaded from executor config (tools_path, deps, deps_file).
-        Skills and artifacts come from storage backend.
+        Workflows and artifacts come from storage backend.
 
         Args:
             storage: Optional StorageBackend instance.
-                    If provided, uses storage for skills and artifacts.
+                    If provided, uses storage for workflows and artifacts.
                     If None, uses whatever was passed to __init__.
 
         Raises:
@@ -309,16 +309,20 @@ class InProcessExecutor:
         else:
             self._namespace["deps"] = self._deps_namespace
 
-        # Skills and artifacts from storage (if provided)
+        # Workflows and artifacts from storage (if provided)
         if storage is not None:
-            self._skill_library = storage.get_skill_library()
-            self._namespace["skills"] = SkillsNamespace(self._skill_library, self._namespace)
+            self._workflow_library = storage.get_workflow_library()
+            self._namespace["workflows"] = WorkflowsNamespace(
+                self._workflow_library, self._namespace
+            )
 
             self._artifact_store = storage.get_artifact_store()
             self._namespace["artifacts"] = self._artifact_store
-        elif self._skill_library is not None:
-            # Use skill_library from __init__ if provided
-            self._namespace["skills"] = SkillsNamespace(self._skill_library, self._namespace)
+        elif self._workflow_library is not None:
+            # Use workflow_library from __init__ if provided
+            self._namespace["workflows"] = WorkflowsNamespace(
+                self._workflow_library, self._namespace
+            )
 
         if storage is None and self._artifact_store is not None:
             # Use artifact_store from __init__ if provided

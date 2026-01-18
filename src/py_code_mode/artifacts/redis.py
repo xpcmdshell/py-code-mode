@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from py_code_mode.artifacts.base import Artifact
 from py_code_mode.errors import ArtifactNotFoundError
@@ -108,7 +108,7 @@ class RedisArtifactStore:
             ArtifactNotFoundError: If artifact doesn't exist.
         """
         data_key = self._data_key(name)
-        content = self._redis.get(data_key)
+        content = cast(str | bytes | None, self._redis.get(data_key))
 
         if content is None:
             raise ArtifactNotFoundError(name)
@@ -116,7 +116,7 @@ class RedisArtifactStore:
         # Check metadata for data type
         data_type = None
         try:
-            entry_json = self._redis.hget(self._index_key(), name)
+            entry_json = cast(str | bytes | None, self._redis.hget(self._index_key(), name))
             if entry_json and isinstance(entry_json, str | bytes):
                 entry = json.loads(entry_json)
                 data_type = entry.get("metadata", {}).get("_data_type")
@@ -146,7 +146,7 @@ class RedisArtifactStore:
         Returns:
             Artifact metadata or None if not found.
         """
-        entry_json = self._redis.hget(self._index_key(), name)
+        entry_json = cast(str | bytes | None, self._redis.hget(self._index_key(), name))
         if entry_json is None:
             return None
 
@@ -165,12 +165,16 @@ class RedisArtifactStore:
         Returns:
             List of Artifact objects.
         """
-        index_data = self._redis.hgetall(self._index_key())
+        index_data = cast(dict[str | bytes, str | bytes], self._redis.hgetall(self._index_key()))
         if not index_data:
             return []
 
         artifacts = []
         for name, entry_json in index_data.items():
+            if isinstance(name, bytes):
+                name = name.decode()
+            if isinstance(entry_json, bytes):
+                entry_json = entry_json.decode()
             entry = json.loads(entry_json)
             artifacts.append(
                 Artifact(
@@ -192,7 +196,7 @@ class RedisArtifactStore:
         Returns:
             True if artifact exists in index.
         """
-        return self._redis.hexists(self._index_key(), name)
+        return bool(self._redis.hexists(self._index_key(), name))
 
     def delete(self, name: str) -> None:
         """Delete artifact and its index entry.

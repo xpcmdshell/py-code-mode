@@ -1,17 +1,17 @@
-"""CLI for skill and tool store lifecycle management.
+"""CLI for workflow and tool store lifecycle management.
 
 Commands:
-    bootstrap - Push skills or tools from directory to store
-    pull - Retrieve skills from store to local files
-    diff - Compare local skills vs remote store
+    bootstrap - Push workflows or tools from directory to store
+    pull - Retrieve workflows from store to local files
+    diff - Compare local workflows vs remote store
     list - List items in store
 
 Usage:
-    python -m py_code_mode.cli.store bootstrap --source ./skills --target redis://...
+    python -m py_code_mode.cli.store bootstrap --source ./workflows --target redis://...
     python -m py_code_mode.cli.store bootstrap --source ./tools --target redis://... --type tools
-    python -m py_code_mode.cli.store pull --target redis://... --dest ./skills-from-redis
-    python -m py_code_mode.cli.store diff --source ./skills --target redis://...
-    python -m py_code_mode.cli.store list --target redis://... --prefix agent-skills
+    python -m py_code_mode.cli.store pull --target redis://... --dest ./workflows-from-redis
+    python -m py_code_mode.cli.store diff --source ./workflows --target redis://...
+    python -m py_code_mode.cli.store list --target redis://... --prefix agent-workflows
 """
 
 from __future__ import annotations
@@ -26,21 +26,21 @@ import redis as redis_lib
 import yaml
 
 from py_code_mode.deps import RedisDepsStore
-from py_code_mode.skills import FileSkillStore, PythonSkill, RedisSkillStore
 from py_code_mode.storage import RedisToolStore
+from py_code_mode.workflows import FileWorkflowStore, PythonWorkflow, RedisWorkflowStore
 
 logger = logging.getLogger(__name__)
 
 
-def _get_store(target: str, prefix: str) -> RedisSkillStore:
-    """Get skill store based on URL scheme.
+def _get_store(target: str, prefix: str) -> RedisWorkflowStore:
+    """Get workflow store based on URL scheme.
 
     Args:
         target: Target URL (e.g., redis://localhost:6379).
-        prefix: Key prefix for skills.
+        prefix: Key prefix for workflows.
 
     Returns:
-        RedisSkillStore connected to the target.
+        RedisWorkflowStore connected to the target.
 
     Raises:
         ValueError: Unknown URL scheme.
@@ -50,7 +50,7 @@ def _get_store(target: str, prefix: str) -> RedisSkillStore:
 
     if parsed.scheme in ("redis", "rediss"):
         r = redis_lib.from_url(target)
-        return RedisSkillStore(r, prefix=prefix)
+        return RedisWorkflowStore(r, prefix=prefix)
 
     elif parsed.scheme == "s3":
         raise NotImplementedError("S3 adapter coming soon")
@@ -67,16 +67,16 @@ def _get_store(target: str, prefix: str) -> RedisSkillStore:
         )
 
 
-def _skill_hash(skill: PythonSkill) -> str:
-    """Hash skill content for quick comparison.
+def _workflow_hash(workflow: PythonWorkflow) -> str:
+    """Hash workflow content for quick comparison.
 
     Args:
-        skill: Skill to hash.
+        workflow: Workflow to hash.
 
     Returns:
-        12-character hash of skill content.
+        12-character hash of workflow content.
     """
-    content = f"{skill.name}:{skill.description}:{skill.source}"
+    content = f"{workflow.name}:{workflow.description}:{workflow.source}"
     return hashlib.sha256(content.encode()).hexdigest()[:12]
 
 
@@ -84,17 +84,17 @@ def bootstrap(
     source: Path | None,
     target: str,
     prefix: str,
-    store_type: str = "skills",
+    store_type: str = "workflows",
     clear: bool = False,
     deps: list[str] | None = None,
 ) -> int:
-    """Push skills, tools, or deps to store.
+    """Push workflows, tools, or deps to store.
 
     Args:
-        source: Path to directory containing skill/tool files, or requirements file for deps.
+        source: Path to directory containing workflow/tool files, or requirements file for deps.
         target: Target store URL.
         prefix: Key prefix for items.
-        store_type: Type of store ("skills", "tools", or "deps").
+        store_type: Type of store ("workflows", "tools", or "deps").
         clear: If True, remove existing items first.
         deps: Inline package specs for deps bootstrapping (only used when store_type is "deps").
 
@@ -109,35 +109,35 @@ def bootstrap(
         return _bootstrap_deps(source, deps, target, prefix, clear)
     else:
         if source is None:
-            raise ValueError("--source is required for skills bootstrapping")
-        return _bootstrap_skills(source, target, prefix, clear)
+            raise ValueError("--source is required for workflows bootstrapping")
+        return _bootstrap_workflows(source, target, prefix, clear)
 
 
-def _bootstrap_skills(source: Path, target: str, prefix: str, clear: bool) -> int:
-    """Bootstrap skills to store."""
+def _bootstrap_workflows(source: Path, target: str, prefix: str, clear: bool) -> int:
+    """Bootstrap workflows to store."""
     store = _get_store(target, prefix)
 
     if clear:
-        for skill in store.list_all():
-            store.delete(skill.name)
-            print(f"  Removed: {skill.name}")
+        for workflow in store.list_all():
+            store.delete(workflow.name)
+            print(f"  Removed: {workflow.name}")
 
     # Load from local directory
-    local_store = FileSkillStore(source)
-    skills = local_store.list_all()
+    local_store = FileWorkflowStore(source)
+    workflows = local_store.list_all()
 
-    # Use batch save if available (RedisSkillStore)
+    # Use batch save if available (RedisWorkflowStore)
     if hasattr(store, "save_batch"):
-        store.save_batch(skills)
-        for skill in skills:
-            print(f"  Added: {skill.name}")
+        store.save_batch(workflows)
+        for workflow in workflows:
+            print(f"  Added: {workflow.name}")
     else:
-        for skill in skills:
-            store.save(skill)
-            print(f"  Added: {skill.name}")
+        for workflow in workflows:
+            store.save(workflow)
+            print(f"  Added: {workflow.name}")
 
-    print(f"\nBootstrapped {len(skills)} skills to {target} (prefix: {prefix})")
-    return len(skills)
+    print(f"\nBootstrapped {len(workflows)} workflows to {target} (prefix: {prefix})")
+    return len(workflows)
 
 
 def _bootstrap_tools(source: Path, target: str, prefix: str, clear: bool) -> int:
@@ -246,53 +246,53 @@ def _bootstrap_deps(
 
 
 def pull(target: str, prefix: str, dest: Path) -> int:
-    """Pull skills from store to local files.
+    """Pull workflows from store to local files.
 
     Args:
         target: Target store URL.
-        prefix: Key prefix for skills.
-        dest: Destination directory for skill files.
+        prefix: Key prefix for workflows.
+        dest: Destination directory for workflow files.
 
     Returns:
-        Number of skills pulled.
+        Number of workflows pulled.
     """
     store = _get_store(target, prefix)
 
     dest.mkdir(parents=True, exist_ok=True)
     pulled = 0
 
-    for skill in store.list_all():
+    for workflow in store.list_all():
         # Write as .py file
-        file_path = dest / f"{skill.name}.py"
-        file_path.write_text(skill.source)
+        file_path = dest / f"{workflow.name}.py"
+        file_path.write_text(workflow.source)
         pulled += 1
-        print(f"  {skill.name} -> {file_path}")
+        print(f"  {workflow.name} -> {file_path}")
 
-    print(f"\nPulled {pulled} skills to {dest}")
+    print(f"\nPulled {pulled} workflows to {dest}")
     return pulled
 
 
 def diff(source: Path, target: str, prefix: str) -> dict:
-    """Compare local skills vs remote store.
+    """Compare local workflows vs remote store.
 
     Args:
-        source: Path to local skills directory.
+        source: Path to local workflows directory.
         target: Target store URL.
-        prefix: Key prefix for skills.
+        prefix: Key prefix for workflows.
 
     Returns:
         Dict with keys: added, modified, removed, unchanged.
     """
     store = _get_store(target, prefix)
 
-    # Load local skills
-    local_store = FileSkillStore(source)
-    local_skills = {s.name: s for s in local_store.list_all()}
-    local_hashes = {name: _skill_hash(s) for name, s in local_skills.items()}
+    # Load local workflows
+    local_store = FileWorkflowStore(source)
+    local_workflows = {w.name: w for w in local_store.list_all()}
+    local_hashes = {name: _workflow_hash(w) for name, w in local_workflows.items()}
 
-    # Load remote skills
-    remote_skills = {s.name: s for s in store.list_all()}
-    remote_hashes = {name: _skill_hash(s) for name, s in remote_skills.items()}
+    # Load remote workflows
+    remote_workflows = {w.name: w for w in store.list_all()}
+    remote_hashes = {name: _workflow_hash(w) for name, w in remote_workflows.items()}
 
     result: dict[str, list[str]] = {
         "added": [],
@@ -301,10 +301,10 @@ def diff(source: Path, target: str, prefix: str) -> dict:
         "unchanged": [],
     }
 
-    all_names = set(local_skills.keys()) | set(remote_skills.keys())
+    all_names = set(local_workflows.keys()) | set(remote_workflows.keys())
     for name in sorted(all_names):
-        in_local = name in local_skills
-        in_remote = name in remote_skills
+        in_local = name in local_workflows
+        in_remote = name in remote_workflows
 
         if in_remote and not in_local:
             print(f"  + {name} (agent-created)")
@@ -322,13 +322,13 @@ def diff(source: Path, target: str, prefix: str) -> dict:
     return result
 
 
-def list_items(target: str, prefix: str, store_type: str = "skills") -> int:
+def list_items(target: str, prefix: str, store_type: str = "workflows") -> int:
     """List items in store.
 
     Args:
         target: Target store URL.
         prefix: Key prefix for items.
-        store_type: Type of store ("skills", "tools", or "deps").
+        store_type: Type of store ("workflows", "tools", or "deps").
 
     Returns:
         Number of items listed.
@@ -356,13 +356,13 @@ def list_items(target: str, prefix: str, store_type: str = "skills") -> int:
         print(f"\n{len(deps)} deps in {target} (prefix: {prefix})")
         return len(deps)
     else:
-        store = RedisSkillStore(r, prefix=prefix)
-        skills = store.list_all()
-        for skill in skills:
-            desc = skill.description[:50] if skill.description else ""
-            print(f"  {skill.name}: {desc}")
-        print(f"\n{len(skills)} skills in {target} (prefix: {prefix})")
-        return len(skills)
+        store = RedisWorkflowStore(r, prefix=prefix)
+        workflows = store.list_all()
+        for workflow in workflows:
+            desc = workflow.description[:50] if workflow.description else ""
+            print(f"  {workflow.name}: {desc}")
+        print(f"\n{len(workflows)} workflows in {target} (prefix: {prefix})")
+        return len(workflows)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -372,72 +372,73 @@ def create_parser() -> argparse.ArgumentParser:
         Configured ArgumentParser.
     """
     parser = argparse.ArgumentParser(
-        description="Skill, tool, and deps store lifecycle management",
+        description="Workflow, tool, and deps store lifecycle management",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Push skills from repo to Redis (deploy time)
-  python -m py_code_mode.store bootstrap \\
-    --source ./skills \\
-    --target redis://localhost:6379 \\
-    --prefix agent-skills
+  # Push workflows from repo to Redis (deploy time)
+  python -m py_code_mode.store bootstrap \
+    --source ./workflows \
+    --target redis://localhost:6379 \
+    --prefix agent-workflows
 
   # Push tools to Redis
-  python -m py_code_mode.store bootstrap \\
-    --source ./tools \\
-    --target redis://localhost:6379 \\
-    --prefix agent-tools \\
+  python -m py_code_mode.store bootstrap \
+    --source ./tools \
+    --target redis://localhost:6379 \
+    --prefix agent-tools \
     --type tools
 
   # Push deps from requirements file
-  python -m py_code_mode.store bootstrap \\
-    --source requirements.txt \\
-    --target redis://localhost:6379 \\
-    --prefix agent-deps \\
+  python -m py_code_mode.store bootstrap \
+    --source requirements.txt \
+    --target redis://localhost:6379 \
+    --prefix agent-deps \
     --type deps
 
   # Push deps inline
-  python -m py_code_mode.store bootstrap \\
-    --target redis://localhost:6379 \\
-    --prefix agent-deps \\
-    --type deps \\
+  python -m py_code_mode.store bootstrap \
+    --target redis://localhost:6379 \
+    --prefix agent-deps \
+    --type deps \
     --deps "requests>=2.31" "pandas>=2.0"
 
-  # List skills in Redis
-  python -m py_code_mode.store list \\
-    --target redis://localhost:6379 \\
-    --prefix agent-skills
+  # List workflows in Redis
+  python -m py_code_mode.store list \
+    --target redis://localhost:6379 \
+    --prefix agent-workflows
 
   # List deps in Redis
-  python -m py_code_mode.store list \\
-    --target redis://localhost:6379 \\
-    --prefix agent-deps \\
+  python -m py_code_mode.store list \
+    --target redis://localhost:6379 \
+    --prefix agent-deps \
     --type deps
 
-  # Pull skills from Redis to local files (review agent-created skills)
-  python -m py_code_mode.store pull \\
-    --target redis://localhost:6379 \\
-    --prefix agent-skills \\
-    --dest ./skills-from-redis
+  # Pull workflows from Redis to local files (review agent-created workflows)
+  python -m py_code_mode.store pull \
+    --target redis://localhost:6379 \
+    --prefix agent-workflows \
+    --dest ./workflows-from-redis
 
   # Compare local vs Redis (what did agent add/change?)
-  python -m py_code_mode.store diff \\
-    --source ./skills \\
-    --target redis://localhost:6379 \\
-    --prefix agent-skills
+  python -m py_code_mode.store diff \
+    --source ./workflows \
+    --target redis://localhost:6379 \
+    --prefix agent-workflows
 """,
     )
+
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # bootstrap
     boot = subparsers.add_parser(
         "bootstrap",
-        help="Push skills, tools, or deps to store",
+        help="Push workflows, tools, or deps to store",
     )
     boot.add_argument(
         "--source",
         type=Path,
-        help="Path to directory (skills/tools) or requirements file (deps)",
+        help="Path to directory (workflows/tools) or requirements file (deps)",
     )
     boot.add_argument(
         "--target",
@@ -446,14 +447,14 @@ Examples:
     )
     boot.add_argument(
         "--prefix",
-        default="skills",
-        help="Key prefix (default: skills)",
+        default="workflows",
+        help="Key prefix (default: workflows)",
     )
     boot.add_argument(
         "--type",
-        choices=["skills", "tools", "deps"],
-        default="skills",
-        help="Type of items to bootstrap (default: skills)",
+        choices=["workflows", "tools", "deps"],
+        default="workflows",
+        help="Type of items to bootstrap (default: workflows)",
     )
     boot.add_argument(
         "--clear",
@@ -478,20 +479,20 @@ Examples:
     )
     ls.add_argument(
         "--prefix",
-        default="skills",
-        help="Key prefix (default: skills)",
+        default="workflows",
+        help="Key prefix (default: workflows)",
     )
     ls.add_argument(
         "--type",
-        choices=["skills", "tools", "deps"],
-        default="skills",
-        help="Type of items to list (default: skills)",
+        choices=["workflows", "tools", "deps"],
+        default="workflows",
+        help="Type of items to list (default: workflows)",
     )
 
     # pull
     pl = subparsers.add_parser(
         "pull",
-        help="Retrieve skills from store to local files",
+        help="Retrieve workflows from store to local files",
     )
     pl.add_argument(
         "--target",
@@ -500,26 +501,26 @@ Examples:
     )
     pl.add_argument(
         "--prefix",
-        default="skills",
-        help="Key prefix for skills (default: skills)",
+        default="workflows",
+        help="Key prefix for workflows (default: workflows)",
     )
     pl.add_argument(
         "--dest",
         type=Path,
         required=True,
-        help="Destination directory for skill files",
+        help="Destination directory for workflow files",
     )
 
     # diff
     df = subparsers.add_parser(
         "diff",
-        help="Compare local skills vs remote store",
+        help="Compare local workflows vs remote store",
     )
     df.add_argument(
         "--source",
         type=Path,
         required=True,
-        help="Path to local skills directory",
+        help="Path to local workflows directory",
     )
     df.add_argument(
         "--target",
@@ -528,8 +529,8 @@ Examples:
     )
     df.add_argument(
         "--prefix",
-        default="skills",
-        help="Key prefix for skills (default: skills)",
+        default="workflows",
+        help="Key prefix for workflows (default: workflows)",
     )
 
     return parser

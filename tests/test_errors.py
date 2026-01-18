@@ -7,12 +7,12 @@ from py_code_mode import (
     ArtifactWriteError,
     CodeModeError,
     DependencyError,
-    SkillExecutionError,
-    SkillNotFoundError,
-    SkillValidationError,
     ToolCallError,
     ToolNotFoundError,
     ToolTimeoutError,
+    WorkflowExecutionError,
+    WorkflowNotFoundError,
+    WorkflowValidationError,
 )
 
 
@@ -36,10 +36,10 @@ class TestErrorHierarchy:
         assert isinstance(ArtifactNotFoundError("test"), CodeModeError)
         assert isinstance(ArtifactWriteError("test", "reason"), CodeModeError)
 
-    def test_skill_errors_inheritance(self) -> None:
-        assert isinstance(SkillNotFoundError("test"), CodeModeError)
-        assert isinstance(SkillValidationError("test", "reason"), CodeModeError)
-        assert isinstance(SkillExecutionError("test", ValueError("x")), CodeModeError)
+    def test_workflow_errors_inheritance(self) -> None:
+        assert isinstance(WorkflowNotFoundError("test"), CodeModeError)
+        assert isinstance(WorkflowValidationError("test", "reason"), CodeModeError)
+        assert isinstance(WorkflowExecutionError("test", ValueError("x")), CodeModeError)
 
     def test_dependency_error_inheritance(self) -> None:
         assert isinstance(DependencyError("numpy"), CodeModeError)
@@ -111,26 +111,26 @@ class TestArtifactErrors:
         assert "disk full" in str(err)
 
 
-class TestSkillErrors:
-    """Tests for skill-related errors."""
+class TestWorkflowErrors:
+    """Tests for workflow-related errors."""
 
     def test_not_found(self) -> None:
-        err = SkillNotFoundError("web_enum")
-        assert err.skill_name == "web_enum"
+        err = WorkflowNotFoundError("web_enum")
+        assert err.workflow_name == "web_enum"
         assert "web_enum" in str(err)
 
     def test_validation_error(self) -> None:
-        err = SkillValidationError("bad_skill", "missing required field 'code'")
-        assert err.skill_name == "bad_skill"
+        err = WorkflowValidationError("bad_workflow", "missing required field 'code'")
+        assert err.workflow_name == "bad_workflow"
         assert err.reason == "missing required field 'code'"
-        assert "bad_skill" in str(err)
+        assert "bad_workflow" in str(err)
 
     def test_execution_error(self) -> None:
         cause = RuntimeError("division by zero")
-        err = SkillExecutionError("buggy_skill", cause)
-        assert err.skill_name == "buggy_skill"
+        err = WorkflowExecutionError("buggy_workflow", cause)
+        assert err.workflow_name == "buggy_workflow"
         assert err.cause is cause
-        assert "buggy_skill" in str(err)
+        assert "buggy_workflow" in str(err)
 
 
 class TestDependencyError:
@@ -160,9 +160,9 @@ class TestCatchingAllErrors:
             ToolTimeoutError("x", 1.0),
             ArtifactNotFoundError("x"),
             ArtifactWriteError("x", "y"),
-            SkillNotFoundError("x"),
-            SkillValidationError("x", "y"),
-            SkillExecutionError("x", ValueError()),
+            WorkflowNotFoundError("x"),
+            WorkflowValidationError("x", "y"),
+            WorkflowExecutionError("x", ValueError()),
             DependencyError("x"),
         ]
 

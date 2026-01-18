@@ -164,8 +164,8 @@ resource sessionApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: '/workspace/configs/tools.yaml'
             }
             {
-              name: 'SKILLS_DIR'
-              value: '/workspace/configs/skills'
+              name: 'WORKFLOWS_DIR'
+              value: '/workspace/configs/workflows'
             }
             {
               name: 'ARTIFACTS_PATH'

@@ -37,8 +37,8 @@ async def main():
             "py-code-mode-mcp",
             "--tools",
             str(SHARED / "tools"),
-            "--skills",
-            str(SHARED / "skills"),
+            "--workflows",
+            str(SHARED / "workflows"),
             "--artifacts",
             str(HERE / "artifacts"),
         ],
@@ -67,7 +67,7 @@ async def main():
 
         # Interactive loop
         print("Assistant ready. Type your request (or 'quit' to exit).")
-        print("Tools available via MCP: run_code, list_tools, list_skills, search_skills\n")
+        print("Tools available via MCP: run_code, list_tools, list_workflows, search_workflows\n")
 
         while True:
             try:

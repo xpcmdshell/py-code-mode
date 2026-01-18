@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 try:
     from mcp import JSONRPCError, McpError
 
-    MCP_ERRORS: tuple[type[Exception], ...] = (McpError, JSONRPCError)
+    MCP_ERRORS = (McpError, JSONRPCError)
 except ImportError:
     MCP_ERRORS = ()
 

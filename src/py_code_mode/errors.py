@@ -67,30 +67,30 @@ class ArtifactWriteError(CodeModeError):
         super().__init__(f"Cannot write artifact '{artifact_name}': {reason}")
 
 
-class SkillNotFoundError(CodeModeError):
-    """Raised when a skill name is not found."""
+class WorkflowNotFoundError(CodeModeError):
+    """Raised when a workflow name is not found."""
 
-    def __init__(self, skill_name: str) -> None:
-        self.skill_name = skill_name
-        super().__init__(f"Skill '{skill_name}' not found")
+    def __init__(self, workflow_name: str) -> None:
+        self.workflow_name = workflow_name
+        super().__init__(f"Workflow '{workflow_name}' not found")
 
 
-class SkillValidationError(CodeModeError):
-    """Raised when skill YAML is invalid."""
+class WorkflowValidationError(CodeModeError):
+    """Raised when workflow YAML is invalid."""
 
-    def __init__(self, skill_name: str, reason: str) -> None:
-        self.skill_name = skill_name
+    def __init__(self, workflow_name: str, reason: str) -> None:
+        self.workflow_name = workflow_name
         self.reason = reason
-        super().__init__(f"Invalid skill '{skill_name}': {reason}")
+        super().__init__(f"Invalid workflow '{workflow_name}': {reason}")
 
 
-class SkillExecutionError(CodeModeError):
-    """Raised when skill code execution fails."""
+class WorkflowExecutionError(CodeModeError):
+    """Raised when workflow code execution fails."""
 
-    def __init__(self, skill_name: str, cause: Exception) -> None:
-        self.skill_name = skill_name
+    def __init__(self, workflow_name: str, cause: Exception) -> None:
+        self.workflow_name = workflow_name
         self.cause = cause
-        super().__init__(f"Skill '{skill_name}' execution failed: {cause}")
+        super().__init__(f"Workflow '{workflow_name}' execution failed: {cause}")
 
 
 class DependencyError(CodeModeError):
@@ -170,8 +170,8 @@ class NamespaceError(RPCError):
     original exception type caused the failure.
 
     Attributes:
-        namespace: The namespace where the error occurred (skills, tools, artifacts, deps).
-        operation: The operation that failed (e.g., invoke_skill, call_tool).
+        namespace: The namespace where the error occurred (workflows, tools, artifacts, deps).
+        operation: The operation that failed (e.g., invoke_workflow, call_tool).
         original_type: The original exception type name from the host.
     """
 
@@ -188,14 +188,14 @@ class NamespaceError(RPCError):
         super().__init__(f"{namespace}.{operation}: [{original_type}] {message}")
 
 
-class SkillError(NamespaceError):
-    """Error in skills namespace operation.
+class WorkflowError(NamespaceError):
+    """Error in workflows namespace operation.
 
-    Raised when skill invocation, creation, search, or deletion fails.
+    Raised when workflow invocation, creation, search, or deletion fails.
     """
 
     def __init__(self, operation: str, message: str, original_type: str = "RuntimeError") -> None:
-        super().__init__("skills", operation, message, original_type)
+        super().__init__("workflows", operation, message, original_type)
 
 
 class ToolError(NamespaceError):

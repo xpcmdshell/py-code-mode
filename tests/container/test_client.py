@@ -144,14 +144,14 @@ class TestSessionClientInfo:
     """Tests for info method."""
 
     @pytest.mark.asyncio
-    async def test_info_returns_tools_and_skills(self) -> None:
-        """Info returns available tools and skills."""
+    async def test_info_returns_tools_and_workflows(self) -> None:
+        """Info returns available tools and workflows."""
         client = SessionClient()
 
         mock_response = make_mock_response(
             {
                 "tools": [{"name": "cli.nmap", "description": "Network scanner"}],
-                "skills": [{"name": "scan", "description": "Port scanner"}],
+                "workflows": [{"name": "scan", "description": "Port scanner"}],
                 "artifacts_path": "/workspace/artifacts",
             }
         )
@@ -164,8 +164,8 @@ class TestSessionClientInfo:
 
         assert len(info.tools) == 1
         assert info.tools[0]["name"] == "cli.nmap"
-        assert len(info.skills) == 1
-        assert info.skills[0]["name"] == "scan"
+        assert len(info.workflows) == 1
+        assert info.workflows[0]["name"] == "scan"
 
 
 class TestSessionClientReset:

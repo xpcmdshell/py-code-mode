@@ -1,12 +1,12 @@
 """Tests for ContainerExecutor HTTP API endpoints.
 
-Tests the /api/* endpoints for structured queries of tools, skills, artifacts, and deps.
+Tests the /api/* endpoints for structured queries of tools, workflows, artifacts, and deps.
 These endpoints allow the executor to query metadata directly via HTTP instead of
 executing Python code.
 
 Feature areas covered:
 1. Tools API (list, search)
-2. Skills API (list, search, get, create, delete)
+2. Workflows API (list, search, get, create, delete)
 3. Artifacts API (list, load, save, delete)
 4. Deps API (list, add, remove, sync)
 5. Auth enforcement on all /api/* endpoints
@@ -77,12 +77,12 @@ class TestToolsAPI:
 
 
 # =============================================================================
-# SECTION 2: SKILLS API
+# SECTION 2: WORKFLOWS API
 # =============================================================================
 
 
-class TestSkillsAPI:
-    """Tests for /api/skills endpoints."""
+class TestWorkflowsAPI:
+    """Tests for /api/workflows endpoints."""
 
     @pytest.fixture
     def auth_client(self, tmp_path):
@@ -97,7 +97,7 @@ class TestSkillsAPI:
 
         config = SessionConfig(
             artifacts_path=tmp_path / "artifacts",
-            skills_path=tmp_path / "skills",
+            workflows_path=tmp_path / "workflows",
         )
         config.auth_token = "test-token"
 
@@ -105,28 +105,28 @@ class TestSkillsAPI:
         with TestClient(app) as client:
             yield client, "test-token"
 
-    def test_list_skills_returns_empty_when_no_skills(self, auth_client) -> None:
-        """GET /api/skills returns empty list when no skills registered."""
+    def test_list_workflows_returns_empty_when_no_workflows(self, auth_client) -> None:
+        """GET /api/workflows returns empty list when no workflows registered."""
         client, token = auth_client
         response = client.get(
-            "/api/skills",
+            "/api/workflows",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
 
-    def test_list_skills_requires_auth(self, auth_client) -> None:
-        """GET /api/skills requires authentication."""
+    def test_list_workflows_requires_auth(self, auth_client) -> None:
+        """GET /api/workflows requires authentication."""
         client, _ = auth_client
-        response = client.get("/api/skills")
+        response = client.get("/api/workflows")
         assert response.status_code == 401
 
-    def test_search_skills_returns_empty_when_no_skills(self, auth_client) -> None:
-        """GET /api/skills/search returns empty list when no skills registered."""
+    def test_search_workflows_returns_empty_when_no_workflows(self, auth_client) -> None:
+        """GET /api/workflows/search returns empty list when no workflows registered."""
         client, token = auth_client
         response = client.get(
-            "/api/skills/search",
+            "/api/workflows/search",
             params={"query": "fetch"},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -134,36 +134,36 @@ class TestSkillsAPI:
         data = response.json()
         assert isinstance(data, list)
 
-    def test_search_skills_requires_auth(self, auth_client) -> None:
-        """GET /api/skills/search requires authentication."""
+    def test_search_workflows_requires_auth(self, auth_client) -> None:
+        """GET /api/workflows/search requires authentication."""
         client, _ = auth_client
-        response = client.get("/api/skills/search", params={"query": "fetch"})
+        response = client.get("/api/workflows/search", params={"query": "fetch"})
         assert response.status_code == 401
 
-    def test_get_skill_returns_none_when_not_found(self, auth_client) -> None:
-        """GET /api/skills/{name} returns null when skill not found."""
+    def test_get_workflow_returns_none_when_not_found(self, auth_client) -> None:
+        """GET /api/workflows/{name} returns null when workflow not found."""
         client, token = auth_client
         response = client.get(
-            "/api/skills/nonexistent",
+            "/api/workflows/nonexistent",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 200
         data = response.json()
         assert data is None
 
-    def test_get_skill_requires_auth(self, auth_client) -> None:
-        """GET /api/skills/{name} requires authentication."""
+    def test_get_workflow_requires_auth(self, auth_client) -> None:
+        """GET /api/workflows/{name} requires authentication."""
         client, _ = auth_client
-        response = client.get("/api/skills/nonexistent")
+        response = client.get("/api/workflows/nonexistent")
         assert response.status_code == 401
 
-    def test_create_skill_success(self, auth_client) -> None:
-        """POST /api/skills creates a new skill."""
+    def test_create_workflow_success(self, auth_client) -> None:
+        """POST /api/workflows creates a new workflow."""
         client, token = auth_client
         response = client.post(
-            "/api/skills",
+            "/api/workflows",
             json={
-                "name": "test_skill",
+                "name": "test_workflow",
                 "source": "async def run(x: int) -> int:\n    return x * 2",
                 "description": "Doubles a number",
             },
@@ -171,30 +171,30 @@ class TestSkillsAPI:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["name"] == "test_skill"
+        assert data["name"] == "test_workflow"
         assert data["description"] == "Doubles a number"
         assert "source" in data
 
-    def test_create_skill_requires_auth(self, auth_client) -> None:
-        """POST /api/skills requires authentication."""
+    def test_create_workflow_requires_auth(self, auth_client) -> None:
+        """POST /api/workflows requires authentication."""
         client, _ = auth_client
         response = client.post(
-            "/api/skills",
+            "/api/workflows",
             json={
-                "name": "test_skill",
+                "name": "test_workflow",
                 "source": "async def run(): pass",
                 "description": "Test",
             },
         )
         assert response.status_code == 401
 
-    def test_create_skill_invalid_source_returns_400(self, auth_client) -> None:
-        """POST /api/skills returns 400 for invalid source code."""
+    def test_create_workflow_invalid_source_returns_400(self, auth_client) -> None:
+        """POST /api/workflows returns 400 for invalid source code."""
         client, token = auth_client
         response = client.post(
-            "/api/skills",
+            "/api/workflows",
             json={
-                "name": "bad_skill",
+                "name": "bad_workflow",
                 "source": "not valid python +++",
                 "description": "Invalid",
             },
@@ -202,13 +202,13 @@ class TestSkillsAPI:
         )
         assert response.status_code == 400
 
-    def test_create_skill_no_run_returns_400(self, auth_client) -> None:
-        """POST /api/skills returns 400 when source has no run() function."""
+    def test_create_workflow_no_run_returns_400(self, auth_client) -> None:
+        """POST /api/workflows returns 400 when source has no run() function."""
         client, token = auth_client
         response = client.post(
-            "/api/skills",
+            "/api/workflows",
             json={
-                "name": "no_run_skill",
+                "name": "no_run_workflow",
                 "source": "def other_func(): pass",
                 "description": "No run",
             },
@@ -216,58 +216,58 @@ class TestSkillsAPI:
         )
         assert response.status_code == 400
 
-    def test_delete_skill_requires_auth(self, auth_client) -> None:
-        """DELETE /api/skills/{name} requires authentication."""
+    def test_delete_workflow_requires_auth(self, auth_client) -> None:
+        """DELETE /api/workflows/{name} requires authentication."""
         client, _ = auth_client
-        response = client.delete("/api/skills/test_skill")
+        response = client.delete("/api/workflows/test_workflow")
         assert response.status_code == 401
 
-    def test_delete_skill_returns_false_when_not_found(self, auth_client) -> None:
-        """DELETE /api/skills/{name} returns false when skill not found."""
+    def test_delete_workflow_returns_false_when_not_found(self, auth_client) -> None:
+        """DELETE /api/workflows/{name} returns false when workflow not found."""
         client, token = auth_client
         response = client.delete(
-            "/api/skills/nonexistent",
+            "/api/workflows/nonexistent",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 200
         assert response.json() is False
 
-    def test_skill_lifecycle_create_get_delete(self, auth_client) -> None:
-        """Full skill lifecycle: create, get, delete."""
+    def test_workflow_lifecycle_create_get_delete(self, auth_client) -> None:
+        """Full workflow lifecycle: create, get, delete."""
         client, token = auth_client
         headers = {"Authorization": f"Bearer {token}"}
 
         # Create
-        skill_source = (
+        workflow_source = (
             'async def run(n: int) -> int:\n    """Square a number."""\n    return n ** 2'
         )
         response = client.post(
-            "/api/skills",
+            "/api/workflows",
             json={
-                "name": "lifecycle_skill",
-                "source": skill_source,
+                "name": "lifecycle_workflow",
+                "source": workflow_source,
                 "description": "Squares a number",
             },
             headers=headers,
         )
         assert response.status_code == 200
         created = response.json()
-        assert created["name"] == "lifecycle_skill"
+        assert created["name"] == "lifecycle_workflow"
 
         # Get
-        response = client.get("/api/skills/lifecycle_skill", headers=headers)
+        response = client.get("/api/workflows/lifecycle_workflow", headers=headers)
         assert response.status_code == 200
         fetched = response.json()
-        assert fetched["name"] == "lifecycle_skill"
+        assert fetched["name"] == "lifecycle_workflow"
         assert fetched["source"] is not None
 
         # Delete
-        response = client.delete("/api/skills/lifecycle_skill", headers=headers)
+        response = client.delete("/api/workflows/lifecycle_workflow", headers=headers)
         assert response.status_code == 200
         assert response.json() is True
 
         # Verify deleted
-        response = client.get("/api/skills/lifecycle_skill", headers=headers)
+        response = client.get("/api/workflows/lifecycle_workflow", headers=headers)
         assert response.status_code == 200
         assert response.json() is None
 
@@ -563,12 +563,12 @@ class TestAPIAuthEnforcement:
             # Tools
             ("/api/tools", "get"),
             ("/api/tools/search?query=test", "get"),
-            # Skills
-            ("/api/skills", "get"),
-            ("/api/skills/search?query=test", "get"),
-            ("/api/skills/test", "get"),
-            ("/api/skills", "post"),
-            ("/api/skills/test", "delete"),
+            # Workflows
+            ("/api/workflows", "get"),
+            ("/api/workflows/search?query=test", "get"),
+            ("/api/workflows/test", "get"),
+            ("/api/workflows", "post"),
+            ("/api/workflows/test", "delete"),
             # Artifacts
             ("/api/artifacts", "get"),
             ("/api/artifacts/test", "get"),

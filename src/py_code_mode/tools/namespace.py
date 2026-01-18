@@ -127,10 +127,10 @@ class ToolProxy:
         Returns coroutine in async context, executes sync otherwise.
 
         When set_loop() has been called, always uses sync execution to support
-        calling tools from within synchronously-executed skills.
+        calling tools from within synchronously-executed workflows.
         """
         # If we have an explicit loop reference, always use sync path
-        # This supports calling tools from sync skill code within async context
+        # This supports calling tools from sync workflow code within async context
         if self._loop is not None:
             return self.call_sync(**kwargs)
 
@@ -211,10 +211,10 @@ class CallableProxy:
         This allows both `await tools.x.y()` and `tools.x.y()` to work.
 
         When set_loop() has been called on the parent namespace, always uses
-        sync execution to support calling tools from within synchronously-executed skills.
+        sync execution to support calling tools from within synchronously-executed workflows.
         """
         # If we have an explicit loop reference, always use sync path
-        # This supports calling tools from sync skill code within async context
+        # This supports calling tools from sync workflow code within async context
         if self._loop is not None:
             return self.call_sync(**kwargs)
 

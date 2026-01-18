@@ -4,12 +4,12 @@ Complete reference for the Session class - the primary interface for py-code-mod
 
 ## Overview
 
-Session wraps a storage backend and executor, providing a unified API for code execution with tools, skills, and artifacts.
+Session wraps a storage backend and executor, providing a unified API for code execution with tools, workflows, and artifacts.
 
 ```python
 from py_code_mode import Session
 
-# Simplest: auto-discovers tools/, skills/, artifacts/, requirements.txt
+# Simplest: auto-discovers tools/, workflows/, artifacts/, requirements.txt
 async with Session.from_base("./.code-mode") as session:
     result = await session.run("tools.curl.get(url='https://api.github.com')")
 ```
@@ -43,7 +43,7 @@ Session.from_base(
 
 **Auto-discovers:**
 - `{base}/tools/` - Tool definitions (YAML files)
-- `{base}/skills/` - Skill files (Python)
+- `{base}/workflows/` - Workflow files (Python)
 - `{base}/artifacts/` - Persistent data storage
 - `{base}/requirements.txt` - Pre-configured dependencies
 
@@ -303,24 +303,24 @@ http_tools = await session.search_tools("make HTTP requests")
 
 ---
 
-## Skills Methods
+## Workflows Methods
 
-### list_skills()
+### list_workflows()
 
-List all available skills.
+List all available workflows.
 
 ```python
-async def list_skills(self) -> list[dict[str, Any]]
+async def list_workflows(self) -> list[dict[str, Any]]
 ```
 
-**Returns:** List of skill summaries (name, description, parameters - no source).
+**Returns:** List of workflow summaries (name, description, parameters - no source).
 
-### search_skills()
+### search_workflows()
 
-Search skills by semantic similarity.
+Search workflows by semantic similarity.
 
 ```python
-async def search_skills(
+async def search_workflows(
     self,
     query: str,
     limit: int = 5
@@ -330,33 +330,33 @@ async def search_skills(
 **Example:**
 
 ```python
-skills = await session.search_skills("fetch GitHub repository data")
+workflows = await session.search_workflows("fetch GitHub repository data")
 ```
 
-### get_skill()
+### get_workflow()
 
-Get a specific skill by name, including source code.
+Get a specific workflow by name, including source code.
 
 ```python
-async def get_skill(self, name: str) -> dict[str, Any] | None
+async def get_workflow(self, name: str) -> dict[str, Any] | None
 ```
 
-**Returns:** Skill dict with `name`, `description`, `parameters`, `source`, or None if not found.
+**Returns:** Workflow dict with `name`, `description`, `parameters`, `source`, or None if not found.
 
 **Example:**
 
 ```python
-skill = await session.get_skill("fetch_json")
-if skill:
-    print(skill["source"])
+workflow = await session.get_workflow("fetch_json")
+if workflow:
+    print(workflow["source"])
 ```
 
-### add_skill()
+### add_workflow()
 
-Create and persist a new skill.
+Create and persist a new workflow.
 
 ```python
-async def add_skill(
+async def add_workflow(
     self,
     name: str,
     source: str,
@@ -367,7 +367,7 @@ async def add_skill(
 **Example:**
 
 ```python
-await session.add_skill(
+await session.add_workflow(
     name="fetch_json",
     source='''async def run(url: str) -> dict:
     import json
@@ -378,12 +378,12 @@ await session.add_skill(
 )
 ```
 
-### remove_skill()
+### remove_workflow()
 
-Remove a skill by name.
+Remove a workflow by name.
 
 ```python
-async def remove_skill(self, name: str) -> bool
+async def remove_workflow(self, name: str) -> bool
 ```
 
 **Returns:** True if removed, False if not found.
@@ -523,7 +523,7 @@ def storage(self) -> StorageBackend
 
 ```python
 # Access storage for advanced operations
-skill_library = session.storage.get_skill_library()
+workflow_library = session.storage.get_workflow_library()
 ```
 
 ---

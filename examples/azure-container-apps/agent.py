@@ -3,20 +3,20 @@
 This example shows:
 - Same agent pattern as the autogen example
 - Deployed to Azure Container Apps with GPT-4o via Azure OpenAI
-- Uses Redis for both skills and artifacts when REDIS_URL is set
+- Uses Redis for both workflows and artifacts when REDIS_URL is set
 - CLI tools (curl, jq) and MCP tools (fetch, time)
-- Multi-tool skill (analyze_repo.py)
+- Multi-tool workflow (analyze_repo.py)
 
 Run locally (with Azure OpenAI):
     cd examples/azure-container-apps
     AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com uv run python agent.py
 
 Run with Redis backend:
-    # First, provision skills to Redis (one-time or deploy-time)
+    # First, provision workflows to Redis (one-time or deploy-time)
     python -m py_code_mode.store bootstrap \
-        --source ../shared/skills \
+        --source ../shared/workflows \
         --target redis://localhost:6379 \
-        --prefix agent-skills
+        --prefix agent-workflows
 
     # Then run the agent
     REDIS_URL=redis://localhost:6379 uv run python agent.py
@@ -83,10 +83,10 @@ def create_storage():
     """Create storage backend.
 
     When REDIS_URL is set:
-    - Tools, skills, and artifacts are loaded from Redis
+    - Tools, workflows, and artifacts are loaded from Redis
 
     Without REDIS_URL:
-    - Tools, skills, and artifacts are loaded from shared/ directory
+    - Tools, workflows, and artifacts are loaded from shared/ directory
     """
     redis_url = os.environ.get("REDIS_URL")
 
@@ -110,19 +110,19 @@ async def main():
 
         system_prompt = """You are a helpful assistant that writes Python code to accomplish tasks.
 
-You have access to `tools` and `skills` namespaces in your code environment.
+You have access to `tools` and `workflows` namespaces in your code environment.
 
 WORKFLOW:
-1. For any nontrivial task, FIRST search skills: skills.search("relevant keywords")
-2. If a skill exists, use it: skills.invoke("name", arg=value)
-3. If no skill matches, search tools: tools.search("keywords")
+1. For any nontrivial task, FIRST search workflows: workflows.search("relevant keywords")
+2. If a workflow exists, use it: workflows.invoke("name", arg=value)
+3. If no workflow matches, search tools: tools.search("keywords")
 4. Script tools together: tools.name(arg=value)
 
 DISCOVERY:
-- skills.search("query") / skills.list() - find prebaked solutions
+- workflows.search("query") / workflows.list() - find prebaked solutions
 - tools.search("query") / tools.list() - find individual tools
 
-Skills are reusable recipes that combine tools. Prefer them over scripting from scratch.
+Workflows are reusable recipes that combine tools. Prefer them over scripting from scratch.
 
 ARTIFACTS (persistent storage):
 - artifacts.save("name", data, description="...") - Save data for later

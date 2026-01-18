@@ -173,18 +173,18 @@ description: Echo text back
             assert result.error is not None
 
 
-# --- Skills Namespace Errors ---
+# --- Workflows Namespace Errors ---
 
 
-class TestSkillsNamespaceErrors:
-    """Tests for skills namespace error handling."""
+class TestWorkflowsNamespaceErrors:
+    """Tests for workflows namespace error handling."""
 
     @pytest.fixture
     def storage(self, tmp_path: Path) -> FileStorage:
-        """Create FileStorage with skills directory."""
-        skills_dir = tmp_path / "skills"
-        skills_dir.mkdir()
-        (skills_dir / "divide.py").write_text(
+        """Create FileStorage with workflows directory."""
+        workflows_dir = tmp_path / "workflows"
+        workflows_dir.mkdir()
+        (workflows_dir / "divide.py").write_text(
             '''"""Divide two numbers."""
 
 async def run(a: int, b: int) -> float:
@@ -194,10 +194,10 @@ async def run(a: int, b: int) -> float:
         return FileStorage(tmp_path)
 
     @pytest.mark.asyncio
-    async def test_skill_not_found_error(self, storage: FileStorage) -> None:
-        """Calling nonexistent skill gives clear error."""
+    async def test_workflow_not_found_error(self, storage: FileStorage) -> None:
+        """Calling nonexistent workflow gives clear error."""
         async with Session(storage=storage) as session:
-            result = await session.run("skills.nonexistent()")
+            result = await session.run("workflows.nonexistent()")
 
             assert not result.is_ok
             assert result.error is not None
@@ -208,33 +208,33 @@ async def run(a: int, b: int) -> float:
             )
 
     @pytest.mark.asyncio
-    async def test_skill_missing_required_arg_error(self, storage: FileStorage) -> None:
-        """Skill called without required args gives clear error."""
+    async def test_workflow_missing_required_arg_error(self, storage: FileStorage) -> None:
+        """Workflow called without required args gives clear error."""
         async with Session(storage=storage) as session:
-            result = await session.run("skills.divide()")  # Missing required args
+            result = await session.run("workflows.divide()")  # Missing required args
 
             assert not result.is_ok
             assert result.error is not None
 
     @pytest.mark.asyncio
-    async def test_skill_runtime_error_captured(self, storage: FileStorage) -> None:
-        """Runtime error in skill is captured."""
+    async def test_workflow_runtime_error_captured(self, storage: FileStorage) -> None:
+        """Runtime error in workflow is captured."""
         async with Session(storage=storage) as session:
-            result = await session.run("skills.divide(a=1, b=0)")  # Division by zero
+            result = await session.run("workflows.divide(a=1, b=0)")  # Division by zero
 
             assert not result.is_ok
             assert result.error is not None
             assert "ZeroDivision" in result.error or "division" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_skill_create_invalid_source_error(self, storage: FileStorage) -> None:
-        """Creating skill with invalid source gives error."""
+    async def test_workflow_create_invalid_source_error(self, storage: FileStorage) -> None:
+        """Creating workflow with invalid source gives error."""
         async with Session(storage=storage) as session:
             result = await session.run(
                 """
-skills.create(
+workflows.create(
     name="bad",
-    description="Invalid skill",
+    description="Invalid workflow",
     source="async def run( INVALID SYNTAX"
 )
 """
@@ -244,12 +244,12 @@ skills.create(
             assert result.error is not None
 
     @pytest.mark.asyncio
-    async def test_skill_create_missing_run_function_error(self, storage: FileStorage) -> None:
-        """Creating skill without run() function gives error."""
+    async def test_workflow_create_missing_run_function_error(self, storage: FileStorage) -> None:
+        """Creating workflow without run() function gives error."""
         async with Session(storage=storage) as session:
             result = await session.run(
                 """
-skills.create(
+workflows.create(
     name="norun",
     description="No run function",
     source="def helper(): return 1"
@@ -260,7 +260,7 @@ skills.create(
             # Should either fail at creation or when calling
             if result.is_ok:
                 # If creation succeeded, calling should fail
-                result = await session.run("skills.norun()")
+                result = await session.run("workflows.norun()")
                 assert not result.is_ok
 
 
@@ -331,8 +331,8 @@ class TestFileStorageErrors:
         storage = FileStorage(nonexistent)
 
         # Should work (directory created on demand)
-        # Storage no longer provides tools (executor-owned), test skill library instead
-        library = storage.get_skill_library()
+        # Storage no longer provides tools (executor-owned), test workflow library instead
+        library = storage.get_workflow_library()
         result = library.list()
         assert isinstance(result, list)
 
@@ -368,17 +368,17 @@ class TestFileStorageErrors:
         except Exception:
             pass  # Raising on corrupted files is acceptable
 
-    def test_corrupted_skill_handling(self, tmp_path: Path) -> None:
-        """FileStorage handles corrupted skill files."""
-        skills_dir = tmp_path / "skills"
-        skills_dir.mkdir()
-        (skills_dir / "bad.py").write_text("async def run( INVALID")
+    def test_corrupted_workflow_handling(self, tmp_path: Path) -> None:
+        """FileStorage handles corrupted workflow files."""
+        workflows_dir = tmp_path / "workflows"
+        workflows_dir.mkdir()
+        (workflows_dir / "bad.py").write_text("async def run( INVALID")
 
         storage = FileStorage(tmp_path)
 
         # Should not crash on list
         try:
-            library = storage.get_skill_library()
+            library = storage.get_workflow_library()
             result = library.list()
             assert isinstance(result, list)
         except Exception:
@@ -394,22 +394,22 @@ class TestRedisStorageErrors:
         storage = RedisStorage(redis=mock_redis, prefix="test")
 
         # Mock client always works, so this tests basic functionality
-        # Storage no longer provides tools (executor-owned), test skill library instead
-        library = storage.get_skill_library()
+        # Storage no longer provides tools (executor-owned), test workflow library instead
+        library = storage.get_workflow_library()
         result = library.list()
         assert isinstance(result, list)
 
     @pytest.mark.asyncio
     async def test_deserialization_error_handling(self, mock_redis: MockRedisClient) -> None:
-        """RedisStorage handles corrupted skill data."""
+        """RedisStorage handles corrupted workflow data."""
         storage = RedisStorage(redis=mock_redis, prefix="test")
 
-        # Manually inject corrupted data into skills
-        mock_redis.hset("test:skills:__skills__", "bad", b"not valid json {{{")
+        # Manually inject corrupted data into workflows
+        mock_redis.hset("test:workflows:__workflows__", "bad", b"not valid json {{{")
 
         # Should not crash - may skip or error gracefully
         try:
-            library = storage.get_skill_library()
+            library = storage.get_workflow_library()
             result = library.list()
             # May return empty or skip corrupted entries
             assert isinstance(result, list)

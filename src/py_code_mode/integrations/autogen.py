@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from py_code_mode.execution import InProcessExecutor
@@ -35,7 +35,7 @@ def create_run_code_tool(
     session_url: str | None = None,
     timeout: float = 30.0,
     session_id: str | None = None,
-) -> Callable[[str], str]:
+) -> Callable[[str], Any]:
     """Create a run_code tool for AutoGen agents.
 
     Provide either an executor (for in-process execution) or a session_url
@@ -69,15 +69,15 @@ def create_run_code_tool(
 def _create_local_tool(
     executor: InProcessExecutor,
     timeout: float,
-) -> Callable[[str], str]:
+) -> Callable[[str], Any]:
     """Create tool using local CodeExecutor."""
 
     async def run_code(code: str) -> str:
-        """Execute Python code with access to tools.*, skills.*, and artifacts.*.
+        """Execute Python code with access to tools.*, workflows.*, and artifacts.*.
 
         The code runs in a persistent environment where:
         - tools.name(arg=value) invokes registered tools
-        - skills.invoke("skill_name", arg=value) runs registered skills
+        - workflows.invoke("workflow_name", arg=value) runs registered workflows
         - artifacts.save(name, data) persists data across executions
         - artifacts.load(name) retrieves previously saved data
         - Variables persist across calls
@@ -110,7 +110,7 @@ def _create_remote_tool(
     session_url: str,
     timeout: float,
     session_id: str | None = None,
-) -> Callable[[str], str]:
+) -> Callable[[str], Any]:
     """Create tool using remote session server."""
 
     # Lazy import to avoid requiring httpx for local-only usage
@@ -122,11 +122,11 @@ def _create_remote_tool(
     _session_id = session_id or str(uuid.uuid4())
 
     def run_code(code: str) -> str:
-        """Execute Python code with access to tools.*, skills.*, and artifacts.*.
+        """Execute Python code with access to tools.*, workflows.*, and artifacts.*.
 
         The code runs on a remote session server where:
         - tools.name(arg=value) invokes registered tools
-        - skills.invoke("skill_name", arg=value) runs registered skills
+        - workflows.invoke("workflow_name", arg=value) runs registered workflows
         - artifacts.save(name, data) persists data across executions
         - artifacts.load(name) retrieves previously saved data
         - Variables persist across calls

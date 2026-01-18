@@ -5,7 +5,7 @@ Guide for deploying py-code-mode in production environments.
 ## Architecture
 
 Production deployments typically combine:
-- **RedisStorage** - Shared skill library across instances
+- **RedisStorage** - Shared workflow library across instances
 - **ContainerExecutor** - Isolated code execution
 - **Pre-configured dependencies** - Locked down environment
 - **Monitoring and observability** - Health checks and logging
@@ -15,7 +15,7 @@ import os
 from py_code_mode import Session, RedisStorage
 from py_code_mode.execution import ContainerExecutor, ContainerConfig
 
-# Shared skill library
+# Shared workflow library
 storage = RedisStorage(url=os.getenv("REDIS_URL"), prefix="production")
 
 # Isolated execution with authentication and pre-configured deps
@@ -110,12 +110,12 @@ def get_storage(tenant_id: str, redis_url: str) -> RedisStorage:
 
 ### Horizontal Scaling
 
-Multiple agent instances share skill library via Redis:
+Multiple agent instances share workflow library via Redis:
 
 ```
 ┌─────────────┐     ┌──────────┐     ┌─────────────┐
 │  Instance 1 │────▶│  Redis   │◀────│  Instance 2 │
-└─────────────┘     │ (Skills) │     └─────────────┘
+└─────────────┘     │ (Workflows) │     └─────────────┘
                     └──────────┘
                          ▲
                          │
@@ -124,7 +124,7 @@ Multiple agent instances share skill library via Redis:
                     └─────────────┘
 ```
 
-All instances benefit when any instance creates a skill.
+All instances benefit when any instance creates a workflow.
 
 ### Load Balancing
 

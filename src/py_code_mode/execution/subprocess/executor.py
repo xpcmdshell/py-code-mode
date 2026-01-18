@@ -2,7 +2,7 @@
 
 This executor runs Python code in an isolated subprocess (Jupyter kernel) with
 bidirectional RPC for namespace operations. The kernel contains lightweight
-proxy objects that forward all tools/skills/artifacts/deps calls to the host.
+proxy objects that forward all tools/workflows/artifacts/deps calls to the host.
 
 Key advantages over code injection (old namespace.py approach):
 - No py-code-mode install needed in subprocess venv (just ipykernel + zmq)
@@ -68,7 +68,7 @@ class StorageResourceProvider:
     """ResourceProvider that bridges RPC to storage backend.
 
     This class implements the ResourceProvider protocol by delegating
-    to the storage backend for skills and artifacts, and using
+    to the storage backend for workflows and artifacts, and using
     executor-provided tool registry and deps store.
     """
 
@@ -84,7 +84,7 @@ class StorageResourceProvider:
         """Initialize provider.
 
         Args:
-            storage: Storage backend for skills and artifacts.
+            storage: Storage backend for workflows and artifacts.
             tool_registry: Tool registry loaded from executor config.
             deps_store: Deps store for dependency management.
             allow_runtime_deps: Whether to allow deps.add() and deps.remove().
@@ -97,18 +97,18 @@ class StorageResourceProvider:
         self._allow_runtime_deps = allow_runtime_deps
         self._venv_manager = venv_manager
         self._venv = venv
-        # Cached skill library (lazy initialized)
-        self._skill_library = None
+        # Cached workflow library (lazy initialized)
+        self._workflow_library = None
 
     def _get_tool_registry(self) -> ToolRegistry | None:
         """Get tool registry. Already loaded at construction time."""
         return self._tool_registry
 
-    def _get_skill_library(self):
-        """Get skill library, caching the result."""
-        if self._skill_library is None:
-            self._skill_library = self._storage.get_skill_library()
-        return self._skill_library
+    def _get_workflow_library(self):
+        """Get workflow library, caching the result."""
+        if self._workflow_library is None:
+            self._workflow_library = self._storage.get_workflow_library()
+        return self._workflow_library
 
     # -------------------------------------------------------------------------
     # Tool methods
@@ -173,73 +173,73 @@ class StorageResourceProvider:
         ]
 
     # -------------------------------------------------------------------------
-    # Skill methods
+    # Workflow methods
     # -------------------------------------------------------------------------
 
-    async def search_skills(self, query: str, limit: int) -> list[dict[str, Any]]:
-        """Search for skills matching query."""
-        library = self._get_skill_library()
+    async def search_workflows(self, query: str, limit: int) -> list[dict[str, Any]]:
+        """Search for workflows matching query."""
+        library = self._get_workflow_library()
         library.refresh()
-        skills = library.search(query, limit=limit)
+        workflows = library.search(query, limit=limit)
         return [
             {
-                "name": s.name,
-                "description": s.description,
-                "params": {p.name: p.description or p.type for p in s.parameters},
+                "name": w.name,
+                "description": w.description,
+                "params": {p.name: p.description or p.type for p in w.parameters},
             }
-            for s in skills
+            for w in workflows
         ]
 
-    async def list_skills(self) -> list[dict[str, Any]]:
-        """List all available skills."""
-        library = self._get_skill_library()
+    async def list_workflows(self) -> list[dict[str, Any]]:
+        """List all available workflows."""
+        library = self._get_workflow_library()
         library.refresh()
-        skills = library.list()
+        workflows = library.list()
         return [
             {
-                "name": s.name,
-                "description": s.description,
-                "params": {p.name: p.description or p.type for p in s.parameters},
+                "name": w.name,
+                "description": w.description,
+                "params": {p.name: p.description or p.type for p in w.parameters},
             }
-            for s in skills
+            for w in workflows
         ]
 
-    async def get_skill(self, name: str) -> dict[str, Any] | None:
-        """Get a skill by name."""
-        library = self._get_skill_library()
+    async def get_workflow(self, name: str) -> dict[str, Any] | None:
+        """Get a workflow by name."""
+        library = self._get_workflow_library()
         library.refresh()
-        skill = library.get(name)
-        if skill is None:
+        workflow = library.get(name)
+        if workflow is None:
             return None
         return {
-            "name": skill.name,
-            "description": skill.description,
-            "source": skill.source,
-            "params": {p.name: p.description or p.type for p in skill.parameters},
+            "name": workflow.name,
+            "description": workflow.description,
+            "source": workflow.source,
+            "params": {p.name: p.description or p.type for p in workflow.parameters},
         }
 
-    async def create_skill(self, name: str, source: str, description: str) -> dict[str, Any]:
-        """Create and save a new skill."""
-        from py_code_mode.skills import PythonSkill
+    async def create_workflow(self, name: str, source: str, description: str) -> dict[str, Any]:
+        """Create and save a new workflow."""
+        from py_code_mode.workflows import PythonWorkflow
 
-        skill = PythonSkill.from_source(
+        workflow = PythonWorkflow.from_source(
             name=name,
             source=source,
             description=description,
         )
 
-        library = self._get_skill_library()
-        library.add(skill)
+        library = self._get_workflow_library()
+        library.add(workflow)
 
         return {
-            "name": skill.name,
-            "description": skill.description,
-            "params": {p.name: p.description or p.type for p in skill.parameters},
+            "name": workflow.name,
+            "description": workflow.description,
+            "params": {p.name: p.description or p.type for p in workflow.parameters},
         }
 
-    async def delete_skill(self, name: str) -> bool:
-        """Delete a skill."""
-        library = self._get_skill_library()
+    async def delete_workflow(self, name: str) -> bool:
+        """Delete a workflow."""
+        library = self._get_workflow_library()
         return library.remove(name)
 
     # -------------------------------------------------------------------------
@@ -387,7 +387,7 @@ class SubprocessExecutor:
 
     This executor uses bidirectional RPC via the stdin channel for namespace
     operations. The kernel contains lightweight proxy objects that forward
-    all tools/skills/artifacts/deps calls to the host.
+    all tools/workflows/artifacts/deps calls to the host.
 
     Capabilities:
     - TIMEOUT: Yes (via message wait timeout)
@@ -452,10 +452,10 @@ class SubprocessExecutor:
         """Start kernel: create venv, start kernel, initialize RPC.
 
         Tools and deps are loaded from executor config (tools_path, deps, deps_file).
-        Skills and artifacts come from storage backend.
+        Workflows and artifacts come from storage backend.
 
         Args:
-            storage: Optional StorageBackend for skills and artifacts.
+            storage: Optional StorageBackend for workflows and artifacts.
 
         Raises:
             RuntimeError: If already started or storage access fails.
@@ -521,7 +521,7 @@ class SubprocessExecutor:
             provider=self._provider,  # type: ignore[arg-type]
             kernel_name=self._venv.kernel_spec_name,
             startup_timeout=self._config.startup_timeout,
-            ipc_timeout=self._config.ipc_timeout,
+            ipc_timeout=self._config.ipc_timeout or 30.0,
         )
 
     async def run(self, code: str, timeout: float | None = None) -> ExecutionResult:

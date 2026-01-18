@@ -1,9 +1,9 @@
-"""Integration test: Agent solves multi-tool task and saves skill.
+"""Integration test: Agent solves multi-tool task and saves workflow.
 
 This test verifies:
 1. An AutoGen agent can solve a task requiring multiple steps
-2. The agent can save a successful solution as a reusable skill
-3. The skill persists to disk and can be invoked later
+2. The agent can save a successful solution as a reusable workflow
+3. The workflow persists to disk and can be invoked later
 
 Run:
     cd examples/autogen
@@ -27,21 +27,21 @@ load_dotenv()
 # Paths
 HERE = Path(__file__).parent
 SHARED = HERE.parent / "shared"
-TEST_SKILLS_DIR = HERE / "test_skills"
+TEST_WORKFLOWS_DIR = HERE / "test_workflows"
 
 
 SYSTEM_PROMPT = """You are a helpful assistant that writes Python code to accomplish tasks.
 
-You have access to `tools`, `skills`, and `artifacts` namespaces in your code environment.
+You have access to `tools`, `workflows`, and `artifacts` namespaces in your code environment.
 
 WORKFLOW:
-1. For any nontrivial task, FIRST search skills: skills.search("relevant keywords")
-2. If a skill exists, use it: skills.invoke("skill_name", arg=value)
-3. If no skill matches, search tools: tools.search("keywords")
+1. For any nontrivial task, FIRST search workflows: workflows.search("relevant keywords")
+2. If a workflow exists, use it: workflows.invoke("workflow_name", arg=value)
+3. If no workflow matches, search tools: tools.search("keywords")
 4. Script tools together: tools.name(arg=value)
 
 DISCOVERY:
-- skills.search("query") / skills.list() - find prebaked solutions
+- workflows.search("query") / workflows.list() - find prebaked solutions
 - tools.search("query") / tools.list() - find individual tools
 
 ARTIFACTS (persistent storage):
@@ -49,28 +49,29 @@ ARTIFACTS (persistent storage):
 - artifacts.load("name") - Load previously saved data
 - artifacts.list() - List saved artifacts
 
-SKILL CREATION:
-When you solve a multi-step task that could be reused, save it as a skill:
+WORKFLOW CREATION:
+When you solve a multi-step task that could be reused, save it as a workflow:
 
-skills.create(
+workflows.create(
     name="descriptive_name",
-    description="What this skill does",
+    description="What this workflow does",
     code='''
 def run(param1: str, param2: int = default) -> dict:
-    \"\"\"Docstring describing the skill.\"\"\"
+    \"\"\"Docstring describing the workflow.\"\"\"
     # Your solution here
     return result
 '''
 )
 
-This lets you reuse the solution later via skills.invoke() or skills.name().
+This lets you reuse the solution later via workflows.invoke() or workflows.name().
 
-The skill code must:
+The workflow code must:
 - Define a `run()` function as the entrypoint
 - Have parameters with type hints
 - Return a value (not print)
 
-Skills are reusable recipes that combine tools. Prefer them over scripting from scratch.
+Workflows are reusable recipes that combine tools. Prefer them over scripting from scratch.
+
 
 Always wrap your code in ```python blocks."""
 
@@ -86,12 +87,12 @@ async def main():
     tools_dir = test_base / "tools"
     shutil.copytree(SHARED / "tools", tools_dir)
 
-    # Create empty skills directory for testing skill creation
-    skills_dir = test_base / "skills"
-    skills_dir.mkdir(exist_ok=True)
+    # Create empty workflows directory for testing workflow creation
+    workflows_dir = test_base / "workflows"
+    workflows_dir.mkdir(exist_ok=True)
 
     print("=" * 60)
-    print("Integration Test: Agent Creates Skill from Task Solution")
+    print("Integration Test: Agent Creates Workflow from Task Solution")
     print("=" * 60)
 
     # Create storage with test directory
@@ -110,13 +111,13 @@ async def main():
             max_tool_iterations=20,
         )
 
-        # Task: Multi-step problem that should result in a saved skill
+        # Task: Multi-step problem that should result in a saved workflow
         task = """
         Fetch the HackerNews front page (https://news.ycombinator.com/).
         Parse the HTML and extract the first 10 article titles.
         Return them as a list of strings.
 
-        Once you have a working solution, save it as a reusable skill called
+        Once you have a working solution, save it as a reusable workflow called
         'get_hn_headlines' that takes an optional 'count' parameter (default 10).
         """
 
@@ -130,54 +131,54 @@ async def main():
         print(result.messages[-1].content)
         print("-" * 60)
 
-        # Verify skill was created
+        # Verify workflow was created
         print("\n" + "=" * 60)
         print("Verification")
         print("=" * 60)
 
         # Check via storage API
-        skill_info = storage.skills.get("get_hn_headlines")
-        if skill_info is None:
-            print("FAILED: Skill 'get_hn_headlines' was not created")
+        workflow_info = storage.workflows.get("get_hn_headlines")
+        if workflow_info is None:
+            print("FAILED: Workflow 'get_hn_headlines' was not created")
             return False
 
-        print(f"Skill created: {skill_info['name']}")
-        print(f"Description: {skill_info['description']}")
+        print(f"Workflow created: {workflow_info['name']}")
+        print(f"Description: {workflow_info['description']}")
 
-        # Verify skill file exists
-        skill_file = skills_dir / "get_hn_headlines.py"
-        if not skill_file.exists():
-            print(f"FAILED: Skill file was not persisted to {skill_file}")
+        # Verify workflow file exists
+        workflow_file = workflows_dir / "get_hn_headlines.py"
+        if not workflow_file.exists():
+            print(f"FAILED: Workflow file was not persisted to {workflow_file}")
             return False
 
-        print(f"Skill file persisted: {skill_file}")
+        print(f"Workflow file persisted: {workflow_file}")
 
-        # Invoke the skill to verify it works
-        print("\nInvoking skill to verify it works...")
-        invoke_result = await session.run('skills.invoke("get_hn_headlines", count=5)')
+        # Invoke the workflow to verify it works
+        print("\nInvoking workflow to verify it works...")
+        invoke_result = await session.run('workflows.invoke("get_hn_headlines", count=5)')
 
         if not invoke_result.is_ok:
-            print(f"FAILED: Skill invocation failed: {invoke_result.error}")
+            print(f"FAILED: Workflow invocation failed: {invoke_result.error}")
             return False
 
-        print(f"Skill result: {invoke_result.value}")
+        print(f"Workflow result: {invoke_result.value}")
 
-    # Verify skill survives a fresh session (true persistence)
+    # Verify workflow survives a fresh session (true persistence)
     print("\n" + "-" * 60)
-    print("Testing persistence: loading skill in fresh session...")
+    print("Testing persistence: loading workflow in fresh session...")
 
     fresh_storage = FileStorage(base_path=test_base)
     async with Session(storage=fresh_storage) as fresh_session:
-        skill_info = fresh_storage.skills.get("get_hn_headlines")
-        if skill_info is None:
-            print("FAILED: Skill not found in fresh session")
+        workflow_info = fresh_storage.workflows.get("get_hn_headlines")
+        if workflow_info is None:
+            print("FAILED: Workflow not found in fresh session")
             return False
 
-        print(f"Skill loaded from disk: {skill_info['name']}")
+        print(f"Workflow loaded from disk: {workflow_info['name']}")
 
-        result = await fresh_session.run("skills.get_hn_headlines(count=3)")
+        result = await fresh_session.run("workflows.get_hn_headlines(count=3)")
         if not result.is_ok:
-            print(f"FAILED: Skill invocation failed: {result.error}")
+            print(f"FAILED: Workflow invocation failed: {result.error}")
             return False
 
         print(f"Fresh invocation result: {result.value}")

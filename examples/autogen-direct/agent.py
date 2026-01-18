@@ -1,10 +1,10 @@
-"""AutoGen agent with py-code-mode tools and skills.
+"""AutoGen agent with py-code-mode tools and workflows.
 
 This example shows:
 - CLI tools (curl, jq)
 - MCP tools via uvx (fetch, time)
-- A skill that combines tools
-- Optional Redis backend for distributed skill/artifact storage
+- A workflow that combines tools
+- Optional Redis backend for distributed workflow/artifact storage
 
 Run (file-based, default):
     cd examples/autogen
@@ -14,11 +14,11 @@ Run with Redis backend:
     # Start Redis (using Docker)
     docker run -d --name redis -p 6379:6379 redis:alpine
 
-    # Bootstrap skills to Redis (one-time)
+    # Bootstrap workflows to Redis (one-time)
     uv run python -m py_code_mode.store bootstrap \
-        --source ../shared/skills \
+        --source ../shared/workflows \
         --target redis://localhost:6379 \
-        --prefix agent-skills
+        --prefix agent-workflows
 
     # Run agent with Redis
     REDIS_URL=redis://localhost:6379 uv run python agent.py
@@ -50,10 +50,10 @@ def create_storage():
     """Create storage backend.
 
     When REDIS_URL is set:
-    - Tools, skills, and artifacts are loaded from Redis
+    - Tools, workflows, and artifacts are loaded from Redis
 
     Without REDIS_URL:
-    - Tools, skills, and artifacts are loaded from shared/ directory
+    - Tools, workflows, and artifacts are loaded from shared/ directory
     """
     redis_url = os.environ.get("REDIS_URL")
 
@@ -69,7 +69,7 @@ def create_storage():
 
 
 async def main():
-    # Create storage (for skills and artifacts only)
+    # Create storage (for workflows and artifacts only)
     storage = create_storage()
 
     # Executor with tools from config
@@ -82,16 +82,16 @@ async def main():
 
         system_prompt = """You are a helpful assistant that writes Python code to accomplish tasks.
 
-You have access to `tools`, `skills`, and `artifacts` namespaces in your code environment.
+You have access to `tools`, `workflows`, and `artifacts` namespaces in your code environment.
 
 WORKFLOW:
-1. For any nontrivial task, FIRST search skills: skills.search("relevant keywords")
-2. If a skill exists, use it: skills.invoke("name", arg=value)
-3. If no skill matches, search tools: tools.search("keywords")
+1. For any nontrivial task, FIRST search workflows: workflows.search("relevant keywords")
+2. If a workflow exists, use it: workflows.invoke("name", arg=value)
+3. If no workflow matches, search tools: tools.search("keywords")
 4. Script tools together: tools.name(arg=value)
 
 DISCOVERY:
-- skills.search("query") / skills.list() - find prebaked solutions
+- workflows.search("query") / workflows.list() - find prebaked solutions
 - tools.search("query") / tools.list() - find individual tools
 
 ARTIFACTS (persistent storage):
@@ -99,7 +99,7 @@ ARTIFACTS (persistent storage):
 - artifacts.load("name") - Load previously saved data
 - artifacts.list() - List saved artifacts
 
-Skills are reusable recipes that combine tools. Prefer them over scripting from scratch.
+Workflows are reusable recipes that combine tools. Prefer them over scripting from scratch.
 
 Always wrap your code in ```python blocks."""
 

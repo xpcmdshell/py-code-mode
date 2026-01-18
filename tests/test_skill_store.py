@@ -1,24 +1,24 @@
-"""Tests for SkillStore protocol and implementations."""
+"""Tests for WorkflowStore protocol and implementations."""
 
 from pathlib import Path
 
 import pytest
 
-from py_code_mode.skills import (
-    FileSkillStore,
-    MemorySkillStore,
-    PythonSkill,
-    RedisSkillStore,
-    SkillStore,
+from py_code_mode.workflows import (
+    FileWorkflowStore,
+    MemoryWorkflowStore,
+    PythonWorkflow,
+    RedisWorkflowStore,
+    WorkflowStore,
 )
 
 # --- Fixtures ---
 
 
 @pytest.fixture
-def sample_python_skill() -> PythonSkill:
-    """A simple Python skill for testing."""
-    return PythonSkill.from_source(
+def sample_python_workflow() -> PythonWorkflow:
+    """A simple Python workflow for testing."""
+    return PythonWorkflow.from_source(
         name="greet",
         source='async def run(name: str) -> str:\n    return f"Hello, {name}!"',
         description="Greet someone",
@@ -26,9 +26,9 @@ def sample_python_skill() -> PythonSkill:
 
 
 @pytest.fixture
-def another_python_skill() -> PythonSkill:
-    """Another Python skill for testing list operations."""
-    return PythonSkill.from_source(
+def another_python_workflow() -> PythonWorkflow:
+    """Another Python workflow for testing list operations."""
+    return PythonWorkflow.from_source(
         name="farewell",
         source='async def run() -> str:\n    return "Goodbye!"',
         description="Say goodbye",
@@ -36,108 +36,108 @@ def another_python_skill() -> PythonSkill:
 
 
 @pytest.fixture
-def memory_store() -> MemorySkillStore:
+def memory_store() -> MemoryWorkflowStore:
     """Fresh in-memory store."""
-    return MemorySkillStore()
+    return MemoryWorkflowStore()
 
 
 @pytest.fixture
-def file_store(tmp_path: Path) -> FileSkillStore:
+def file_store(tmp_path: Path) -> FileWorkflowStore:
     """File store in temp directory."""
-    return FileSkillStore(tmp_path)
+    return FileWorkflowStore(tmp_path)
 
 
-# --- SkillStore Protocol Tests ---
+# --- WorkflowStore Protocol Tests ---
 
 
-class TestSkillStoreProtocol:
-    """Verify implementations satisfy the SkillStore protocol."""
+class TestWorkflowStoreProtocol:
+    """Verify implementations satisfy the WorkflowStore protocol."""
 
-    def test_memory_store_is_skill_store(self):
-        """MemorySkillStore should satisfy SkillStore protocol."""
-        store = MemorySkillStore()
-        assert isinstance(store, SkillStore)
+    def test_memory_store_is_workflow_store(self):
+        """MemoryWorkflowStore should satisfy WorkflowStore protocol."""
+        store = MemoryWorkflowStore()
+        assert isinstance(store, WorkflowStore)
 
-    def test_file_store_is_skill_store(self, tmp_path: Path):
-        """FileSkillStore should satisfy SkillStore protocol."""
-        store = FileSkillStore(tmp_path)
-        assert isinstance(store, SkillStore)
-
-
-# --- MemorySkillStore Tests ---
+    def test_file_store_is_workflow_store(self, tmp_path: Path):
+        """FileWorkflowStore should satisfy WorkflowStore protocol."""
+        store = FileWorkflowStore(tmp_path)
+        assert isinstance(store, WorkflowStore)
 
 
-class TestMemorySkillStore:
-    """Tests for in-memory skill store."""
+# --- MemoryWorkflowStore Tests ---
 
-    def test_save_and_load_python_skill(
-        self, memory_store: MemorySkillStore, sample_python_skill: PythonSkill
+
+class TestMemoryWorkflowStore:
+    """Tests for in-memory workflow store."""
+
+    def test_save_and_load_python_workflow(
+        self, memory_store: MemoryWorkflowStore, sample_python_workflow: PythonWorkflow
     ):
-        """Should save and load a Python skill."""
-        memory_store.save(sample_python_skill)
+        """Should save and load a Python workflow."""
+        memory_store.save(sample_python_workflow)
         loaded = memory_store.load("greet")
 
         assert loaded is not None
         assert loaded.name == "greet"
         assert loaded.description == "Greet someone"
 
-    def test_load_nonexistent_returns_none(self, memory_store: MemorySkillStore):
-        """Should return None for nonexistent skill."""
+    def test_load_nonexistent_returns_none(self, memory_store: MemoryWorkflowStore):
+        """Should return None for nonexistent workflow."""
         assert memory_store.load("nonexistent") is None
 
-    def test_delete_existing_skill(
-        self, memory_store: MemorySkillStore, sample_python_skill: PythonSkill
+    def test_delete_existing_workflow(
+        self, memory_store: MemoryWorkflowStore, sample_python_workflow: PythonWorkflow
     ):
-        """Should delete an existing skill."""
-        memory_store.save(sample_python_skill)
+        """Should delete an existing workflow."""
+        memory_store.save(sample_python_workflow)
         result = memory_store.delete("greet")
 
         assert result is True
         assert memory_store.load("greet") is None
 
-    def test_delete_nonexistent_returns_false(self, memory_store: MemorySkillStore):
-        """Should return False when deleting nonexistent skill."""
+    def test_delete_nonexistent_returns_false(self, memory_store: MemoryWorkflowStore):
+        """Should return False when deleting nonexistent workflow."""
         result = memory_store.delete("nonexistent")
         assert result is False
 
-    def test_list_all_empty(self, memory_store: MemorySkillStore):
+    def test_list_all_empty(self, memory_store: MemoryWorkflowStore):
         """Should return empty list for empty store."""
         assert memory_store.list_all() == []
 
-    def test_list_all_with_skills(
+    def test_list_all_with_workflows(
         self,
-        memory_store: MemorySkillStore,
-        sample_python_skill: PythonSkill,
-        another_python_skill: PythonSkill,
+        memory_store: MemoryWorkflowStore,
+        sample_python_workflow: PythonWorkflow,
+        another_python_workflow: PythonWorkflow,
     ):
-        """Should list all saved skills."""
-        memory_store.save(sample_python_skill)
-        memory_store.save(another_python_skill)
+        """Should list all saved workflows."""
+        memory_store.save(sample_python_workflow)
+        memory_store.save(another_python_workflow)
 
-        skills = memory_store.list_all()
-        names = {s.name for s in skills}
+        workflows = memory_store.list_all()
+        names = {s.name for s in workflows}
 
-        assert len(skills) == 2
+        assert len(workflows) == 2
         assert names == {"greet", "farewell"}
 
-    def test_exists_true_for_saved_skill(
-        self, memory_store: MemorySkillStore, sample_python_skill: PythonSkill
+    def test_exists_true_for_saved_workflow(
+        self, memory_store: MemoryWorkflowStore, sample_python_workflow: PythonWorkflow
     ):
-        """Should return True for existing skill."""
-        memory_store.save(sample_python_skill)
+        """Should return True for existing workflow."""
+        memory_store.save(sample_python_workflow)
         assert memory_store.exists("greet") is True
 
-    def test_exists_false_for_missing_skill(self, memory_store: MemorySkillStore):
-        """Should return False for nonexistent skill."""
+    def test_exists_false_for_missing_workflow(self, memory_store: MemoryWorkflowStore):
+        """Should return False for nonexistent workflow."""
         assert memory_store.exists("nonexistent") is False
 
     def test_save_overwrites_existing(
-        self, memory_store: MemorySkillStore, sample_python_skill: PythonSkill
+        self, memory_store: MemoryWorkflowStore, sample_python_workflow: PythonWorkflow
     ):
         """Saving with same name should overwrite."""
-        memory_store.save(sample_python_skill)
+        memory_store.save(sample_python_workflow)
 
-        updated = PythonSkill.from_source(
+        updated = PythonWorkflow.from_source(
             name="greet",
             source='async def run(name: str) -> str:\n    return f"Hi, {name}!"',
             description="Updated greeting",
@@ -149,94 +149,96 @@ class TestMemorySkillStore:
         assert loaded.description == "Updated greeting"
 
 
-# --- FileSkillStore Tests ---
+# --- FileWorkflowStore Tests ---
 
 
-class TestFileSkillStore:
-    """Tests for file-based skill store."""
+class TestFileWorkflowStore:
+    """Tests for file-based workflow store."""
 
     def test_save_creates_python_file(
-        self, file_store: FileSkillStore, sample_python_skill: PythonSkill, tmp_path: Path
+        self, file_store: FileWorkflowStore, sample_python_workflow: PythonWorkflow, tmp_path: Path
     ):
         """Should write .py file to disk."""
-        file_store.save(sample_python_skill)
+        file_store.save(sample_python_workflow)
 
         expected_path = tmp_path / "greet.py"
         assert expected_path.exists()
         assert "def run" in expected_path.read_text()
 
     def test_load_reads_python_file(
-        self, file_store: FileSkillStore, sample_python_skill: PythonSkill
+        self, file_store: FileWorkflowStore, sample_python_workflow: PythonWorkflow
     ):
-        """Should load skill from .py file."""
-        file_store.save(sample_python_skill)
+        """Should load workflow from .py file."""
+        file_store.save(sample_python_workflow)
         loaded = file_store.load("greet")
 
         assert loaded is not None
         assert loaded.name == "greet"
-        assert isinstance(loaded, PythonSkill)
+        assert isinstance(loaded, PythonWorkflow)
 
-    def test_load_nonexistent_returns_none(self, file_store: FileSkillStore):
+    def test_load_nonexistent_returns_none(self, file_store: FileWorkflowStore):
         """Should return None for nonexistent file."""
         assert file_store.load("nonexistent") is None
 
     def test_delete_removes_file(
-        self, file_store: FileSkillStore, sample_python_skill: PythonSkill, tmp_path: Path
+        self, file_store: FileWorkflowStore, sample_python_workflow: PythonWorkflow, tmp_path: Path
     ):
         """Should delete .py file from disk."""
-        file_store.save(sample_python_skill)
+        file_store.save(sample_python_workflow)
         result = file_store.delete("greet")
 
         assert result is True
         assert not (tmp_path / "greet.py").exists()
 
-    def test_delete_nonexistent_returns_false(self, file_store: FileSkillStore):
+    def test_delete_nonexistent_returns_false(self, file_store: FileWorkflowStore):
         """Should return False when file doesn't exist."""
         result = file_store.delete("nonexistent")
         assert result is False
 
     def test_list_all_finds_py_files(
-        self, file_store: FileSkillStore, sample_python_skill: PythonSkill
+        self, file_store: FileWorkflowStore, sample_python_workflow: PythonWorkflow
     ):
         """Should list all .py files in directory."""
-        file_store.save(sample_python_skill)
+        file_store.save(sample_python_workflow)
 
-        # Create another skill
-        another = PythonSkill.from_source(
+        # Create another workflow
+        another = PythonWorkflow.from_source(
             name="farewell",
             source='async def run() -> str:\n    return "Goodbye!"',
             description="Say goodbye",
         )
         file_store.save(another)
 
-        skills = file_store.list_all()
-        names = {s.name for s in skills}
+        workflows = file_store.list_all()
+        names = {s.name for s in workflows}
 
-        assert len(skills) == 2
+        assert len(workflows) == 2
         assert names == {"greet", "farewell"}
 
-    def test_list_all_ignores_underscore_files(self, file_store: FileSkillStore, tmp_path: Path):
+    def test_list_all_ignores_underscore_files(self, file_store: FileWorkflowStore, tmp_path: Path):
         """Should skip files starting with underscore."""
         # Create __init__.py
         (tmp_path / "__init__.py").write_text("")
         (tmp_path / "_private.py").write_text("async def run(): pass")
 
-        skills = file_store.list_all()
-        assert len(skills) == 0
+        workflows = file_store.list_all()
+        assert len(workflows) == 0
 
-    def test_exists_checks_file(self, file_store: FileSkillStore, sample_python_skill: PythonSkill):
+    def test_exists_checks_file(
+        self, file_store: FileWorkflowStore, sample_python_workflow: PythonWorkflow
+    ):
         """Should check if .py file exists."""
         assert file_store.exists("greet") is False
 
-        file_store.save(sample_python_skill)
+        file_store.save(sample_python_workflow)
         assert file_store.exists("greet") is True
 
 
-# --- RedisSkillStore Tests (Mocked) ---
+# --- RedisWorkflowStore Tests (Mocked) ---
 
 
-class TestRedisSkillStore:
-    """Tests for Redis-based skill store."""
+class TestRedisWorkflowStore:
+    """Tests for Redis-based workflow store."""
 
     @pytest.fixture
     def mock_redis(self):
@@ -270,169 +272,171 @@ class TestRedisSkillStore:
         return MockRedis()
 
     @pytest.fixture
-    def redis_store(self, mock_redis) -> RedisSkillStore:
+    def redis_store(self, mock_redis) -> RedisWorkflowStore:
         """Redis store with mock client."""
-        return RedisSkillStore(mock_redis, prefix="test-skills")
+        return RedisWorkflowStore(mock_redis, prefix="test-workflows")
 
-    def test_save_and_load_python_skill(
-        self, redis_store: RedisSkillStore, sample_python_skill: PythonSkill
+    def test_save_and_load_python_workflow(
+        self, redis_store: RedisWorkflowStore, sample_python_workflow: PythonWorkflow
     ):
-        """Should serialize and deserialize Python skill."""
-        redis_store.save(sample_python_skill)
+        """Should serialize and deserialize Python workflow."""
+        redis_store.save(sample_python_workflow)
         loaded = redis_store.load("greet")
 
         assert loaded is not None
         assert loaded.name == "greet"
         assert loaded.description == "Greet someone"
-        # Stored skills have source and can invoke - duck typing
+        # Stored workflows have source and can invoke - duck typing
         assert hasattr(loaded, "source")
         assert hasattr(loaded, "invoke")
 
-    def test_load_nonexistent_returns_none(self, redis_store: RedisSkillStore):
-        """Should return None for nonexistent skill."""
+    def test_load_nonexistent_returns_none(self, redis_store: RedisWorkflowStore):
+        """Should return None for nonexistent workflow."""
         assert redis_store.load("nonexistent") is None
 
-    def test_delete_existing_skill(
-        self, redis_store: RedisSkillStore, sample_python_skill: PythonSkill
+    def test_delete_existing_workflow(
+        self, redis_store: RedisWorkflowStore, sample_python_workflow: PythonWorkflow
     ):
-        """Should delete skill from Redis."""
-        redis_store.save(sample_python_skill)
+        """Should delete workflow from Redis."""
+        redis_store.save(sample_python_workflow)
         result = redis_store.delete("greet")
 
         assert result is True
         assert redis_store.load("greet") is None
 
-    def test_delete_nonexistent_returns_false(self, redis_store: RedisSkillStore):
-        """Should return False when skill doesn't exist."""
+    def test_delete_nonexistent_returns_false(self, redis_store: RedisWorkflowStore):
+        """Should return False when workflow doesn't exist."""
         result = redis_store.delete("nonexistent")
         assert result is False
 
-    def test_list_all(self, redis_store: RedisSkillStore, sample_python_skill: PythonSkill):
-        """Should list all skills from Redis."""
-        redis_store.save(sample_python_skill)
+    def test_list_all(
+        self, redis_store: RedisWorkflowStore, sample_python_workflow: PythonWorkflow
+    ):
+        """Should list all workflows from Redis."""
+        redis_store.save(sample_python_workflow)
 
-        another = PythonSkill.from_source(
+        another = PythonWorkflow.from_source(
             name="farewell",
             source='async def run() -> str:\n    return "Goodbye!"',
             description="Say goodbye",
         )
         redis_store.save(another)
 
-        skills = redis_store.list_all()
-        names = {s.name for s in skills}
+        workflows = redis_store.list_all()
+        names = {s.name for s in workflows}
 
-        assert len(skills) == 2
+        assert len(workflows) == 2
         assert names == {"greet", "farewell"}
 
-    def test_exists(self, redis_store: RedisSkillStore, sample_python_skill: PythonSkill):
-        """Should check if skill exists in Redis."""
+    def test_exists(self, redis_store: RedisWorkflowStore, sample_python_workflow: PythonWorkflow):
+        """Should check if workflow exists in Redis."""
         assert redis_store.exists("greet") is False
 
-        redis_store.save(sample_python_skill)
+        redis_store.save(sample_python_workflow)
         assert redis_store.exists("greet") is True
 
-    def test_uses_prefix_for_redis_key(self, mock_redis, sample_python_skill: PythonSkill):
+    def test_uses_prefix_for_redis_key(self, mock_redis, sample_python_workflow: PythonWorkflow):
         """Should use configured prefix for Redis hash key."""
-        store = RedisSkillStore(mock_redis, prefix="my-prefix")
-        store.save(sample_python_skill)
+        store = RedisWorkflowStore(mock_redis, prefix="my-prefix")
+        store.save(sample_python_workflow)
 
         # Check the key in mock redis
-        assert "my-prefix:__skills__" in mock_redis._data
+        assert "my-prefix:__workflows__" in mock_redis._data
 
 
-# --- FileSkillStore Name Validation Tests ---
+# --- FileWorkflowStore Name Validation Tests ---
 
 
-def _make_skill_with_invalid_name(name: str) -> PythonSkill:
-    """Create a PythonSkill with an arbitrary name, bypassing from_source validation.
+def _make_workflow_with_invalid_name(name: str) -> PythonWorkflow:
+    """Create a PythonWorkflow with an arbitrary name, bypassing from_source validation.
 
-    This is for testing the store-level validation, not skill construction.
-    In production, PythonSkill.from_source already validates names, but
-    FileSkillStore should also validate as defense-in-depth.
+    This is for testing the store-level validation, not workflow construction.
+    In production, PythonWorkflow.from_source already validates names, but
+    FileWorkflowStore should also validate as defense-in-depth.
     """
-    # Create a valid skill first
-    valid_skill = PythonSkill.from_source(
+    # Create a valid workflow first
+    valid_workflow = PythonWorkflow.from_source(
         name="temp_valid_name",
         source="async def run(): pass",
         description="test",
     )
     # Replace the name with the invalid one for testing
-    # This simulates what could happen if someone constructs a PythonSkill directly
-    return PythonSkill(
+    # This simulates what could happen if someone constructs a PythonWorkflow directly
+    return PythonWorkflow(
         name=name,
-        description=valid_skill.description,
-        parameters=valid_skill.parameters,
-        source=valid_skill.source,
-        _func=valid_skill._func,
-        metadata=valid_skill.metadata,
+        description=valid_workflow.description,
+        parameters=valid_workflow.parameters,
+        source=valid_workflow.source,
+        _func=valid_workflow._func,
+        metadata=valid_workflow.metadata,
     )
 
 
-class TestFileSkillStoreNameValidation:
-    """Security tests for skill name validation to prevent path traversal."""
+class TestFileWorkflowStoreNameValidation:
+    """Security tests for workflow name validation to prevent path traversal."""
 
-    def test_invalid_skill_name_rejected_dotdot_save(self, tmp_path: Path) -> None:
+    def test_invalid_workflow_name_rejected_dotdot_save(self, tmp_path: Path) -> None:
         """save() rejects path traversal names with ../"""
-        store = FileSkillStore(tmp_path / "skills")
-        skill = _make_skill_with_invalid_name("../malicious")
-        with pytest.raises(ValueError, match="Invalid skill name"):
-            store.save(skill)
+        store = FileWorkflowStore(tmp_path / "workflows")
+        workflow = _make_workflow_with_invalid_name("../malicious")
+        with pytest.raises(ValueError, match="Invalid workflow name"):
+            store.save(workflow)
 
-    def test_invalid_skill_name_rejected_dotdot_load(self, tmp_path: Path) -> None:
+    def test_invalid_workflow_name_rejected_dotdot_load(self, tmp_path: Path) -> None:
         """load() rejects path traversal names with ../"""
-        store = FileSkillStore(tmp_path / "skills")
-        with pytest.raises(ValueError, match="Invalid skill name"):
+        store = FileWorkflowStore(tmp_path / "workflows")
+        with pytest.raises(ValueError, match="Invalid workflow name"):
             store.load("../malicious")
 
-    def test_invalid_skill_name_rejected_dotdot_delete(self, tmp_path: Path) -> None:
+    def test_invalid_workflow_name_rejected_dotdot_delete(self, tmp_path: Path) -> None:
         """delete() rejects path traversal names with ../"""
-        store = FileSkillStore(tmp_path / "skills")
-        with pytest.raises(ValueError, match="Invalid skill name"):
+        store = FileWorkflowStore(tmp_path / "workflows")
+        with pytest.raises(ValueError, match="Invalid workflow name"):
             store.delete("../malicious")
 
-    def test_invalid_skill_name_rejected_dotdot_exists(self, tmp_path: Path) -> None:
+    def test_invalid_workflow_name_rejected_dotdot_exists(self, tmp_path: Path) -> None:
         """exists() rejects path traversal names with ../"""
-        store = FileSkillStore(tmp_path / "skills")
-        with pytest.raises(ValueError, match="Invalid skill name"):
+        store = FileWorkflowStore(tmp_path / "workflows")
+        with pytest.raises(ValueError, match="Invalid workflow name"):
             store.exists("../malicious")
 
-    def test_invalid_skill_name_rejected_slash(self, tmp_path: Path) -> None:
+    def test_invalid_workflow_name_rejected_slash(self, tmp_path: Path) -> None:
         """save() rejects names with forward slashes."""
-        store = FileSkillStore(tmp_path / "skills")
-        skill = _make_skill_with_invalid_name("foo/bar")
-        with pytest.raises(ValueError, match="Invalid skill name"):
-            store.save(skill)
+        store = FileWorkflowStore(tmp_path / "workflows")
+        workflow = _make_workflow_with_invalid_name("foo/bar")
+        with pytest.raises(ValueError, match="Invalid workflow name"):
+            store.save(workflow)
 
-    def test_invalid_skill_name_rejected_backslash(self, tmp_path: Path) -> None:
+    def test_invalid_workflow_name_rejected_backslash(self, tmp_path: Path) -> None:
         """save() rejects names with backslashes."""
-        store = FileSkillStore(tmp_path / "skills")
-        skill = _make_skill_with_invalid_name("foo\\bar")
-        with pytest.raises(ValueError, match="Invalid skill name"):
-            store.save(skill)
+        store = FileWorkflowStore(tmp_path / "workflows")
+        workflow = _make_workflow_with_invalid_name("foo\\bar")
+        with pytest.raises(ValueError, match="Invalid workflow name"):
+            store.save(workflow)
 
-    def test_invalid_skill_name_rejected_starts_with_digit(self, tmp_path: Path) -> None:
+    def test_invalid_workflow_name_rejected_starts_with_digit(self, tmp_path: Path) -> None:
         """save() rejects names starting with a digit (invalid Python identifier)."""
-        store = FileSkillStore(tmp_path / "skills")
-        skill = _make_skill_with_invalid_name("123skill")
-        with pytest.raises(ValueError, match="Invalid skill name"):
-            store.save(skill)
+        store = FileWorkflowStore(tmp_path / "workflows")
+        workflow = _make_workflow_with_invalid_name("123workflow")
+        with pytest.raises(ValueError, match="Invalid workflow name"):
+            store.save(workflow)
 
-    def test_invalid_skill_name_rejected_special_chars(self, tmp_path: Path) -> None:
+    def test_invalid_workflow_name_rejected_special_chars(self, tmp_path: Path) -> None:
         """save() rejects names with special characters."""
-        store = FileSkillStore(tmp_path / "skills")
-        for name in ["skill@name", "skill-name", "skill.name", "skill name"]:
-            skill = _make_skill_with_invalid_name(name)
-            with pytest.raises(ValueError, match="Invalid skill name"):
-                store.save(skill)
+        store = FileWorkflowStore(tmp_path / "workflows")
+        for name in ["workflow@name", "workflow-name", "workflow.name", "workflow name"]:
+            workflow = _make_workflow_with_invalid_name(name)
+            with pytest.raises(ValueError, match="Invalid workflow name"):
+                store.save(workflow)
 
-    def test_valid_skill_names_accepted(self, tmp_path: Path) -> None:
+    def test_valid_workflow_names_accepted(self, tmp_path: Path) -> None:
         """Valid Python identifiers are accepted."""
-        store = FileSkillStore(tmp_path / "skills")
-        for name in ["my_skill", "skill123", "_private", "CamelCase", "__dunder__"]:
-            skill = PythonSkill.from_source(
+        store = FileWorkflowStore(tmp_path / "workflows")
+        for name in ["my_workflow", "workflow123", "_private", "CamelCase", "__dunder__"]:
+            workflow = PythonWorkflow.from_source(
                 name=name,
                 source="async def run(): pass",
                 description="test",
             )
-            store.save(skill)
+            store.save(workflow)
             assert store.exists(name)

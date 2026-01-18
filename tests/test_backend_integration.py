@@ -1,6 +1,6 @@
 """Integration tests for backend abstraction.
 
-These tests verify that artifacts, skills, and tools work consistently
+These tests verify that artifacts, workflows, and tools work consistently
 across all execution backends (in-process, container).
 """
 
@@ -14,16 +14,16 @@ import pytest
 from py_code_mode.artifacts import FileArtifactStore
 from py_code_mode.execution import Capability
 from py_code_mode.execution.in_process import InProcessExecutor
-from py_code_mode.skills import FileSkillStore, PythonSkill, create_skill_library
 from py_code_mode.tools.adapters.cli import CLIAdapter
 from py_code_mode.tools.registry import ToolRegistry
+from py_code_mode.workflows import FileWorkflowStore, PythonWorkflow, create_workflow_library
 
 if TYPE_CHECKING:
     pass
 
 
 class TestCreateExecutorIntegration:
-    """Test create_executor() factory with tools, skills, artifacts."""
+    """Test create_executor() factory with tools, workflows, artifacts."""
 
     @pytest.fixture
     def tools_dir(self, tmp_path: Path) -> Path:
@@ -54,18 +54,18 @@ recipes:
         return tools
 
     @pytest.fixture
-    def skills_dir(self, tmp_path: Path) -> Path:
-        """Create a skills directory with a simple skill."""
-        skills = tmp_path / "skills"
-        skills.mkdir()
-        (skills / "double.py").write_text(
+    def workflows_dir(self, tmp_path: Path) -> Path:
+        """Create a workflows directory with a simple workflow."""
+        workflows = tmp_path / "workflows"
+        workflows.mkdir()
+        (workflows / "double.py").write_text(
             '''"""Double a number."""
 
 async def run(n: int) -> int:
     return n * 2
 '''
         )
-        return skills
+        return workflows
 
     @pytest.fixture
     def artifacts_dir(self, tmp_path: Path) -> Path:
@@ -109,49 +109,49 @@ async def run(n: int) -> int:
             await executor.close()
 
     @pytest.mark.asyncio
-    async def test_create_executor_with_skills(self, skills_dir: Path) -> None:
-        """Executor loads skills and makes them callable."""
-        store = FileSkillStore(skills_dir)
-        skill_library = create_skill_library(store=store)
-        executor = InProcessExecutor(skill_library=skill_library)
+    async def test_create_executor_with_workflows(self, workflows_dir: Path) -> None:
+        """Executor loads workflows and makes them callable."""
+        store = FileWorkflowStore(workflows_dir)
+        workflow_library = create_workflow_library(store=store)
+        executor = InProcessExecutor(workflow_library=workflow_library)
 
         try:
-            # Skill should be callable
-            result = await executor.run("skills.double(n=21)")
-            assert result.is_ok, f"Skill call failed: {result.error}"
+            # Workflow should be callable
+            result = await executor.run("workflows.double(n=21)")
+            assert result.is_ok, f"Workflow call failed: {result.error}"
             assert result.value == 42
         finally:
             await executor.close()
 
     @pytest.mark.asyncio
-    async def test_create_executor_skills_list(self, skills_dir: Path) -> None:
-        """Executor provides skills.list() that returns skill info."""
-        store = FileSkillStore(skills_dir)
-        skill_library = create_skill_library(store=store)
-        executor = InProcessExecutor(skill_library=skill_library)
+    async def test_create_executor_workflows_list(self, workflows_dir: Path) -> None:
+        """Executor provides workflows.list() that returns workflow info."""
+        store = FileWorkflowStore(workflows_dir)
+        workflow_library = create_workflow_library(store=store)
+        executor = InProcessExecutor(workflow_library=workflow_library)
 
         try:
-            result = await executor.run("skills.list()")
-            assert result.is_ok, f"skills.list() failed: {result.error}"
-            assert result.value is not None, "skills.list() returned None"
-            # Should contain our double skill
-            skills_str = str(result.value)
-            assert "double" in skills_str.lower(), f"double not in {skills_str}"
+            result = await executor.run("workflows.list()")
+            assert result.is_ok, f"workflows.list() failed: {result.error}"
+            assert result.value is not None, "workflows.list() returned None"
+            # Should contain our double workflow
+            workflows_str = str(result.value)
+            assert "double" in workflows_str.lower(), f"double not in {workflows_str}"
         finally:
             await executor.close()
 
     @pytest.mark.asyncio
-    async def test_create_executor_skills_search(self, skills_dir: Path) -> None:
-        """Executor provides skills.search() for semantic search."""
-        store = FileSkillStore(skills_dir)
-        skill_library = create_skill_library(store=store)
-        executor = InProcessExecutor(skill_library=skill_library)
+    async def test_create_executor_workflows_search(self, workflows_dir: Path) -> None:
+        """Executor provides workflows.search() for semantic search."""
+        store = FileWorkflowStore(workflows_dir)
+        workflow_library = create_workflow_library(store=store)
+        executor = InProcessExecutor(workflow_library=workflow_library)
 
         try:
-            result = await executor.run('skills.search("multiply number")')
-            assert result.is_ok, f"skills.search() failed: {result.error}"
+            result = await executor.run('workflows.search("multiply number")')
+            assert result.is_ok, f"workflows.search() failed: {result.error}"
             assert result.value is not None
-            # Should find double skill (semantically similar to multiply)
+            # Should find double workflow (semantically similar to multiply)
             assert len(result.value) > 0
         finally:
             await executor.close()
@@ -195,19 +195,19 @@ async def run(n: int) -> int:
 
     @pytest.mark.asyncio
     async def test_create_executor_full_integration(
-        self, tools_dir: Path, skills_dir: Path, artifacts_dir: Path
+        self, tools_dir: Path, workflows_dir: Path, artifacts_dir: Path
     ) -> None:
-        """Executor with all three: tools, skills, artifacts."""
+        """Executor with all three: tools, workflows, artifacts."""
         adapter = CLIAdapter(tools_path=tools_dir)
         registry = ToolRegistry()
         registry._adapters.append(adapter)
-        store = FileSkillStore(skills_dir)
-        skill_library = create_skill_library(store=store)
+        store = FileWorkflowStore(workflows_dir)
+        workflow_library = create_workflow_library(store=store)
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         artifact_store = FileArtifactStore(artifacts_dir)
         executor = InProcessExecutor(
             registry=registry,
-            skill_library=skill_library,
+            workflow_library=workflow_library,
             artifact_store=artifact_store,
         )
 
@@ -216,9 +216,9 @@ async def run(n: int) -> int:
             result = await executor.run('tools.echo.echo(text="test")')
             assert result.is_ok, f"tools failed: {result.error}"
 
-            # Skills work
-            result = await executor.run("skills.double(n=5)")
-            assert result.is_ok, f"skills failed: {result.error}"
+            # Workflows work
+            result = await executor.run("workflows.double(n=5)")
+            assert result.is_ok, f"workflows failed: {result.error}"
             assert result.value == 10
 
             # Artifacts work
@@ -293,76 +293,76 @@ class TestBackendArtifacts:
             assert not result.is_ok or result.value is None
 
 
-class TestBackendSkills:
-    """Test skills invocation across backends."""
+class TestBackendWorkflows:
+    """Test workflows invocation across backends."""
 
     @pytest.fixture
-    def executor_with_skills(self, tmp_path: Path) -> InProcessExecutor:
-        """Create executor with skills."""
-        skills_path = tmp_path / "skills"
-        skills_path.mkdir()
+    def executor_with_workflows(self, tmp_path: Path) -> InProcessExecutor:
+        """Create executor with workflows."""
+        workflows_path = tmp_path / "workflows"
+        workflows_path.mkdir()
 
-        # Create a test skill using from_source
-        skill = PythonSkill.from_source(
+        # Create a test workflow using from_source
+        workflow = PythonWorkflow.from_source(
             name="double",
             source='async def run(n: int) -> int:\n    """Double a number."""\n    return n * 2',
             description="Double a number",
         )
 
-        store = FileSkillStore(skills_path)
-        store.save(skill)
+        store = FileWorkflowStore(workflows_path)
+        store.save(workflow)
 
-        library = create_skill_library(store=store)
-        return InProcessExecutor(skill_library=library)
+        library = create_workflow_library(store=store)
+        return InProcessExecutor(workflow_library=library)
 
     @pytest.mark.asyncio
-    async def test_skill_invocation(self, executor_with_skills: InProcessExecutor) -> None:
-        """Skills can be invoked via skills namespace."""
-        async with executor_with_skills as executor:
-            result = await executor.run("skills.double(n=21)")
+    async def test_workflow_invocation(self, executor_with_workflows: InProcessExecutor) -> None:
+        """Workflows can be invoked via workflows namespace."""
+        async with executor_with_workflows as executor:
+            result = await executor.run("workflows.double(n=21)")
 
-            assert result.is_ok, f"Skill invocation failed: {result.error}"
+            assert result.is_ok, f"Workflow invocation failed: {result.error}"
             assert result.value == 42
 
     @pytest.mark.asyncio
-    async def test_skills_list(self, executor_with_skills: InProcessExecutor) -> None:
-        """Can list available skills."""
-        async with executor_with_skills as executor:
-            result = await executor.run("skills.list()")
+    async def test_workflows_list(self, executor_with_workflows: InProcessExecutor) -> None:
+        """Can list available workflows."""
+        async with executor_with_workflows as executor:
+            result = await executor.run("workflows.list()")
 
             assert result.is_ok
-            # Should contain our skill
+            # Should contain our workflow
             assert any("double" in str(s) for s in result.value)
 
     @pytest.mark.asyncio
-    async def test_skill_with_default_args(self, tmp_path: Path) -> None:
-        """Skills with default arguments work correctly."""
-        skills_path = tmp_path / "skills"
-        skills_path.mkdir()
+    async def test_workflow_with_default_args(self, tmp_path: Path) -> None:
+        """Workflows with default arguments work correctly."""
+        workflows_path = tmp_path / "workflows"
+        workflows_path.mkdir()
 
         source = (
             'async def run(name: str = "World") -> str:\n'
             '    """Greet someone."""\n'
             '    return f"Hello, {name}!"'
         )
-        skill = PythonSkill.from_source(
+        workflow = PythonWorkflow.from_source(
             name="greet",
             source=source,
             description="Greet someone",
         )
 
-        store = FileSkillStore(skills_path)
-        store.save(skill)
-        library = create_skill_library(store=store)
+        store = FileWorkflowStore(workflows_path)
+        store.save(workflow)
+        library = create_workflow_library(store=store)
 
-        async with InProcessExecutor(skill_library=library) as executor:
+        async with InProcessExecutor(workflow_library=library) as executor:
             # With default
-            result = await executor.run("skills.greet()")
+            result = await executor.run("workflows.greet()")
             assert result.is_ok
             assert result.value == "Hello, World!"
 
             # With override
-            result = await executor.run('skills.greet(name="Alice")')
+            result = await executor.run('workflows.greet(name="Alice")')
             assert result.is_ok
             assert result.value == "Hello, Alice!"
 

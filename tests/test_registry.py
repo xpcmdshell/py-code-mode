@@ -392,7 +392,7 @@ class TestToolRegistrySemanticIntegration:
     ) -> None:
         """End-to-end: semantic search finds tools by intent."""
         # Use real embedder for integration test
-        from py_code_mode.skills.embeddings import Embedder
+        from py_code_mode.workflows.embeddings import Embedder
 
         registry = ToolRegistry(embedder=Embedder())
         registry.register_adapter(web_adapter)

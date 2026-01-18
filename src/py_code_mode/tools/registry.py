@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from py_code_mode.errors import CodeModeError, ToolCallError, ToolNotFoundError
-from py_code_mode.skills import EmbeddingProvider, cosine_similarity
 from py_code_mode.tools.adapters.base import ToolAdapter
 from py_code_mode.tools.types import Tool
+from py_code_mode.workflows import EmbeddingProvider, cosine_similarity
 
 logger = logging.getLogger(__name__)
 
 # Type alias for MCP adapter to avoid import at module level
-MCPAdapterType = "MCPAdapter"
+if TYPE_CHECKING:
+    from py_code_mode.tools.adapters.mcp import MCPAdapter as MCPAdapterType
+else:
+    MCPAdapterType = Any
 
 
 async def _load_mcp_adapter(

@@ -1,10 +1,10 @@
 """Tests for SubprocessExecutor namespace injection with full py-code-mode functionality.
 
-These tests verify that the SubprocessExecutor properly injects tools, skills, and
+These tests verify that the SubprocessExecutor properly injects tools, workflows, and
 artifacts namespaces into the kernel with FULL functionality (not stubs).
 
 Target state: py-code-mode installed in kernel venv, providing real namespace
-implementations with tool invocation, skill creation/invocation, semantic search,
+implementations with tool invocation, workflow creation/invocation, semantic search,
 and complete artifact management.
 
 Tests are designed to FAIL with the current stub implementation, then pass once
@@ -108,12 +108,12 @@ class TestE2EUserJourneys:
     """End-to-end tests simulating real agent workflows."""
 
     @pytest.mark.asyncio
-    async def test_tool_to_skill_to_artifact_workflow(self, executor_with_storage) -> None:
-        """Agent workflow: call tool -> create skill -> save artifact.
+    async def test_tool_to_workflow_to_artifact_workflow(self, executor_with_storage) -> None:
+        """Agent workflow: call tool -> create workflow -> save artifact.
 
         This is the complete agent workflow:
         1. Use a tool to get data
-        2. Create a skill that wraps the tool
+        2. Create a workflow that wraps the tool
         3. Save the result as an artifact
         4. Load the artifact back
 
@@ -124,9 +124,9 @@ class TestE2EUserJourneys:
         assert result.error is None, f"Tool invocation failed: {result.error}"
         assert "hello world" in str(result.value) or "hello world" in result.stdout
 
-        # Step 2: Create a skill that uses the tool
-        skill_code = '''
-skills.create(
+        # Step 2: Create a workflow that uses the tool
+        workflow_code = '''
+workflows.create(
     name="greet",
     source="""
 async def run(name: str) -> str:
@@ -136,12 +136,12 @@ async def run(name: str) -> str:
     description="Greet someone by name"
 )
 '''
-        result = await executor_with_storage.run(skill_code)
-        assert result.error is None, f"Skill creation failed: {result.error}"
+        result = await executor_with_storage.run(workflow_code)
+        assert result.error is None, f"Workflow creation failed: {result.error}"
 
-        # Step 3: Invoke the skill
-        result = await executor_with_storage.run('skills.invoke("greet", name="Alice")')
-        assert result.error is None, f"Skill invocation failed: {result.error}"
+        # Step 3: Invoke the workflow
+        result = await executor_with_storage.run('workflows.invoke("greet", name="Alice")')
+        assert result.error is None, f"Workflow invocation failed: {result.error}"
 
         # Step 4: Save result as artifact
         result = await executor_with_storage.run(
@@ -155,14 +155,14 @@ async def run(name: str) -> str:
         assert "Alice" in str(result.value)
 
     @pytest.mark.asyncio
-    async def test_skill_uses_tools_namespace_internally(self, executor_with_storage) -> None:
-        """Skills can access tools namespace when invoked.
+    async def test_workflow_uses_tools_namespace_internally(self, executor_with_storage) -> None:
+        """Workflows can access tools namespace when invoked.
 
-        Breaks when: Skills don't receive injected namespaces during execution.
+        Breaks when: Workflows don't receive injected namespaces during execution.
         """
-        # Create skill that uses tools internally
-        skill_code = '''
-skills.create(
+        # Create workflow that uses tools internally
+        workflow_code = '''
+workflows.create(
     name="echo_wrapper",
     source="""
 async def run(message: str) -> str:
@@ -171,14 +171,14 @@ async def run(message: str) -> str:
     description="Wrapper around echo tool"
 )
 '''
-        result = await executor_with_storage.run(skill_code)
-        assert result.error is None, f"Skill creation failed: {result.error}"
+        result = await executor_with_storage.run(workflow_code)
+        assert result.error is None, f"Workflow creation failed: {result.error}"
 
-        # Invoke skill - it should have access to tools namespace
+        # Invoke workflow - it should have access to tools namespace
         result = await executor_with_storage.run(
-            'skills.invoke("echo_wrapper", message="test message")'
+            'workflows.invoke("echo_wrapper", message="test message")'
         )
-        assert result.error is None, f"Skill invocation failed: {result.error}"
+        assert result.error is None, f"Workflow invocation failed: {result.error}"
         assert "test message" in str(result.value) or "test message" in result.stdout
 
 
@@ -243,46 +243,46 @@ class TestToolsNamespaceContract:
 
 
 # =============================================================================
-# Contract Tests - Skills Namespace
+# Contract Tests - Workflows Namespace
 # =============================================================================
 
 
 @pytest.mark.slow
 @pytest.mark.xdist_group("subprocess")
-class TestSkillsNamespaceContract:
-    """Contract tests for skills namespace API."""
+class TestWorkflowsNamespaceContract:
+    """Contract tests for workflows namespace API."""
 
     @pytest.mark.asyncio
-    async def test_skills_list_returns_skill_info(self, executor_empty_storage) -> None:
-        """skills.list() returns list of skill metadata.
+    async def test_workflows_list_returns_workflow_info(self, executor_empty_storage) -> None:
+        """workflows.list() returns list of workflow metadata.
 
         Breaks when: Returns raw file names without metadata.
         """
-        # Create a skill first
+        # Create a workflow first
         create_code = """
-skills.create(
+workflows.create(
     name="add",
     source="async def run(a: int, b: int) -> int: return a + b",
     description="Add two numbers"
 )
 """
         result = await executor_empty_storage.run(create_code)
-        assert result.error is None, f"Skill creation failed: {result.error}"
+        assert result.error is None, f"Workflow creation failed: {result.error}"
 
-        # List should include the skill
-        result = await executor_empty_storage.run("skills.list()")
-        assert result.error is None, f"skills.list() failed: {result.error}"
+        # List should include the workflow
+        result = await executor_empty_storage.run("workflows.list()")
+        assert result.error is None, f"workflows.list() failed: {result.error}"
         assert "add" in str(result.value)
 
     @pytest.mark.asyncio
-    async def test_skills_search_semantic(self, executor_empty_storage) -> None:
-        """skills.search(query) performs semantic search.
+    async def test_workflows_search_semantic(self, executor_empty_storage) -> None:
+        """workflows.search(query) performs semantic search.
 
         Breaks when: Only name matching, semantic search not working.
         """
-        # Create skill with descriptive purpose
+        # Create workflow with descriptive purpose
         create_code = """
-skills.create(
+workflows.create(
     name="calculate_sum",
     source="async def run(numbers: list) -> int: return sum(numbers)",
     description="Calculate the total of a list of numbers"
@@ -292,44 +292,44 @@ skills.create(
         assert result.error is None
 
         # Search by semantic meaning (not exact name match)
-        result = await executor_empty_storage.run('skills.search("add numbers together")')
-        assert result.error is None, f"skills.search() failed: {result.error}"
+        result = await executor_empty_storage.run('workflows.search("add numbers together")')
+        assert result.error is None, f"workflows.search() failed: {result.error}"
         # Should find calculate_sum based on semantic similarity
         assert "calculate_sum" in str(result.value) or len(str(result.value)) > 2
 
     @pytest.mark.asyncio
-    async def test_skills_create_persists(self, executor_empty_storage) -> None:
-        """skills.create() persists skill to store.
+    async def test_workflows_create_persists(self, executor_empty_storage) -> None:
+        """workflows.create() persists workflow to store.
 
-        Breaks when: Skill not saved, lost on next list().
+        Breaks when: Workflow not saved, lost on next list().
         """
         create_code = """
-skills.create(
+workflows.create(
     name="multiply",
     source="async def run(a: int, b: int) -> int: return a * b",
     description="Multiply two numbers"
 )
 """
         result = await executor_empty_storage.run(create_code)
-        assert result.error is None, f"Skill creation failed: {result.error}"
+        assert result.error is None, f"Workflow creation failed: {result.error}"
 
-        # Skill should appear in list
+        # Workflow should appear in list
         result = await executor_empty_storage.run(
-            "'multiply' in [s['name'] if isinstance(s, dict) else s.name for s in skills.list()]"
+            "'multiply' in [s['name'] if isinstance(s, dict) else s.name for s in workflows.list()]"
         )
         assert result.error is None
         # Accept True as bool or string
-        assert result.value in (True, "True"), f"Skill not found in list: {result.value}"
+        assert result.value in (True, "True"), f"Workflow not found in list: {result.value}"
 
     @pytest.mark.asyncio
-    async def test_skills_invoke_executes_skill(self, executor_empty_storage) -> None:
-        """skills.invoke(name, **kwargs) runs skill and returns result.
+    async def test_workflows_invoke_executes_workflow(self, executor_empty_storage) -> None:
+        """workflows.invoke(name, **kwargs) runs workflow and returns result.
 
         Breaks when: Invocation fails, wrong args, execution error.
         """
-        # Create skill
+        # Create workflow
         create_code = """
-skills.create(
+workflows.create(
     name="square",
     source="async def run(n: int) -> int: return n * n",
     description="Square a number"
@@ -338,20 +338,20 @@ skills.create(
         result = await executor_empty_storage.run(create_code)
         assert result.error is None
 
-        # Invoke skill
-        result = await executor_empty_storage.run('skills.invoke("square", n=5)')
-        assert result.error is None, f"Skill invocation failed: {result.error}"
+        # Invoke workflow
+        result = await executor_empty_storage.run('workflows.invoke("square", n=5)')
+        assert result.error is None, f"Workflow invocation failed: {result.error}"
         assert result.value in (25, "25"), f"Wrong result: {result.value}"
 
     @pytest.mark.asyncio
-    async def test_skills_attribute_access_invocation(self, executor_empty_storage) -> None:
-        """skills.<name>(**kwargs) provides attribute-based invocation.
+    async def test_workflows_attribute_access_invocation(self, executor_empty_storage) -> None:
+        """workflows.<name>(**kwargs) provides attribute-based invocation.
 
         Breaks when: Attribute access not supported.
         """
-        # Create skill
+        # Create workflow
         create_code = """
-skills.create(
+workflows.create(
     name="triple",
     source="async def run(n: int) -> int: return n * 3",
     description="Triple a number"
@@ -361,24 +361,26 @@ skills.create(
         assert result.error is None
 
         # Invoke via attribute access
-        result = await executor_empty_storage.run("skills.triple(n=4)")
+        result = await executor_empty_storage.run("workflows.triple(n=4)")
         assert result.error is None, f"Attribute invocation failed: {result.error}"
         assert result.value in (12, "12"), f"Wrong result: {result.value}"
 
     @pytest.mark.asyncio
-    async def test_skills_invoke_uses_runtime_installed_dep(self, executor_empty_storage) -> None:
-        """skills.invoke() can use packages installed at runtime via deps.add().
+    async def test_workflows_invoke_uses_runtime_installed_dep(
+        self, executor_empty_storage
+    ) -> None:
+        """workflows.invoke() can use packages installed at runtime via deps.add().
 
-        User story: Agent creates a skill that needs a package, installs it via
-        deps.add(), then invokes the skill - all in the same session.
+        User story: Agent creates a workflow that needs a package, installs it via
+        deps.add(), then invokes the workflow - all in the same session.
 
-        Breaks when: Skill execution happens in host process instead of kernel,
+        Breaks when: Workflow execution happens in host process instead of kernel,
         or import caches not invalidated after package install.
         """
-        # 1. Create a skill that uses a package we'll install at runtime
+        # 1. Create a workflow that uses a package we'll install at runtime
         # Using 'art' package - small, pure Python, unlikely to be pre-installed
         create_code = """
-skills.create(
+workflows.create(
     name="ascii_art_test",
     source='''
 async def run(text: str) -> str:
@@ -389,10 +391,10 @@ async def run(text: str) -> str:
 )
 """
         result = await executor_empty_storage.run(create_code)
-        assert result.error is None, f"Skill creation failed: {result.error}"
+        assert result.error is None, f"Workflow creation failed: {result.error}"
 
-        # 2. Skill invoke should FAIL before installing the dep
-        result = await executor_empty_storage.run('skills.invoke("ascii_art_test", text="hi")')
+        # 2. Workflow invoke should FAIL before installing the dep
+        result = await executor_empty_storage.run('workflows.invoke("ascii_art_test", text="hi")')
         assert result.error is not None, "Expected ModuleNotFoundError before install"
         assert "ModuleNotFoundError" in result.error or "No module named" in result.error
 
@@ -400,11 +402,11 @@ async def run(text: str) -> str:
         result = await executor_empty_storage.run('deps.add("art")')
         assert result.error is None, f"deps.add failed: {result.error}"
 
-        # 4. Skill invoke should SUCCEED after installing the dep
-        result = await executor_empty_storage.run('skills.invoke("ascii_art_test", text="hi")')
+        # 4. Workflow invoke should SUCCEED after installing the dep
+        result = await executor_empty_storage.run('workflows.invoke("ascii_art_test", text="hi")')
         assert result.error is None, (
-            f"Skill invoke failed after deps.add: {result.error}. "
-            "This indicates skills are executing in host process instead of kernel, "
+            f"Workflow invoke failed after deps.add: {result.error}. "
+            "This indicates workflows are executing in host process instead of kernel, "
             "or import caches not invalidated after package install."
         )
         # art.text2art returns multi-line ASCII art
@@ -537,9 +539,9 @@ class TestStorageAccessIntegration:
 
         Breaks when: Kernel resets between runs, state lost.
         """
-        # Create skill in first run
+        # Create workflow in first run
         create_code = """
-skills.create(
+workflows.create(
     name="counter",
     source="async def run(): return 'counted'",
     description="Simple counter"
@@ -554,7 +556,7 @@ skills.create(
 
         # Third run should see both
         result = await executor_empty_storage.run(
-            "'counter' in str(skills.list()) and 'state_test' in str(artifacts.list())"
+            "'counter' in str(workflows.list()) and 'state_test' in str(artifacts.list())"
         )
         assert result.error is None
         assert result.value in (True, "True")
@@ -579,7 +581,7 @@ skills.create(
             await executor.start(storage=storage)
 
             await executor.run(
-                "skills.create("
+                "workflows.create("
                 'name="persist", '
                 'source="async def run(): return 1", '
                 'description="test")'
@@ -590,11 +592,11 @@ skills.create(
             await executor.reset()
 
             # Namespaces should still be accessible
-            result = await executor.run("'tools' in dir() and 'skills' in dir()")
+            result = await executor.run("'tools' in dir() and 'workflows' in dir()")
             assert result.value in (True, "True")
 
             # Persisted data should still be there (it's in storage, not kernel memory)
-            result = await executor.run("'persist' in str(skills.list())")
+            result = await executor.run("'persist' in str(workflows.list())")
             assert result.value in (True, "True")
 
             result = await executor.run("'persist_artifact' in str(artifacts.list())")
@@ -632,7 +634,7 @@ class TestNamespaceInvariants:
 
             # Immediately check all namespaces
             result = await executor.run(
-                "'tools' in dir() and 'skills' in dir() and 'artifacts' in dir()"
+                "'tools' in dir() and 'workflows' in dir() and 'artifacts' in dir()"
             )
             assert result.error is None
             assert result.value in (True, "True")
@@ -697,27 +699,29 @@ class TestNamespaceErrors:
             assert result.value is None or result.value == "None"
 
     @pytest.mark.asyncio
-    async def test_invoking_nonexistent_skill_raises_error(self, executor_empty_storage) -> None:
-        """Invoking nonexistent skill raises error.
+    async def test_invoking_nonexistent_workflow_raises_error(self, executor_empty_storage) -> None:
+        """Invoking nonexistent workflow raises error.
 
         Breaks when: Silent failure, returns None.
         """
-        result = await executor_empty_storage.run('skills.invoke("skill_that_does_not_exist")')
+        result = await executor_empty_storage.run(
+            'workflows.invoke("workflow_that_does_not_exist")'
+        )
         assert result.error is not None
 
     @pytest.mark.asyncio
-    async def test_creating_skill_with_invalid_source_raises_error(
+    async def test_creating_workflow_with_invalid_source_raises_error(
         self, executor_empty_storage
     ) -> None:
-        """Creating skill with invalid Python source raises error.
+        """Creating workflow with invalid Python source raises error.
 
-        Breaks when: Invalid skill saved, error only at invoke time.
+        Breaks when: Invalid workflow saved, error only at invoke time.
         """
         result = await executor_empty_storage.run(
-            """skills.create(
+            """workflows.create(
                 name="broken",
                 source="async def run( this is not valid python {{{{",
-                description="Broken skill"
+                description="Broken workflow"
             )"""
         )
         # Should fail with SyntaxError during creation, not silently save
@@ -754,7 +758,7 @@ class TestRedisNamespaceSetup:
         # NOTE: tools_prefix and deps_prefix removed - tools/deps now owned by executors
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
         code = build_namespace_setup_code(storage_access)
@@ -773,7 +777,7 @@ class TestRedisNamespaceSetup:
         # NOTE: tools_prefix and deps_prefix removed - tools/deps now owned by executors
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379/0",
-            skills_prefix="myapp:skills",
+            workflows_prefix="myapp:workflows",
             artifacts_prefix="myapp:artifacts",
         )
         code = build_namespace_setup_code(storage_access)
@@ -797,7 +801,7 @@ class TestRedisNamespaceSetup:
         # NOTE: tools_prefix and deps_prefix removed - tools/deps now owned by executors
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
         code = build_namespace_setup_code(storage_access)
@@ -820,7 +824,7 @@ class TestRedisNamespaceSetup:
         test_url = "redis://testhost:12345/7"
         storage_access = RedisStorageAccess(
             redis_url=test_url,
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
         code = build_namespace_setup_code(storage_access)
@@ -831,7 +835,7 @@ class TestRedisNamespaceSetup:
         """Generated code should use the exact prefixes provided.
 
         Breaks when: Code hardcodes prefixes or doesn't properly inject
-        the provided prefix values for skills and artifacts.
+        the provided prefix values for workflows and artifacts.
 
         NOTE: tools_prefix removed - tools now owned by executors.
         """
@@ -840,19 +844,19 @@ class TestRedisNamespaceSetup:
 
         # Use distinctive prefixes that are easy to find
         # NOTE: tools_prefix removed - tools now owned by executors
-        skills_prefix = "unique_app_v1:skills"
+        workflows_prefix = "unique_app_v1:workflows"
         artifacts_prefix = "unique_app_v1:artifacts"
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix=skills_prefix,
+            workflows_prefix=workflows_prefix,
             artifacts_prefix=artifacts_prefix,
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
         # NOTE: tools_prefix assertion removed - tools now owned by executors
-        assert skills_prefix in code, (
-            f"Generated code should contain skills_prefix: {skills_prefix}"
+        assert workflows_prefix in code, (
+            f"Generated code should contain workflows_prefix: {workflows_prefix}"
         )
         assert artifacts_prefix in code, (
             f"Generated code should contain artifacts_prefix: {artifacts_prefix}"
@@ -870,7 +874,7 @@ class TestRedisNamespaceSetup:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
         code = build_namespace_setup_code(storage_access)
@@ -881,26 +885,28 @@ class TestRedisNamespaceSetup:
         # Tools are now owned by executor, not storage - empty registry is created
         assert "ToolRegistry()" in code, "Generated code should create empty ToolRegistry"
 
-    def test_redis_storage_code_sets_up_skills(self) -> None:
-        """Generated code should set up skills namespace with RedisSkillStore.
+    def test_redis_storage_code_sets_up_workflows(self) -> None:
+        """Generated code should set up workflows namespace with RedisWorkflowStore.
 
-        Breaks when: Skills namespace not created, or uses wrong store type
-        (FileSkillStore instead of RedisSkillStore).
+        Breaks when: Workflows namespace not created, or uses wrong store type
+        (FileWorkflowStore instead of RedisWorkflowStore).
         """
         from py_code_mode.execution.protocol import RedisStorageAccess
         from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
-        assert "skills = " in code or "skills=" in code, (
-            "Generated code should assign skills namespace"
+        assert "workflows = " in code or "workflows=" in code, (
+            "Generated code should assign workflows namespace"
         )
-        assert "RedisSkillStore" in code, "Generated code should use RedisSkillStore for skills"
+        assert "RedisWorkflowStore" in code, (
+            "Generated code should use RedisWorkflowStore for workflows"
+        )
 
     def test_redis_storage_code_sets_up_artifacts(self) -> None:
         """Generated code should set up artifacts namespace with RedisArtifactStore.
@@ -913,7 +919,7 @@ class TestRedisNamespaceSetup:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
         code = build_namespace_setup_code(storage_access)
@@ -976,7 +982,7 @@ class TestRedisCodeGenerationDetails:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
         code = build_namespace_setup_code(storage_access)
@@ -996,7 +1002,7 @@ class TestRedisCodeGenerationDetails:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
         code = build_namespace_setup_code(storage_access)
@@ -1015,36 +1021,37 @@ class TestRedisCodeGenerationDetails:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
         assert "CLIAdapter" in code, "Generated code should use CLIAdapter for tool execution"
 
-    def test_redis_code_imports_skill_library(self) -> None:
-        """Generated code should import create_skill_library for semantic search.
+    def test_redis_code_imports_workflow_library(self) -> None:
+        """Generated code should import create_workflow_library for semantic search.
 
-        Breaks when: Skill semantic search doesn't work because library not created.
+        Breaks when: Workflow semantic search doesn't work because library not created.
         """
         from py_code_mode.execution.protocol import RedisStorageAccess
         from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
-        assert "create_skill_library" in code or "SkillLibrary" in code, (
-            "Generated code should use create_skill_library or SkillLibrary for semantic search"
+        assert "create_workflow_library" in code or "WorkflowLibrary" in code, (
+            "Generated code should use create_workflow_library or WorkflowLibrary "
+            "for semantic search"
         )
 
-    def test_redis_code_wires_skills_namespace_with_tools(self) -> None:
-        """Generated code should wire skills namespace so skills can access tools.
+    def test_redis_code_wires_workflows_namespace_with_tools(self) -> None:
+        """Generated code should wire workflows namespace so workflows can access tools.
 
-        Breaks when: Skills that internally call tools.* fail with NameError
+        Breaks when: Workflows that internally call tools.* fail with NameError
         because namespace dict wasn't properly wired.
         """
         from py_code_mode.execution.protocol import RedisStorageAccess
@@ -1052,21 +1059,21 @@ class TestRedisCodeGenerationDetails:
 
         storage_access = RedisStorageAccess(
             redis_url="redis://localhost:6379",
-            skills_prefix="test:skills",
+            workflows_prefix="test:workflows",
             artifacts_prefix="test:artifacts",
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
         # Look for namespace dict wiring pattern (like FileStorage does)
-        assert "SkillsNamespace" in code, "Generated code should create SkillsNamespace"
-        # The namespace dict should wire tools into skills
+        assert "WorkflowsNamespace" in code, "Generated code should create WorkflowsNamespace"
+        # The namespace dict should wire tools into workflows
         has_wiring = (
             '"tools"' in code
             or "'tools'" in code
             or "namespace" in code.lower()
             or "_ns_dict" in code
         )
-        assert has_wiring, "Generated code should wire tools into skills namespace"
+        assert has_wiring, "Generated code should wire tools into workflows namespace"
 
 
 # =============================================================================
@@ -1102,7 +1109,7 @@ class TestRedisStorageIntegration:
         """Full E2E test: SubprocessExecutor with RedisStorage.
 
         Breaks when: Generated code fails to execute, namespaces aren't
-        accessible, or tools/skills/artifacts don't work.
+        accessible, or tools/workflows/artifacts don't work.
         """
         from py_code_mode.execution.subprocess import SubprocessExecutor
         from py_code_mode.execution.subprocess.config import SubprocessConfig
@@ -1118,7 +1125,7 @@ class TestRedisStorageIntegration:
 
             # Verify namespaces are accessible
             result = await executor.run(
-                "'tools' in dir() and 'skills' in dir() and 'artifacts' in dir()"
+                "'tools' in dir() and 'workflows' in dir() and 'artifacts' in dir()"
             )
             assert result.error is None, f"Namespace check failed: {result.error}"
             assert result.value in (True, "True"), "Namespaces should be available"

@@ -55,7 +55,7 @@ class InfoResult:
     """Server info result."""
 
     tools: list[dict[str, str]]
-    skills: list[dict[str, str]]
+    workflows: list[dict[str, str]]
     artifacts_path: str
 
 
@@ -177,7 +177,7 @@ class SessionClient:
         """Get server info.
 
         Returns:
-            InfoResult with available tools and skills.
+            InfoResult with available tools and workflows.
         """
         client = await self._get_client()
         response = await client.get(f"{self.base_url}/info", headers=self._headers())
@@ -186,7 +186,7 @@ class SessionClient:
 
         return InfoResult(
             tools=data["tools"],
-            skills=data["skills"],
+            workflows=data["workflows"],
             artifacts_path=data["artifacts_path"],
         )
 
@@ -297,97 +297,58 @@ class SessionClient:
         return response.json()
 
     # ==========================================================================
-    # Skills API Methods
+    # Workflows API Methods
     # ==========================================================================
 
-    async def list_skills(self) -> list[dict[str, Any]]:
-        """List all skills.
-
-        Returns:
-            List of skill metadata dicts with name, description, parameters.
-        """
+    async def list_workflows(self) -> list[dict[str, Any]]:
+        """List all workflows."""
         client = await self._get_client()
         response = await client.get(
-            f"{self.base_url}/api/skills",
+            f"{self.base_url}/api/workflows",
             headers=self._headers(),
         )
         response.raise_for_status()
         return response.json()
 
-    async def search_skills(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
-        """Search skills semantically.
-
-        Args:
-            query: Natural language search query.
-            limit: Maximum number of results to return.
-
-        Returns:
-            List of matching skill metadata dicts.
-        """
+    async def search_workflows(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Search workflows."""
         client = await self._get_client()
         response = await client.get(
-            f"{self.base_url}/api/skills/search",
+            f"{self.base_url}/api/workflows/search",
             params={"query": query, "limit": limit},
             headers=self._headers(),
         )
         response.raise_for_status()
         return response.json()
 
-    async def get_skill(self, name: str) -> dict[str, Any] | None:
-        """Get skill by name with full source.
-
-        Args:
-            name: Skill name.
-
-        Returns:
-            Skill dict with name, description, parameters, source.
-            None if skill not found.
-        """
+    async def get_workflow(self, name: str) -> dict[str, Any] | None:
+        """Get workflow by name with full source."""
         client = await self._get_client()
         response = await client.get(
-            f"{self.base_url}/api/skills/{name}",
+            f"{self.base_url}/api/workflows/{name}",
             headers=self._headers(),
         )
         response.raise_for_status()
         return response.json()
 
-    async def create_skill(self, name: str, source: str, description: str) -> dict[str, Any]:
-        """Create a new skill.
-
-        Args:
-            name: Skill name.
-            source: Python source code with run() function.
-            description: Skill description.
-
-        Returns:
-            Created skill metadata dict.
-
-        Raises:
-            RuntimeError: If skill creation fails.
-        """
+    async def create_workflow(self, name: str, source: str, description: str) -> dict[str, Any]:
+        """Create a new workflow."""
         client = await self._get_client()
         response = await client.post(
-            f"{self.base_url}/api/skills",
+            f"{self.base_url}/api/workflows",
             json={"name": name, "source": source, "description": description},
             headers=self._headers(),
         )
         if response.status_code != 200:
             data = response.json()
-            raise RuntimeError(data.get("detail", "Skill creation failed"))
+            raise RuntimeError(data.get("detail", "Workflow creation failed"))
         return response.json()
 
-    async def delete_skill(self, name: str) -> bool:
-        """Delete a skill.
-
-        Args:
-            name: Skill name.
-
-        Returns:
-            True if skill was deleted, False if not found.
-        """
+    async def delete_workflow(self, name: str) -> bool:
+        """Delete a workflow."""
         client = await self._get_client()
         response = await client.delete(
-            f"{self.base_url}/api/skills/{name}",
+            f"{self.base_url}/api/workflows/{name}",
             headers=self._headers(),
         )
         response.raise_for_status()

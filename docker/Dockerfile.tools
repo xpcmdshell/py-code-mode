@@ -26,8 +26,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY docker/configs/tools.yaml /app/tools.yaml
 ENV TOOLS_CONFIG=/app/tools.yaml
 
-# Copy skills if present
-COPY docker/configs/skills/ /app/skills/
+# Copy workflows if present
+COPY docker/configs/workflows/ /app/workflows/
+ENV WORKFLOWS_PATH=/app/workflows
 
 # Python dependencies are auto-installed from tools.yaml at startup
 # See python_deps section in docker/configs/tools.yaml

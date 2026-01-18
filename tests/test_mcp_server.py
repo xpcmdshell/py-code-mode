@@ -2,9 +2,9 @@
 
 Tests cover:
 - E2E tests via stdio transport (production path)
-- Skill creation, persistence, and invocation
+- Workflow creation, persistence, and invocation
 - Artifact storage and persistence
-- Cross-namespace operations (skills calling tools)
+- Cross-namespace operations (workflows calling tools)
 - State persistence across run_code calls
 - Tool invocation patterns
 - Complete workflow scenarios
@@ -36,8 +36,8 @@ def mcp_storage_dir(tmp_path: Path) -> tuple[Path, Path]:
     tools_dir = tmp_path / "tools"
     tools_dir.mkdir()
 
-    skills_dir = storage / "skills"
-    skills_dir.mkdir()
+    workflows_dir = storage / "workflows"
+    workflows_dir.mkdir()
 
     artifacts_dir = storage / "artifacts"
     artifacts_dir.mkdir()
@@ -88,14 +88,14 @@ recipes:
       url: {}
 """)
 
-    # Simple skill for basic testing
-    (skills_dir / "double.py").write_text('''"""Double a number."""
+    # Simple workflow for basic testing
+    (workflows_dir / "double.py").write_text('''"""Double a number."""
 async def run(n: int) -> int:
     return n * 2
 ''')
 
-    # Skill that calls tools (for cross-namespace testing)
-    (skills_dir / "fetch_title.py").write_text('''"""Fetch a URL and extract title."""
+    # Workflow that calls tools (for cross-namespace testing)
+    (workflows_dir / "fetch_title.py").write_text('''"""Fetch a URL and extract title."""
 async def run(url: str) -> str:
     import re
     content = tools.curl.get(url=url)
@@ -140,8 +140,8 @@ class TestMCPServerE2E:
                     "run_code",
                     "list_tools",
                     "search_tools",
-                    "list_skills",
-                    "search_skills",
+                    "list_workflows",
+                    "search_workflows",
                 }
                 assert expected_tools <= tool_names, f"Missing tools: {expected_tools - tool_names}"
 
@@ -171,11 +171,11 @@ class TestMCPServerE2E:
                 assert "curl" in tool_names
 
     @pytest.mark.asyncio
-    async def test_mcp_server_list_skills(
+    async def test_mcp_server_list_workflows(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: list_skills returns seeded Python skills."""
+        """E2E: list_workflows returns seeded Python workflows."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -188,12 +188,12 @@ class TestMCPServerE2E:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                result = await session.call_tool("list_skills", {})
-                skills_data = json.loads(result.content[0].text)
+                result = await session.call_tool("list_workflows", {})
+                workflows_data = json.loads(result.content[0].text)
 
-                skill_names = {s["name"] for s in skills_data}
-                assert "double" in skill_names
-                assert "fetch_title" in skill_names
+                workflow_names = {s["name"] for s in workflows_data}
+                assert "double" in workflow_names
+                assert "fetch_title" in workflow_names
 
     @pytest.mark.asyncio
     async def test_mcp_server_search_tools(
@@ -221,11 +221,11 @@ class TestMCPServerE2E:
                 assert "curl" in tool_names
 
     @pytest.mark.asyncio
-    async def test_mcp_server_search_skills(
+    async def test_mcp_server_search_workflows(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: search_skills finds skills by intent."""
+        """E2E: search_workflows finds workflows by intent."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -239,24 +239,24 @@ class TestMCPServerE2E:
                 await session.initialize()
 
                 result = await session.call_tool(
-                    "search_skills", {"query": "multiply number", "limit": 5}
+                    "search_workflows", {"query": "multiply number", "limit": 5}
                 )
-                skills_data = json.loads(result.content[0].text)
+                workflows_data = json.loads(result.content[0].text)
 
                 # Should find double since it multiplies by 2
-                skill_names = {s["name"] for s in skills_data}
-                assert "double" in skill_names
+                workflow_names = {s["name"] for s in workflows_data}
+                assert "double" in workflow_names
 
     # -------------------------------------------------------------------------
-    # Runtime Skill Creation Tests
+    # Runtime Workflow Creation Tests
     # -------------------------------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_mcp_server_skill_create_and_invoke(
+    async def test_mcp_server_workflow_create_and_invoke(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: Create skill at runtime, then invoke it."""
+        """E2E: Create workflow at runtime, then invoke it."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -269,9 +269,9 @@ class TestMCPServerE2E:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Create a skill at runtime
+                # Create a workflow at runtime
                 create_code = '''
-skills.create(
+workflows.create(
     name="add_numbers",
     source="""
 async def run(a: int, b: int) -> int:
@@ -283,18 +283,18 @@ async def run(a: int, b: int) -> int:
                 result = await session.call_tool("run_code", {"code": create_code})
                 assert "error" not in result.content[0].text.lower()
 
-                # Now invoke the skill we just created
+                # Now invoke the workflow we just created
                 invoke_result = await session.call_tool(
-                    "run_code", {"code": 'skills.invoke("add_numbers", a=10, b=32)'}
+                    "run_code", {"code": 'workflows.invoke("add_numbers", a=10, b=32)'}
                 )
                 assert "42" in invoke_result.content[0].text
 
     @pytest.mark.asyncio
-    async def test_mcp_server_skill_persists_across_calls(
+    async def test_mcp_server_workflow_persists_across_calls(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: Skill created in call 1 is available in call 2."""
+        """E2E: Workflow created in call 1 is available in call 2."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -307,12 +307,12 @@ async def run(a: int, b: int) -> int:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Call 1: Create skill
+                # Call 1: Create workflow
                 await session.call_tool(
                     "run_code",
                     {
                         "code": """
-skills.create(
+workflows.create(
     name="triple",
     source="async def run(n: int) -> int:\\n    return n * 3",
     description="Triple a number"
@@ -321,26 +321,26 @@ skills.create(
                     },
                 )
 
-                # Call 2: Search for the skill (should find it)
+                # Call 2: Search for the workflow (should find it)
                 search_result = await session.call_tool(
-                    "search_skills", {"query": "triple multiply", "limit": 5}
+                    "search_workflows", {"query": "triple multiply", "limit": 5}
                 )
-                skills_found = json.loads(search_result.content[0].text)
-                skill_names = {s["name"] for s in skills_found}
-                assert "triple" in skill_names
+                workflows_found = json.loads(search_result.content[0].text)
+                workflow_names = {s["name"] for s in workflows_found}
+                assert "triple" in workflow_names
 
-                # Call 3: Invoke the skill
+                # Call 3: Invoke the workflow
                 invoke_result = await session.call_tool(
-                    "run_code", {"code": 'skills.invoke("triple", n=14)'}
+                    "run_code", {"code": 'workflows.invoke("triple", n=14)'}
                 )
                 assert "42" in invoke_result.content[0].text
 
     @pytest.mark.asyncio
-    async def test_mcp_server_skill_delete(
+    async def test_mcp_server_workflow_delete(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: Delete skill via skills.delete()."""
+        """E2E: Delete workflow via workflows.delete()."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -353,34 +353,34 @@ skills.create(
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Create a skill
+                # Create a workflow
                 await session.call_tool(
                     "run_code",
                     {
                         "code": """
-skills.create(
-    name="temp_skill",
+workflows.create(
+    name="temp_workflow",
     source="async def run() -> str:\\n    return 'temporary'",
-    description="Temporary skill for deletion test"
+    description="Temporary workflow for deletion test"
 )
 """
                     },
                 )
 
                 # Verify it exists
-                list_result = await session.call_tool("list_skills", {})
-                skills_data = json.loads(list_result.content[0].text)
-                skill_names = {s["name"] for s in skills_data}
-                assert "temp_skill" in skill_names
+                list_result = await session.call_tool("list_workflows", {})
+                workflows_data = json.loads(list_result.content[0].text)
+                workflow_names = {s["name"] for s in workflows_data}
+                assert "temp_workflow" in workflow_names
 
                 # Delete it
-                await session.call_tool("run_code", {"code": 'skills.delete("temp_skill")'})
+                await session.call_tool("run_code", {"code": 'workflows.delete("temp_workflow")'})
 
                 # Verify it's gone
-                list_result2 = await session.call_tool("list_skills", {})
-                skills_data2 = json.loads(list_result2.content[0].text)
-                skill_names2 = {s["name"] for s in skills_data2}
-                assert "temp_skill" not in skill_names2
+                list_result2 = await session.call_tool("list_workflows", {})
+                workflows_data2 = json.loads(list_result2.content[0].text)
+                workflow_names2 = {s["name"] for s in workflows_data2}
+                assert "temp_workflow" not in workflow_names2
 
     # -------------------------------------------------------------------------
     # Artifact Storage Tests
@@ -573,11 +573,11 @@ result is None
     # -------------------------------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_mcp_server_skill_calls_tool(
+    async def test_mcp_server_workflow_calls_tool(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: Create skill that uses tools namespace, then invoke it."""
+        """E2E: Create workflow that uses tools namespace, then invoke it."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -590,12 +590,12 @@ result is None
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Create skill that calls echo tool
+                # Create workflow that calls echo tool
                 await session.call_tool(
                     "run_code",
                     {
                         "code": '''
-skills.create(
+workflows.create(
     name="shout",
     source="""
 async def run(message: str) -> str:
@@ -607,18 +607,18 @@ async def run(message: str) -> str:
                     },
                 )
 
-                # Invoke the skill
+                # Invoke the workflow
                 result = await session.call_tool(
-                    "run_code", {"code": 'skills.invoke("shout", message="hello world")'}
+                    "run_code", {"code": 'workflows.invoke("shout", message="hello world")'}
                 )
                 assert "HELLO WORLD" in result.content[0].text
 
     @pytest.mark.asyncio
-    async def test_mcp_server_seeded_skill_calls_tool(
+    async def test_mcp_server_seeded_workflow_calls_tool(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: Invoke seeded skill (fetch_title) that calls curl tool."""
+        """E2E: Invoke seeded workflow (fetch_title) that calls curl tool."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -631,9 +631,10 @@ async def run(message: str) -> str:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Invoke seeded skill that calls tools.curl.get()
+                # Invoke seeded workflow that calls tools.curl.get()
                 result = await session.call_tool(
-                    "run_code", {"code": 'skills.invoke("fetch_title", url="https://example.com")'}
+                    "run_code",
+                    {"code": 'workflows.invoke("fetch_title", url="https://example.com")'},
                 )
                 # example.com has title "Example Domain"
                 assert (
@@ -642,11 +643,11 @@ async def run(message: str) -> str:
                 )
 
     @pytest.mark.asyncio
-    async def test_mcp_server_skill_calls_another_skill(
+    async def test_mcp_server_workflow_calls_another_workflow(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: Skill that calls skills.invoke()."""
+        """E2E: Workflow that calls workflows.invoke()."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -659,17 +660,17 @@ async def run(message: str) -> str:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Create a skill that calls the seeded "double" skill
+                # Create a workflow that calls the seeded "double" workflow
                 await session.call_tool(
                     "run_code",
                     {
                         "code": '''
-skills.create(
+workflows.create(
     name="quadruple",
     source="""
 async def run(n: int) -> int:
-    doubled = skills.invoke("double", n=n)
-    return skills.invoke("double", n=doubled)
+    doubled = workflows.invoke("double", n=n)
+    return workflows.invoke("double", n=doubled)
 """,
     description="Quadruple a number by doubling twice"
 )
@@ -677,9 +678,9 @@ async def run(n: int) -> int:
                     },
                 )
 
-                # Invoke the skill
+                # Invoke the workflow
                 result = await session.call_tool(
-                    "run_code", {"code": 'skills.invoke("quadruple", n=10)'}
+                    "run_code", {"code": 'workflows.invoke("quadruple", n=10)'}
                 )
                 assert "40" in result.content[0].text
 
@@ -829,15 +830,15 @@ async def run(n: int) -> int:
                 assert "test_data" in artifact_names
 
     # -------------------------------------------------------------------------
-    # MCP Tool: create_skill
+    # MCP Tool: create_workflow
     # -------------------------------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_mcp_server_create_skill(
+    async def test_mcp_server_create_workflow(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: create_skill MCP tool creates a skill directly."""
+        """E2E: create_workflow MCP tool creates a workflow directly."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -850,35 +851,35 @@ async def run(n: int) -> int:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Create skill via dedicated MCP tool (not run_code)
-                skill_source = "async def run(x: int, y: int) -> int:\n    return x + y\n"
+                # Create workflow via dedicated MCP tool (not run_code)
+                workflow_source = "async def run(x: int, y: int) -> int:\n    return x + y\n"
                 result = await session.call_tool(
-                    "create_skill",
+                    "create_workflow",
                     {
                         "name": "add_two",
-                        "source": skill_source,
+                        "source": workflow_source,
                         "description": "Add two numbers",
                     },
                 )
 
-                # Should return skill info
-                skill_info = json.loads(result.content[0].text)
-                assert skill_info["name"] == "add_two"
-                assert "Add two numbers" in skill_info["description"]
+                # Should return workflow info
+                workflow_info = json.loads(result.content[0].text)
+                assert workflow_info["name"] == "add_two"
+                assert "Add two numbers" in workflow_info["description"]
 
-                # Verify skill works by invoking it via run_code
+                # Verify workflow works by invoking it via run_code
                 invoke_result = await session.call_tool(
                     "run_code",
-                    {"code": 'skills.invoke("add_two", x=17, y=25)'},
+                    {"code": 'workflows.invoke("add_two", x=17, y=25)'},
                 )
                 assert "42" in invoke_result.content[0].text
 
     @pytest.mark.asyncio
-    async def test_mcp_server_create_skill_persists(
+    async def test_mcp_server_create_workflow_persists(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: Skill created via create_skill MCP tool persists and is searchable."""
+        """E2E: Workflow created via create_workflow MCP tool persists and is searchable."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -891,36 +892,36 @@ async def run(n: int) -> int:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Create skill via dedicated MCP tool
-                skill_source = "async def run(text: str) -> str:\n    return text.upper()\n"
+                # Create workflow via dedicated MCP tool
+                workflow_source = "async def run(text: str) -> str:\n    return text.upper()\n"
                 await session.call_tool(
-                    "create_skill",
+                    "create_workflow",
                     {
                         "name": "uppercase_text",
-                        "source": skill_source,
+                        "source": workflow_source,
                         "description": "Convert text to uppercase",
                     },
                 )
 
-                # Search for the skill (should be found)
+                # Search for the workflow (should be found)
                 search_result = await session.call_tool(
-                    "search_skills",
+                    "search_workflows",
                     {"query": "uppercase convert text", "limit": 5},
                 )
-                skills_found = json.loads(search_result.content[0].text)
-                skill_names = {s["name"] for s in skills_found}
-                assert "uppercase_text" in skill_names
+                workflows_found = json.loads(search_result.content[0].text)
+                workflow_names = {s["name"] for s in workflows_found}
+                assert "uppercase_text" in workflow_names
 
     # -------------------------------------------------------------------------
-    # MCP Tool: delete_skill
+    # MCP Tool: delete_workflow
     # -------------------------------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_mcp_server_delete_skill(
+    async def test_mcp_server_delete_workflow(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: delete_skill MCP tool removes a skill."""
+        """E2E: delete_workflow MCP tool removes a workflow."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -933,43 +934,43 @@ async def run(n: int) -> int:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Create a skill via MCP tool
-                skill_source = "async def run() -> str:\n    return 'I exist'\n"
+                # Create a workflow via MCP tool
+                workflow_source = "async def run() -> str:\n    return 'I exist'\n"
                 await session.call_tool(
-                    "create_skill",
+                    "create_workflow",
                     {
                         "name": "deleteme",
-                        "source": skill_source,
-                        "description": "Skill to be deleted",
+                        "source": workflow_source,
+                        "description": "Workflow to be deleted",
                     },
                 )
 
-                # Verify it exists via list_skills
-                list_result = await session.call_tool("list_skills", {})
-                skills_data = json.loads(list_result.content[0].text)
-                skill_names = {s["name"] for s in skills_data}
-                assert "deleteme" in skill_names
+                # Verify it exists via list_workflows
+                list_result = await session.call_tool("list_workflows", {})
+                workflows_data = json.loads(list_result.content[0].text)
+                workflow_names = {s["name"] for s in workflows_data}
+                assert "deleteme" in workflow_names
 
-                # Delete the skill via dedicated MCP tool
+                # Delete the workflow via dedicated MCP tool
                 delete_result = await session.call_tool(
-                    "delete_skill",
+                    "delete_workflow",
                     {"name": "deleteme"},
                 )
                 delete_data = json.loads(delete_result.content[0].text)
                 assert delete_data is True
 
-                # Verify it's gone via list_skills
-                list_result2 = await session.call_tool("list_skills", {})
-                skills_data2 = json.loads(list_result2.content[0].text)
-                skill_names2 = {s["name"] for s in skills_data2}
-                assert "deleteme" not in skill_names2
+                # Verify it's gone via list_workflows
+                list_result2 = await session.call_tool("list_workflows", {})
+                workflows_data2 = json.loads(list_result2.content[0].text)
+                workflow_names2 = {s["name"] for s in workflows_data2}
+                assert "deleteme" not in workflow_names2
 
     @pytest.mark.asyncio
-    async def test_mcp_server_delete_skill_nonexistent(
+    async def test_mcp_server_delete_workflow_nonexistent(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: delete_skill returns False for nonexistent skill."""
+        """E2E: delete_workflow returns False for nonexistent workflow."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -982,10 +983,10 @@ async def run(n: int) -> int:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Try to delete a skill that doesn't exist
+                # Try to delete a workflow that doesn't exist
                 delete_result = await session.call_tool(
-                    "delete_skill",
-                    {"name": "nonexistent_skill_xyz"},
+                    "delete_workflow",
+                    {"name": "nonexistent_workflow_xyz"},
                 )
                 delete_data = json.loads(delete_result.content[0].text)
                 assert delete_data is False
@@ -999,7 +1000,7 @@ async def run(n: int) -> int:
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: Complete agent workflow - fetch, parse, save skill, invoke, store artifact."""
+        """E2E: Complete agent workflow - fetch, parse, save workflow, invoke, store artifact."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -1033,12 +1034,12 @@ numbers = [int(x) for x in re.findall(r"\\d+", content)]
                     },
                 )
 
-                # Step 3: Create a skill to process this type of data
+                # Step 3: Create a workflow to process this type of data
                 await session.call_tool(
                     "run_code",
                     {
                         "code": '''
-skills.create(
+workflows.create(
     name="sum_csv",
     source="""
 import re
@@ -1052,12 +1053,12 @@ async def run(text: str) -> int:
                     },
                 )
 
-                # Step 4: Invoke the skill
+                # Step 4: Invoke the workflow
                 await session.call_tool(
                     "run_code",
                     {
                         "code": """
-total = skills.invoke("sum_csv", text="Values: 10, 20, 30, 40")
+total = workflows.invoke("sum_csv", text="Values: 10, 20, 30, 40")
 """
                     },
                 )
@@ -1067,7 +1068,7 @@ total = skills.invoke("sum_csv", text="Values: 10, 20, 30, 40")
                     "run_code",
                     {
                         "code": """
-artifacts.save("calculation_result", {"total": total, "source": "sum_csv skill"})
+artifacts.save("calculation_result", {"total": total, "source": "sum_csv workflow"})
 """
                     },
                 )
@@ -1106,7 +1107,7 @@ class TestMCPServerNegative:
         storage = tmp_path / "storage"
         storage.mkdir()
         (storage / "tools").mkdir()
-        (storage / "skills").mkdir()
+        (storage / "workflows").mkdir()
         (storage / "artifacts").mkdir()
 
         # Server should still start (tools are optional)
@@ -1190,11 +1191,11 @@ class TestMCPServerNegative:
                 assert "4" in result2.content[0].text
 
     @pytest.mark.asyncio
-    async def test_mcp_server_invoke_nonexistent_skill(
+    async def test_mcp_server_invoke_nonexistent_workflow(
         self,
         mcp_storage_dir: tuple[Path, Path],
     ) -> None:
-        """E2E: Invoking nonexistent skill returns error."""
+        """E2E: Invoking nonexistent workflow returns error."""
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
 
@@ -1207,12 +1208,12 @@ class TestMCPServerNegative:
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
-                # Try to invoke skill that doesn't exist
+                # Try to invoke workflow that doesn't exist
                 result = await session.call_tool(
-                    "run_code", {"code": 'skills.invoke("nonexistent_skill_xyz", arg=1)'}
+                    "run_code", {"code": 'workflows.invoke("nonexistent_workflow_xyz", arg=1)'}
                 )
 
-                # Should return error about skill not found
+                # Should return error about workflow not found
                 text = result.content[0].text.lower()
                 assert "error" in text or "not found" in text or "does not exist" in text
 
@@ -1521,7 +1522,7 @@ class TestMCPServerDepsTools:
         storage = tmp_path / "storage"
         storage.mkdir()
         (storage / "tools").mkdir()
-        (storage / "skills").mkdir()
+        (storage / "workflows").mkdir()
         (storage / "artifacts").mkdir()
         (storage / "deps").mkdir()
 

@@ -80,13 +80,13 @@ class TestSessionServer:
         # Note: active_sessions removed for security (information disclosure)
 
     def test_info_endpoint(self, client) -> None:
-        """Info endpoint returns tools and skills."""
+        """Info endpoint returns tools and workflows."""
         response = client.get("/info")
 
         assert response.status_code == 200
         data = response.json()
         assert "tools" in data
-        assert "skills" in data
+        assert "workflows" in data
         assert "artifacts_path" in data
 
     def test_execute_simple_expression(self, client) -> None:
