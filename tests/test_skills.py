@@ -132,24 +132,29 @@ class TestPythonWorkflow:
             dedent('''
             """Scan a network target."""
 
-            async def run(target: str, tools) -> str:
-                """Run a scan using tools.
-
-                Args:
-                    target: Target to scan
-                    tools: Tools namespace (injected)
-                """
+            async def run(target: str) -> str:
+                """Run a scan using tools."""
                 # In real use, would call tools.call(...)
+                _ = tools  # namespace is available as a global
                 return f"Scanning {target}"
         ''').strip()
         )
 
         workflow = PythonWorkflow.from_file(workflow_path)
 
-        # tools parameter should be recognized as special, not a user param
-        user_params = [p for p in workflow.parameters if p.name != "tools"]
-        assert len(user_params) == 1
-        assert user_params[0].name == "target"
+        assert [p.name for p in workflow.parameters] == ["target"]
+
+
+class TestPythonWorkflowNamespaceParamValidation:
+    def test_from_source_rejects_namespace_params(self) -> None:
+        """run() must not accept tools/workflows/artifacts/deps as parameters."""
+        source = dedent("""
+            async def run(x: int, tools) -> int:
+                return x
+        """).strip()
+
+        with pytest.raises(ValueError, match=r"must not declare parameter 'tools'"):
+            PythonWorkflow.from_source(name="bad", source=source)
 
 
 class TestPythonWorkflowFromSource:

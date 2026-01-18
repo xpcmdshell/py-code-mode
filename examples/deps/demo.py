@@ -46,10 +46,10 @@ async def main() -> None:
 
         # Use the package immediately
         print("\n3. Using the installed package:")
-        result = await session.run('''
+        result = await session.run("""
 import art
 print(art.text2art("Hello!"))
-''')
+""")
         print(result.stdout)
 
         # Add another package with version specifier
