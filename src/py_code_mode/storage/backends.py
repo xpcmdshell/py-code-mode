@@ -18,9 +18,9 @@ from py_code_mode.execution.protocol import FileStorageAccess, RedisStorageAcces
 from py_code_mode.workflows import (
     FileWorkflowStore,
     RedisWorkflowStore,
+    VectorStore,
     WorkflowLibrary,
     WorkflowStore,
-    VectorStore,
     create_workflow_library,
 )
 

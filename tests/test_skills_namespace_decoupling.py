@@ -226,8 +226,8 @@ class TestIntegrationWithExecutor:
     async def test_executor_passes_namespace_not_self(self) -> None:
         """InProcessExecutor should pass self._namespace, not self."""
         from py_code_mode.execution.in_process.executor import InProcessExecutor
-        from py_code_mode.workflows import MemoryWorkflowStore, MockEmbedder, WorkflowLibrary
         from py_code_mode.tools import ToolRegistry
+        from py_code_mode.workflows import MemoryWorkflowStore, MockEmbedder, WorkflowLibrary
 
         store = MemoryWorkflowStore()
         library = WorkflowLibrary(embedder=MockEmbedder(), store=store)

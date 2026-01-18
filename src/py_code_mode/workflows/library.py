@@ -10,9 +10,9 @@ from py_code_mode.workflows.embeddings import (
     EmbeddingProvider,
     cosine_similarity,
 )
-from py_code_mode.workflows.workflow import PythonWorkflow
 from py_code_mode.workflows.store import WorkflowStore
 from py_code_mode.workflows.vector_store import VectorStore, compute_content_hash
+from py_code_mode.workflows.workflow import PythonWorkflow
 
 if TYPE_CHECKING:
     pass

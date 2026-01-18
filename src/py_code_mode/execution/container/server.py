@@ -62,8 +62,12 @@ from py_code_mode.execution.container.config import SessionConfig  # noqa: E402
 from py_code_mode.execution.in_process import (  # noqa: E402
     InProcessExecutor as CodeExecutor,
 )
-from py_code_mode.workflows import FileWorkflowStore, WorkflowLibrary, create_workflow_library  # noqa: E402
 from py_code_mode.tools import ToolRegistry  # noqa: E402
+from py_code_mode.workflows import (  # noqa: E402
+    FileWorkflowStore,
+    WorkflowLibrary,
+    create_workflow_library,
+)
 
 # Session expiration (seconds)
 SESSION_EXPIRY = 3600  # 1 hour
@@ -370,8 +374,8 @@ async def initialize_server(config: SessionConfig) -> None:
         import redis as redis_lib
 
         from py_code_mode.artifacts import RedisArtifactStore
-        from py_code_mode.workflows import RedisWorkflowStore
         from py_code_mode.storage import RedisToolStore, registry_from_redis
+        from py_code_mode.workflows import RedisWorkflowStore
 
         logger.info("Using Redis backend: %s...", redis_url[:50])
         r = redis_lib.from_url(redis_url)

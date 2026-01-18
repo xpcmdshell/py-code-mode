@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from redis import Redis
 
-    from py_code_mode.workflows.embeddings import EmbeddingProvider
     from py_code_mode.tools import ToolRegistry
+    from py_code_mode.workflows.embeddings import EmbeddingProvider
 
 
 class RedisToolStore:

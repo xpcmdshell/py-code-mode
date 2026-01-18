@@ -28,9 +28,9 @@ from py_code_mode.execution.in_process.config import InProcessConfig
 from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
 from py_code_mode.execution.protocol import Capability, validate_storage_not_access
 from py_code_mode.execution.registry import register_backend
-from py_code_mode.workflows import WorkflowLibrary
 from py_code_mode.tools import ToolRegistry, ToolsNamespace, load_tools_from_path
 from py_code_mode.types import ExecutionResult
+from py_code_mode.workflows import WorkflowLibrary
 
 if TYPE_CHECKING:
     from py_code_mode.artifacts import ArtifactStoreProtocol
@@ -227,7 +227,7 @@ class InProcessExecutor:
     async def reset(self) -> None:
         """Reset session state.
 
-        Clears all user-defined variables but preserves tools, workflows, artifacts, deps namespaces.
+        Clears all user-defined variables but preserves tools/workflows/artifacts/deps namespaces.
         """
         # Store namespace items we want to preserve
         preserved = {

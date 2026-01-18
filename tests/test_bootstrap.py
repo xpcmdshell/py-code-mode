@@ -848,8 +848,8 @@ class TestRedisStorageBootstrapConfig:
         Breaks when: Serialization loses critical information.
         """
         from py_code_mode.bootstrap import bootstrap_namespaces
-        from py_code_mode.workflows import PythonWorkflow
         from py_code_mode.storage import RedisStorage
+        from py_code_mode.workflows import PythonWorkflow
 
         # Create storage with some content
         storage = RedisStorage(redis=mock_redis, prefix="test")
@@ -1163,8 +1163,8 @@ class TestBootstrapUserJourney:
         Breaks when: Any step in the bootstrap process fails.
         """
         from py_code_mode.bootstrap import bootstrap_namespaces
-        from py_code_mode.workflows import PythonWorkflow
         from py_code_mode.storage import RedisStorage
+        from py_code_mode.workflows import PythonWorkflow
 
         # Step 1: Create storage with content
         storage = RedisStorage(redis=mock_redis, prefix="journey")

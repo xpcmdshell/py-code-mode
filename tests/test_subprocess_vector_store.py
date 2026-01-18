@@ -230,8 +230,8 @@ class TestSubprocessVectorStoreIntegration:
         """
         from py_code_mode.execution.subprocess import SubprocessExecutor
         from py_code_mode.execution.subprocess.config import SubprocessConfig
-        from py_code_mode.workflows import PythonWorkflow
         from py_code_mode.storage import FileStorage
+        from py_code_mode.workflows import PythonWorkflow
 
         # Setup storage with vector store
         storage = FileStorage(tmp_path / "storage")

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from py_code_mode.workflows.embeddings import Embedder
 from py_code_mode.tools.registry import ToolRegistry
+from py_code_mode.workflows.embeddings import Embedder
 
 
 async def load_tools_from_path(path: Path) -> ToolRegistry:

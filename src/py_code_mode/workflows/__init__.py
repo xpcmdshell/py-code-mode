@@ -1,10 +1,5 @@
 """py_code_mode.workflows - Workflow store, library, and semantic search."""
 
-from py_code_mode.workflows.workflow import (
-    PythonWorkflow,
-    WorkflowMetadata,
-    WorkflowParameter,
-)
 from py_code_mode.workflows.store import (
     FileWorkflowStore,
     MemoryWorkflowStore,
@@ -16,6 +11,11 @@ from py_code_mode.workflows.vector_store import (
     SearchResult,
     VectorStore,
     compute_content_hash,
+)
+from py_code_mode.workflows.workflow import (
+    PythonWorkflow,
+    WorkflowMetadata,
+    WorkflowParameter,
 )
 
 # Semantic features require numpy/scikit-learn - optional import

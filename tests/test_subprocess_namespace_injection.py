@@ -1044,7 +1044,8 @@ class TestRedisCodeGenerationDetails:
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
         assert "create_workflow_library" in code or "WorkflowLibrary" in code, (
-            "Generated code should use create_workflow_library or WorkflowLibrary for semantic search"
+            "Generated code should use create_workflow_library or WorkflowLibrary "
+            "for semantic search"
         )
 
     def test_redis_code_wires_workflows_namespace_with_tools(self) -> None:

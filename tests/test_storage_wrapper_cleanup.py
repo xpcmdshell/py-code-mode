@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from py_code_mode.artifacts import ArtifactStoreProtocol
-from py_code_mode.workflows import WorkflowLibrary
 from py_code_mode.storage import FileStorage, RedisStorage
+from py_code_mode.workflows import WorkflowLibrary
 
 if TYPE_CHECKING:
     from tests.conftest import MockRedisClient
