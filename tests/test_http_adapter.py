@@ -284,6 +284,40 @@ class TestHTTPAdapterCallTool:
             with pytest.raises(ToolCallError):
                 await adapter.call_tool("get_user", None, {"user_id": 42})
 
+    @pytest.mark.asyncio
+    async def test_call_tool_urlencodes_path_parameters(self, adapter) -> None:
+        """Path parameters are URL-encoded to avoid accidental path traversal."""
+        with patch("aiohttp.ClientSession") as mock_client_session:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value={"ok": True})
+
+            mock_session = AsyncMock()
+            mock_session.request = AsyncMock(return_value=mock_response)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+            mock_client_session.return_value = mock_session
+
+            await adapter.call_tool("get_user", None, {"user_id": "a/b"})
+
+            call_args = mock_session.request.call_args
+            assert "/users/a%2Fb" in call_args[0][1]
+
+    @pytest.mark.asyncio
+    async def test_call_tool_timeout_is_wrapped(self, adapter) -> None:
+        """Timeout errors are raised as ToolCallError (not left as bare TimeoutError)."""
+        from py_code_mode.errors import ToolCallError
+
+        with patch("aiohttp.ClientSession") as mock_client_session:
+            mock_session = AsyncMock()
+            mock_session.request = AsyncMock(side_effect=TimeoutError())
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+            mock_client_session.return_value = mock_session
+
+            with pytest.raises(ToolCallError):
+                await adapter.call_tool("get_user", None, {"user_id": 42})
+
 
 class TestHTTPAdapterWithRegistry:
     """Tests for HTTPAdapter integration with ToolRegistry."""

@@ -400,11 +400,9 @@ class RedisVectorStore:
         try:
             results = self._redis.ft(self._index_name).search(q, query_params={"vec": query_bytes})
         except redis.exceptions.ResponseError as e:
-            logger.error(f"RediSearch query failed: {e}")
-            return {}
+            raise RuntimeError(f"RediSearch query failed: {e}") from e
         except redis.exceptions.ConnectionError as e:
-            logger.error(f"Redis connection failed during search: {e}")
-            return {}
+            raise RuntimeError(f"Redis connection failed during search: {e}") from e
 
         scores: dict[str, float] = {}
         for doc in results.docs:

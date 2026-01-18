@@ -52,8 +52,22 @@ class WorkflowParameter:
     default: Any = None
 
 
-# Special parameters that are injected, not user-provided
-_INJECTED_PARAMS = {"tools", "workflows", "artifacts", "deps"}
+_NAMESPACE_GLOBALS = frozenset({"tools", "workflows", "artifacts", "deps"})
+
+
+def _validate_run_does_not_take_namespace_params(run_func: ast.AsyncFunctionDef) -> None:
+    """Workflows access namespaces via globals, not run() parameters."""
+    args = [
+        *run_func.args.posonlyargs,
+        *run_func.args.args,
+        *run_func.args.kwonlyargs,
+    ]
+    for arg in args:
+        if arg.arg in _NAMESPACE_GLOBALS:
+            raise ValueError(
+                f"Workflow run() must not declare parameter {arg.arg!r}; "
+                f"use the global {arg.arg} namespace instead."
+            )
 
 
 def _annotation_to_type_str(annotation: ast.expr | None) -> str:
@@ -133,9 +147,6 @@ def _extract_parameters_from_ast(run_func: ast.AsyncFunctionDef) -> list[Workflo
     parameters: list[WorkflowParameter] = []
 
     def _add_param(arg_node: ast.arg, default_node: ast.expr | None) -> None:
-        if arg_node.arg in _INJECTED_PARAMS:
-            return
-
         if default_node is not None:
             default_val = _default_expr_to_value(default_node)
             has_default = True
@@ -228,6 +239,8 @@ class PythonWorkflow:
         if has_sync_run:
             raise ValueError("Workflow must define 'async def run()', not 'def run()'")
 
+        _validate_run_does_not_take_namespace_params(run_node)
+
         # Extract description from source if not provided
         if not description:
             # Try module docstring first
@@ -274,6 +287,8 @@ class PythonWorkflow:
         run_node = _find_run_async_def(tree)
         if has_sync_run:
             raise ValueError(f"Workflow {path} must define 'async def run()', not 'def run()'")
+
+        _validate_run_does_not_take_namespace_params(run_node)
 
         # Extract description from module or function docstring
         description = ast.get_docstring(tree) or ast.get_docstring(run_node) or ""

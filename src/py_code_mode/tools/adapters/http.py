@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote
 
 from py_code_mode.errors import ToolCallError, ToolNotFoundError
 from py_code_mode.tools.types import Tool, ToolCallable, ToolParameter
@@ -54,6 +55,7 @@ class HTTPAdapter:
         self,
         base_url: str,
         headers: dict[str, str] | None = None,
+        timeout: float | None = 30.0,
     ) -> None:
         """Initialize adapter with base URL.
 
@@ -63,6 +65,7 @@ class HTTPAdapter:
         """
         self.base_url = base_url.rstrip("/")
         self.headers = headers or {}
+        self.timeout = timeout
         self._endpoints: dict[str, Endpoint] = {}
 
     @property
@@ -148,13 +151,21 @@ class HTTPAdapter:
             ) from e
 
         # Build URL with path parameters
-        url = self._build_url(endpoint.path, args)
+        try:
+            url = self._build_url(endpoint.path, args)
+        except Exception as e:
+            raise ToolCallError(name, tool_args=args, cause=e) from e
 
         # Separate path params from body params
         path_params = self._extract_path_params(endpoint.path)
         body_params = {k: v for k, v in args.items() if k not in path_params}
 
-        async with aiohttp.ClientSession(headers=self.headers) as session:
+        session_timeout = (
+            aiohttp.ClientTimeout(total=self.timeout)
+            if self.timeout is not None
+            else aiohttp.ClientTimeout(total=None)
+        )
+        async with aiohttp.ClientSession(headers=self.headers, timeout=session_timeout) as session:
             try:
                 if endpoint.method.upper() in ("POST", "PUT", "PATCH"):
                     response = await session.request(
@@ -179,7 +190,7 @@ class HTTPAdapter:
 
                 return await response.json()
 
-            except aiohttp.ClientError as e:
+            except (aiohttp.ClientError, TimeoutError) as e:
                 raise ToolCallError(name, tool_args=args, cause=e) from e
 
     def _build_url(self, path: str, args: dict[str, Any]) -> str:
@@ -192,12 +203,12 @@ class HTTPAdapter:
         Returns:
             Full URL with parameters substituted.
         """
-        # Substitute path parameters
         url = self.base_url + path
-        for param_name, param_value in args.items():
+        for param_name in self._extract_path_params(path):
+            if param_name not in args:
+                raise ValueError(f"Missing required path parameter: {param_name}")
             placeholder = "{" + param_name + "}"
-            if placeholder in url:
-                url = url.replace(placeholder, str(param_value))
+            url = url.replace(placeholder, quote(str(args[param_name]), safe=""))
         return url
 
     def _extract_path_params(self, path: str) -> set[str]:
