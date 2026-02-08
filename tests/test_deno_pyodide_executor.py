@@ -1,4 +1,7 @@
+import hashlib
+import math
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -7,6 +10,72 @@ pytestmark = pytest.mark.skipif(
     os.environ.get("PY_CODE_MODE_TEST_DENO") != "1",
     reason="Set PY_CODE_MODE_TEST_DENO=1 to run Deno/Pyodide integration tests.",
 )
+
+
+class _StableEmbedder:
+    """Deterministic lightweight embedder for integration tests.
+
+    Avoids pulling large sentence-transformers models while still exercising
+    semantic-search codepaths.
+    """
+
+    def __init__(self, dimension: int = 64) -> None:
+        self._dimension = dimension
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    def _embed_one(self, text: str) -> list[float]:
+        vec = [0.0] * self._dimension
+        for token in "".join(c.lower() if c.isalnum() else " " for c in text).split():
+            h = hashlib.sha256(token.encode("utf-8")).digest()
+            idx = int.from_bytes(h[:4], "big") % self._dimension
+            vec[idx] += 1.0
+        norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+        return [v / norm for v in vec]
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return [self._embed_one(t) for t in texts]
+
+    def embed_query(self, query: str) -> list[float]:
+        return self._embed_one(query)
+
+
+@dataclass
+class _TestStorage:
+    """Minimal StorageBackend for exercising workflows/artifacts via RPC."""
+
+    root: Path
+
+    def __post_init__(self) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+
+        from py_code_mode.artifacts import FileArtifactStore
+        from py_code_mode.workflows import FileWorkflowStore, WorkflowLibrary
+
+        self._artifact_store = FileArtifactStore(self.root / "artifacts")
+        self._workflow_store = FileWorkflowStore(self.root / "workflows")
+        self._workflow_library = WorkflowLibrary(
+            embedder=_StableEmbedder(),
+            store=self._workflow_store,
+            vector_store=None,
+        )
+
+    def get_serializable_access(self):
+        from py_code_mode.execution.protocol import FileStorageAccess
+
+        return FileStorageAccess(
+            workflows_path=self.root / "workflows",
+            artifacts_path=self.root / "artifacts",
+            vectors_path=None,
+        )
+
+    def get_workflow_library(self):
+        return self._workflow_library
+
+    def get_artifact_store(self):
+        return self._artifact_store
 
 
 @pytest.mark.asyncio
@@ -330,3 +399,180 @@ async def test_deno_pyodide_executor_session_add_dep_installs(tmp_path: Path) ->
         r = await session.run("import packaging\npackaging.__version__")
         assert r.error is None
         assert isinstance(r.value, str)
+
+
+@pytest.mark.asyncio
+async def test_deno_pyodide_executor_mcp_tool_via_rpc(tmp_path: Path) -> None:
+    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.session import Session
+    from py_code_mode.storage import FileStorage
+
+    tools_dir = tmp_path / "tools"
+    tools_dir.mkdir(parents=True, exist_ok=True)
+
+    # Local stdio MCP server using fastmcp.
+    mcp_server = tmp_path / "mcp_server.py"
+    mcp_server.write_text(
+        "\n".join(
+            [
+                "from fastmcp import FastMCP",
+                "",
+                "mcp = FastMCP('test')",
+                "",
+                "@mcp.tool",
+                "async def add(a: int, b: int) -> str:",
+                "    return str(a + b)",
+                "",
+                "if __name__ == '__main__':",
+                "    mcp.run()",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    (tools_dir / "math.yaml").write_text(
+        "\n".join(
+            [
+                "name: math",
+                "type: mcp",
+                "transport: stdio",
+                "command: python",
+                f"args: [{mcp_server!s}]",
+                "description: Simple math MCP server",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    storage = FileStorage(tmp_path / "storage")
+    deno_dir = tmp_path / "deno_dir"
+    deno_dir.mkdir(parents=True, exist_ok=True)
+
+    executor = DenoPyodideExecutor(
+        DenoPyodideConfig(
+            deno_dir=deno_dir,
+            tools_path=tools_dir,
+            default_timeout=60.0,
+            ipc_timeout=120.0,
+            network_profile="none",
+        )
+    )
+
+    async with Session(storage=storage, executor=executor) as session:
+        r_list = await session.run("sorted([t['name'] for t in tools.list()])")
+        assert r_list.error is None
+        assert "math" in r_list.value
+
+        r = await session.run("tools.math.add(a=2, b=3).strip()")
+        assert r.error is None
+        assert r.value == "5"
+
+
+@pytest.mark.asyncio
+async def test_deno_pyodide_executor_workflows_search_via_rpc(tmp_path: Path) -> None:
+    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.session import Session
+
+    storage = _TestStorage(tmp_path / "storage")
+    deno_dir = tmp_path / "deno_dir"
+    deno_dir.mkdir(parents=True, exist_ok=True)
+
+    executor = DenoPyodideExecutor(
+        DenoPyodideConfig(
+            deno_dir=deno_dir,
+            default_timeout=60.0,
+            ipc_timeout=120.0,
+            network_profile="none",
+        )
+    )
+
+    src = "async def run() -> str:\n    return 'hello world'\n"
+
+    async with Session(storage=storage, executor=executor) as session:
+        r1 = await session.run("workflows.create('wf', " f"{src!r}, " "'greeting workflow')")
+        assert r1.error is None
+
+        r2 = await session.run("workflows.search('greeting', limit=5)[0]['name']")
+        assert r2.error is None
+        assert r2.value == "wf"
+
+
+@pytest.mark.asyncio
+async def test_deno_pyodide_executor_artifact_payload_size_limits(tmp_path: Path) -> None:
+    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.session import Session
+    from py_code_mode.storage import FileStorage
+
+    storage = FileStorage(tmp_path / "storage")
+    store = storage.get_artifact_store()
+    store.save("small", "x" * (200 * 1024), description="")
+    store.save("big", "x" * (2 * 1024 * 1024), description="")
+    deno_dir = tmp_path / "deno_dir"
+    deno_dir.mkdir(parents=True, exist_ok=True)
+
+    executor = DenoPyodideExecutor(
+        DenoPyodideConfig(
+            deno_dir=deno_dir,
+            default_timeout=180.0,
+            ipc_timeout=120.0,
+            network_profile="none",
+        )
+    )
+
+    async with Session(storage=storage, executor=executor) as session:
+        r_ok = await session.run(
+            "\n".join(
+                [
+                    "len(artifacts.load('small'))",
+                ]
+            )
+        )
+        assert r_ok.error is None
+        assert r_ok.value == 200 * 1024
+
+        r_big = await session.run(
+            "\n".join(
+                [
+                    "artifacts.load('big')",
+                ]
+            )
+        )
+        assert r_big.error is not None
+        assert "rpc payload too large" in r_big.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_deno_pyodide_executor_soft_timeout_wedges_until_reset(tmp_path: Path) -> None:
+    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.session import Session
+    from py_code_mode.storage import FileStorage
+
+    storage = FileStorage(tmp_path / "storage")
+    deno_dir = tmp_path / "deno_dir"
+    deno_dir.mkdir(parents=True, exist_ok=True)
+
+    executor = DenoPyodideExecutor(
+        DenoPyodideConfig(
+            deno_dir=deno_dir,
+            default_timeout=0.05,
+            ipc_timeout=120.0,
+            network_profile="none",
+        )
+    )
+
+    async with Session(storage=storage, executor=executor) as session:
+        r1 = await session.run("import time\ntime.sleep(0.2)\n1")
+        assert r1.error is not None
+        assert "timeout" in r1.error.lower()
+
+        r2 = await session.run("1 + 1")
+        assert r2.error is not None
+        assert "previous execution timed out" in r2.error.lower()
+
+        await session.reset()
+
+        r3 = await session.run("1 + 1")
+        assert r3.error is None
+        assert r3.value == 2
