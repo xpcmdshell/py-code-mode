@@ -25,7 +25,6 @@ from py_code_mode.deps import (
     PackageInstaller,
     collect_configured_deps,
 )
-from py_code_mode.deps.async_namespace import AsyncDepsNamespace
 from py_code_mode.deps.store import DepsStore, MemoryDepsStore
 from py_code_mode.execution.in_process.config import InProcessConfig
 from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
@@ -108,11 +107,12 @@ class InProcessExecutor:
 
         # Inject deps namespace if provided (wrap if runtime deps disabled)
         if deps_namespace is not None:
-            deps_obj: Any = AsyncDepsNamespace(deps_namespace)
             if not self._config.allow_runtime_deps:
-                self._namespace["deps"] = ControlledDepsNamespace(deps_obj, allow_runtime=False)
+                self._namespace["deps"] = ControlledDepsNamespace(
+                    deps_namespace, allow_runtime=False
+                )
             else:
-                self._namespace["deps"] = deps_obj
+                self._namespace["deps"] = deps_namespace
 
     def supports(self, capability: str) -> bool:
         """Check if this backend supports a capability."""
@@ -154,15 +154,13 @@ class InProcessExecutor:
 
         sync_mode = not self._requires_top_level_await(code)
 
-        # Store loop reference for tool/workflow calls from thread context.
+        # Store loop reference for tool calls from thread context.
         # Only used for the sync execution path; the async path executes in its
         # own event loop in the worker thread.
         if sync_mode:
             loop = asyncio.get_running_loop()
             if "tools" in self._namespace:
                 self._namespace["tools"].set_loop(loop)
-            if "workflows" in self._namespace:
-                self._namespace["workflows"].set_loop(loop)
 
         # Run in thread to allow timeout cancellation
         try:
@@ -185,11 +183,11 @@ class InProcessExecutor:
         try:
             compile(code, "<code>", "exec")
             return False
-        except SyntaxError:
+        except (SyntaxError, RecursionError):
             try:
                 compile(code, "<code>", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
                 return True
-            except SyntaxError:
+            except (SyntaxError, RecursionError):
                 return False
 
     def _run_sync(self, code: str) -> ExecutionResult:
@@ -367,11 +365,12 @@ class InProcessExecutor:
             self._deps_namespace = DepsNamespace(store=deps_store, installer=installer)
 
         # Wrap deps namespace if runtime deps disabled
-        deps_obj: Any = AsyncDepsNamespace(self._deps_namespace)
         if not self._config.allow_runtime_deps:
-            self._namespace["deps"] = ControlledDepsNamespace(deps_obj, allow_runtime=False)
+            self._namespace["deps"] = ControlledDepsNamespace(
+                self._deps_namespace, allow_runtime=False
+            )
         else:
-            self._namespace["deps"] = deps_obj
+            self._namespace["deps"] = self._deps_namespace
 
         # Workflows and artifacts from storage (if provided)
         if storage is not None:

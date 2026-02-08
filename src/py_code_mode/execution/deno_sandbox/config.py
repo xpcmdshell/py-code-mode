@@ -1,4 +1,4 @@
-"""Configuration for DenoPyodideExecutor."""
+"""Configuration for DenoSandboxExecutor."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from typing import Literal
 
 
 @dataclass(frozen=True)
-class DenoPyodideConfig:
-    """Configuration for DenoPyodideExecutor.
+class DenoSandboxConfig:
+    """Configuration for DenoSandboxExecutor.
 
     Notes:
     - This executor expects Pyodide runtime assets (WASM + stdlib files) to be

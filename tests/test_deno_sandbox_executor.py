@@ -79,7 +79,7 @@ class _TestStorage:
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_basic(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_basic(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -111,7 +111,7 @@ async def test_deno_pyodide_executor_basic(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_deps_add_installs(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_deps_add_installs(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -140,7 +140,7 @@ async def test_deno_pyodide_executor_deps_add_installs(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_sync_deps_on_start(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_sync_deps_on_start(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -168,7 +168,7 @@ async def test_deno_pyodide_executor_sync_deps_on_start(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_network_none_blocks_installs(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_network_none_blocks_installs(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -195,7 +195,7 @@ async def test_deno_pyodide_executor_network_none_blocks_installs(tmp_path: Path
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_artifacts_roundtrip(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_artifacts_roundtrip(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -223,7 +223,7 @@ async def test_deno_pyodide_executor_artifacts_roundtrip(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_workflows_roundtrip(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_workflows_roundtrip(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -259,7 +259,7 @@ async def test_deno_pyodide_executor_workflows_roundtrip(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_tools_via_rpc(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_tools_via_rpc(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -315,7 +315,7 @@ async def test_deno_pyodide_executor_tools_via_rpc(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_tool_large_output_is_chunked(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_tool_large_output_is_chunked(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -374,7 +374,7 @@ async def test_deno_pyodide_executor_tool_large_output_is_chunked(tmp_path: Path
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_rpc_does_not_deadlock(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_rpc_does_not_deadlock(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -410,7 +410,7 @@ async def test_deno_pyodide_executor_rpc_does_not_deadlock(tmp_path: Path) -> No
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_reset_clears_state(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_reset_clears_state(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -440,7 +440,7 @@ async def test_deno_pyodide_executor_reset_clears_state(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_session_add_dep_installs(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_session_add_dep_installs(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -469,7 +469,7 @@ async def test_deno_pyodide_executor_session_add_dep_installs(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_mcp_tool_via_rpc(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_mcp_tool_via_rpc(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -538,7 +538,7 @@ async def test_deno_pyodide_executor_mcp_tool_via_rpc(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_workflows_search_via_rpc(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_workflows_search_via_rpc(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
 
@@ -567,7 +567,7 @@ async def test_deno_pyodide_executor_workflows_search_via_rpc(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_artifact_payload_size_limits(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_artifact_payload_size_limits(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -611,7 +611,7 @@ async def test_deno_pyodide_executor_artifact_payload_size_limits(tmp_path: Path
 
 
 @pytest.mark.asyncio
-async def test_deno_pyodide_executor_soft_timeout_wedges_until_reset(tmp_path: Path) -> None:
+async def test_deno_sandbox_executor_soft_timeout_wedges_until_reset(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage

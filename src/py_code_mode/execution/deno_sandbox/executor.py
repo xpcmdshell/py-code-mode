@@ -25,7 +25,7 @@ from py_code_mode.deps import (
     collect_configured_deps,
 )
 from py_code_mode.deps.store import DepsStore
-from py_code_mode.execution.deno_pyodide.config import DenoPyodideConfig
+from py_code_mode.execution.deno_sandbox.config import DenoSandboxConfig
 from py_code_mode.execution.protocol import Capability, validate_storage_not_access
 from py_code_mode.execution.registry import register_backend
 from py_code_mode.execution.resource_provider import StorageResourceProvider
@@ -45,7 +45,7 @@ class _Pending:
     fut: asyncio.Future[dict[str, Any]]
 
 
-class DenoPyodideExecutor:
+class DenoSandboxExecutor:
     """Execute code in Pyodide hosted by Deno.
 
     Capabilities:
@@ -70,8 +70,8 @@ class DenoPyodideExecutor:
         }
     )
 
-    def __init__(self, config: DenoPyodideConfig | None = None) -> None:
-        self._config = config or DenoPyodideConfig()
+    def __init__(self, config: DenoSandboxConfig | None = None) -> None:
+        self._config = config or DenoSandboxConfig()
         self._proc: Process | None = None
         self._stdout_task: asyncio.Task[None] | None = None
         self._stderr_task: asyncio.Task[None] | None = None
@@ -94,14 +94,14 @@ class DenoPyodideExecutor:
     def get_configured_deps(self) -> list[str]:
         return collect_configured_deps(self._config.deps, self._config.deps_file)
 
-    async def __aenter__(self) -> DenoPyodideExecutor:
+    async def __aenter__(self) -> DenoSandboxExecutor:
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self.close()
 
     async def start(self, storage: StorageBackend | None = None) -> None:
-        validate_storage_not_access(storage, "DenoPyodideExecutor")
+        validate_storage_not_access(storage, "DenoSandboxExecutor")
         if self._proc is not None:
             return
 
@@ -142,7 +142,7 @@ class DenoPyodideExecutor:
         await self._spawn_runner()
 
     def _default_deno_dir(self) -> Path:
-        return Path.home() / ".cache" / "py-code-mode" / "deno-pyodide"
+        return Path.home() / ".cache" / "py-code-mode" / "deno-sandbox"
 
     async def _ensure_deno_cache(self) -> None:
         """Cache runner modules + npm:pyodide outside the sandbox."""
@@ -609,5 +609,4 @@ class DenoPyodideExecutor:
         return await self._deps_install(self._deps_store.list())
 
 
-register_backend("deno-pyodide", DenoPyodideExecutor)
-register_backend("deno-sandbox", DenoPyodideExecutor)
+register_backend("deno-sandbox", DenoSandboxExecutor)

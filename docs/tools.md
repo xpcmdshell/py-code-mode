@@ -89,15 +89,19 @@ recipes:
 
 ### Agent Usage
 
-Code executed via `Session.run()` supports **top-level `await`**. For portability across executors (and because `DenoSandboxExecutor` is async-first), prefer `await` when calling tools.
+Tool calls inside `Session.run()` are **synchronous** in the default executors (Subprocess/Container/InProcess).
+
+Notes:
+- If you need async tool calls in Python code, use `call_async(...)` explicitly.
+- In `DenoSandboxExecutor`, tool calls are **async-first** and you must use `await tools.*`.
 
 ```python
 # Recipe invocation (recommended)
-await tools.curl.get(url="https://api.github.com/repos/owner/repo")
-await tools.curl.post(url="https://api.example.com/data", data='{"key": "value"}')
+tools.curl.get(url="https://api.github.com/repos/owner/repo")
+tools.curl.post(url="https://api.example.com/data", data='{"key": "value"}')
 
 # Escape hatch - raw tool invocation (full control)
-await tools.curl(
+tools.curl(
     url="https://example.com",
     silent=True,
     location=True,
@@ -105,9 +109,13 @@ await tools.curl(
 )
 
 # Discovery
-await tools.list()              # All tools
-await tools.search("http")      # Search by name/description/tags
-await tools.curl.list()         # Recipes for a specific tool
+tools.list()              # All tools
+tools.search("http")      # Search by name/description/tags
+tools.curl.list()         # Recipes for a specific tool
+
+# Explicit async (if you need it)
+await tools.curl.call_async(url="https://example.com")
+await tools.curl.get.call_async(url="https://example.com")
 ```
 
 ## MCP Tools
@@ -194,15 +202,15 @@ Agents can discover and search tools:
 
 ```python
 # List all available tools
-all_tools = await tools.list()
+all_tools = tools.list()
 # Returns: [Tool(name="curl", description="...", callables=[...]), ...]
 
 # Search by keyword
-http_tools = await tools.search("http")
+http_tools = tools.search("http")
 # Searches tool names, descriptions, and tags
 
 # List recipes for a tool
-curl_recipes = await tools.curl.list()
+curl_recipes = tools.curl.list()
 # Returns: [{"name": "get", "description": "...", "params": {...}}, ...]
 ```
 

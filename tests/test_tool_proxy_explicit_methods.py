@@ -196,14 +196,11 @@ class TestBackwardCompatibility:
 
     @pytest.mark.asyncio
     async def test_dunder_call_still_works_async(self, callable_proxy: CallableProxy) -> None:
-        """__call__ from async context still returns coroutine."""
+        """__call__ from async context still returns a sync result."""
         result = callable_proxy(value="dunder_async")
 
-        # In async context, __call__ returns coroutine
-        assert inspect.iscoroutine(result)
-
-        final = await result
-        assert "testtool.action" in final
+        assert not inspect.iscoroutine(result)
+        assert "testtool.action" in result
 
     def test_dunder_call_still_works_sync(self, callable_proxy: CallableProxy) -> None:
         """__call__ from sync context still returns result."""

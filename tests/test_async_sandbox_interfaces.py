@@ -5,7 +5,9 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_inprocess_executor_supports_await_tools_and_artifacts(tmp_path: Path) -> None:
+async def test_inprocess_executor_tools_and_artifacts_are_sync_in_agent_code(
+    tmp_path: Path,
+) -> None:
     from py_code_mode.execution import InProcessConfig, InProcessExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -40,19 +42,19 @@ async def test_inprocess_executor_supports_await_tools_and_artifacts(tmp_path: P
     executor = InProcessExecutor(config=InProcessConfig(tools_path=tools_dir))
 
     async with Session(storage=storage, executor=executor) as session:
-        r_list = await session.run("_ts = await tools.list()\nsorted([t.name for t in _ts])")
+        r_list = await session.run("_ts = tools.list()\nsorted([t.name for t in _ts])")
         assert r_list.error is None
         assert "echo" in r_list.value
 
-        r_call = await session.run("(await tools.echo.say(message='hi')).strip()")
+        r_call = await session.run("tools.echo.say(message='hi').strip()")
         assert r_call.error is None
         assert r_call.value == "hi"
 
         r_art = await session.run(
             "\n".join(
                 [
-                    "await artifacts.save('obj', {'a': 1}, description='')",
-                    "(await artifacts.load('obj'))['a']",
+                    "artifacts.save('obj', {'a': 1}, description='')",
+                    "artifacts.load('obj')['a']",
                 ]
             )
         )
@@ -68,7 +70,9 @@ pytestmark_subprocess = pytest.mark.skipif(
 
 @pytestmark_subprocess
 @pytest.mark.asyncio
-async def test_subprocess_executor_supports_await_tools_workflows_artifacts(tmp_path: Path) -> None:
+async def test_subprocess_executor_tools_workflows_artifacts_are_sync_in_agent_code(
+    tmp_path: Path,
+) -> None:
     from py_code_mode.execution import SubprocessConfig, SubprocessExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
@@ -106,12 +110,12 @@ async def test_subprocess_executor_supports_await_tools_workflows_artifacts(tmp_
 
     async with Session(storage=storage, executor=executor) as session:
         r_list = await session.run(
-            "_ts = await tools.list()\n" "sorted([t['name'] for t in _ts])",
+            "_ts = tools.list()\nsorted([t['name'] for t in _ts])",
         )
         assert r_list.error is None
         assert "echo" in r_list.value
 
-        r_call = await session.run("(await tools.echo.say(message='hi')).strip()")
+        r_call = await session.run("tools.echo.say(message='hi').strip()")
         assert r_call.error is None
         assert r_call.value == "hi"
 
@@ -119,8 +123,8 @@ async def test_subprocess_executor_supports_await_tools_workflows_artifacts(tmp_
         r_wf = await session.run(
             "\n".join(
                 [
-                    f"await workflows.create('hello', {source!r}, 'desc')",
-                    "(await workflows.get('hello'))['source']",
+                    f"workflows.create('hello', {source!r}, 'desc')",
+                    "workflows.get('hello')['source']",
                 ]
             )
         )
@@ -130,8 +134,8 @@ async def test_subprocess_executor_supports_await_tools_workflows_artifacts(tmp_
         r_art = await session.run(
             "\n".join(
                 [
-                    "await artifacts.save('obj', {'a': 1}, description='')",
-                    "(await artifacts.load('obj'))['a']",
+                    "artifacts.save('obj', {'a': 1}, description='')",
+                    "artifacts.load('obj')['a']",
                 ]
             )
         )

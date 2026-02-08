@@ -6,19 +6,19 @@ Artifacts provide persistent data storage across sessions. Use them to cache res
 
 ```python
 # Save data
-await artifacts.save("analysis_results", {
+artifacts.save("analysis_results", {
     "repos_analyzed": 42,
     "findings": [...]
 })
 
 # Load data
-data = await artifacts.load("analysis_results")
+data = artifacts.load("analysis_results")
 
 # List all artifacts
-all_artifacts = await artifacts.list()
+all_artifacts = artifacts.list()
 
 # Delete an artifact
-await artifacts.delete("old_data")
+artifacts.delete("old_data")
 ```
 
 ## Storage Formats
@@ -27,13 +27,13 @@ Artifacts automatically handle serialization based on data type:
 
 ```python
 # JSON-serializable data (dicts, lists, primitives)
-await artifacts.save("config", {"api_key": "...", "timeout": 30})
+artifacts.save("config", {"api_key": "...", "timeout": 30})
 
 # Binary data
-await artifacts.save("image", image_bytes)
+artifacts.save("image", image_bytes)
 
 # Text data
-await artifacts.save("report", "Analysis results: ...")
+artifacts.save("report", "Analysis results: ...")
 ```
 
 ## Use Cases
@@ -45,15 +45,15 @@ async def run(owner: str, repo: str) -> dict:
     cache_key = f"repo_{owner}_{repo}"
 
     # Check cache first
-    cached = await artifacts.load(cache_key)
+    cached = artifacts.load(cache_key)
     if cached:
         return cached
 
     # Fetch fresh data
-    data = await tools.curl.get(url=f"https://api.github.com/repos/{owner}/{repo}")
+    data = tools.curl.get(url=f"https://api.github.com/repos/{owner}/{repo}")
 
     # Cache for next time
-    await artifacts.save(cache_key, data)
+    artifacts.save(cache_key, data)
     return data
 ```
 
@@ -62,17 +62,17 @@ async def run(owner: str, repo: str) -> dict:
 ```python
 async def run(url: str) -> dict:
     # Load previous crawl state
-    state = await artifacts.load("crawl_state") or {"visited": [], "queue": []}
+    state = artifacts.load("crawl_state") or {"visited": [], "queue": []}
 
     if url in state["visited"]:
         return {"status": "already_crawled"}
 
     # Process URL
-    content = await tools.fetch(url=url)
+    content = tools.fetch(url=url)
     state["visited"].append(url)
 
     # Save updated state
-    await artifacts.save("crawl_state", state)
+    artifacts.save("crawl_state", state)
     return {"status": "success", "content": content}
 ```
 
@@ -82,14 +82,14 @@ async def run(url: str) -> dict:
 # Skill 1: Collect data
 async def run(sources: list) -> dict:
     results = [fetch_source(s) for s in sources]
-    await artifacts.save("collected_data", results)
+    artifacts.save("collected_data", results)
     return {"count": len(results)}
 
 # Skill 2: Analyze data
 async def run() -> dict:
-    data = await artifacts.load("collected_data")
+    data = artifacts.load("collected_data")
     analysis = analyze(data)
-    await artifacts.save("analysis_report", analysis)
+    artifacts.save("analysis_report", analysis)
     return analysis
 ```
 
@@ -112,16 +112,16 @@ Artifacts are stored according to your storage backend:
 **Use descriptive names:**
 ```python
 # Good
-await artifacts.save("github_repos_2024_analysis", data)
+artifacts.save("github_repos_2024_analysis", data)
 
 # Bad
-await artifacts.save("data1", data)
+artifacts.save("data1", data)
 ```
 
 **Clean up old artifacts:**
 ```python
 # Remove artifacts you no longer need
-await artifacts.delete("temp_processing_results")
+artifacts.delete("temp_processing_results")
 ```
 
 **Consider data size:**
@@ -134,7 +134,7 @@ await artifacts.delete("temp_processing_results")
 Artifacts automatically track metadata:
 
 ```python
-artifacts_list = await artifacts.list()
+artifacts_list = artifacts.list()
 for artifact in artifacts_list:
     print(f"{artifact['name']}: {artifact['created_at']}")
 ```

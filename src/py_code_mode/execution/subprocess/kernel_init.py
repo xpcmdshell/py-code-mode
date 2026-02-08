@@ -57,11 +57,12 @@ _rpc_async_lock = asyncio.Lock()
 
 
 def _in_async_context() -> bool:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return False
-    return True
+    # IPython / ipykernel runs an event loop even for "sync" code execution,
+    # so using get_running_loop() here would force the entire sandbox surface
+    # to return coroutine objects and break existing agent code.
+    #
+    # SubprocessExecutor's agent-facing namespaces are intentionally synchronous.
+    return False
 
 
 async def _rpc_call_async(method: str, **kwargs) -> Any:
@@ -446,7 +447,8 @@ class WorkflowsProxy:
 
         Gets workflow source from host and executes it locally in the kernel.
         This ensures workflows can import packages installed at runtime.
-        Handles async workflows by running them with asyncio.run().
+        Handles async workflows by running them to completion in the kernel's
+        event loop (ipykernel runs a loop even for "sync" execution).
 
         Args:
             workflow_name: Name of the workflow to invoke.
@@ -508,7 +510,13 @@ class WorkflowsProxy:
 
         result = run_func(**kwargs)
         if asyncio.iscoroutine(result):
-            return asyncio.run(result)
+            # ipykernel runs an event loop already, so asyncio.run() is not valid.
+            # Use nest_asyncio to allow re-entrant run_until_complete.
+            import nest_asyncio
+
+            nest_asyncio.apply()
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(result)
         return result
 
     def search(self, query: str, limit: int = 5) -> list[Workflow]:

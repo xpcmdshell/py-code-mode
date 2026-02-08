@@ -6,7 +6,6 @@ invoke, create, and delete workflows during code execution.
 
 from __future__ import annotations
 
-import asyncio
 import builtins
 import inspect
 from typing import TYPE_CHECKING, Any
@@ -46,15 +45,8 @@ class WorkflowsNamespace:
 
         self._library = library
         self._namespace = namespace
-        self._loop: asyncio.AbstractEventLoop | None = None
-
-    def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Set the event loop to use for async workflow invocations.
-
-        When code runs in a thread (via asyncio.to_thread), we need a reference
-        to the main event loop to execute async workflows via run_coroutine_threadsafe.
-        """
-        self._loop = loop
+        # Intentionally synchronous surface. Async workflows are supported via
+        # asyncio.run(...) when invoked from sync code (the default execution mode).
 
     @property
     def library(self) -> WorkflowLibrary:
@@ -64,60 +56,19 @@ class WorkflowsNamespace:
         """
         return self._library
 
-    def search(self, query: str, limit: int = 10) -> builtins.list[dict[str, Any]] | Any:
-        """Search for workflows matching query.
-
-        In async context, returns an awaitable so code can use `await workflows.search(...)`.
-        """
-
-        def _run() -> builtins.list[dict[str, Any]]:
-            workflows = self._library.search(query, limit)
-            return [self._simplify(w) for w in workflows]
-
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return _run()
-
-        async def _coro() -> builtins.list[dict[str, Any]]:
-            return _run()
-
-        return _coro()
+    def search(self, query: str, limit: int = 10) -> builtins.list[dict[str, Any]]:
+        """Search for workflows matching query."""
+        workflows = self._library.search(query, limit)
+        return [self._simplify(w) for w in workflows]
 
     def get(self, name: str) -> Any:
-        """Get a workflow by name.
+        """Get a workflow by name."""
+        return self._library.get(name)
 
-        In async context, returns an awaitable so code can use `await workflows.get(...)`.
-        """
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return self._library.get(name)
-
-        async def _coro() -> Any:
-            return self._library.get(name)
-
-        return _coro()
-
-    def list(self) -> builtins.list[dict[str, Any]] | Any:
-        """List all available workflows.
-
-        In async context, returns an awaitable so code can use `await workflows.list()`.
-        """
-
-        def _run() -> builtins.list[dict[str, Any]]:
-            workflows = self._library.list()
-            return [self._simplify(w) for w in workflows]
-
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return _run()
-
-        async def _coro() -> builtins.list[dict[str, Any]]:
-            return _run()
-
-        return _coro()
+    def list(self) -> builtins.list[dict[str, Any]]:
+        """List all available workflows."""
+        workflows = self._library.list()
+        return [self._simplify(w) for w in workflows]
 
     def _simplify(self, workflow: PythonWorkflow) -> dict[str, Any]:
         """Simplify workflow for agent readability."""
@@ -162,20 +113,9 @@ class WorkflowsNamespace:
         # Add to library (persists to store if configured)
         self._library.add(workflow)
 
-        result = self._simplify(workflow)
+        return self._simplify(workflow)
 
-        # Allow awaiting in async contexts for consistency.
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return result
-
-        async def _coro() -> dict[str, Any]:
-            return result
-
-        return _coro()
-
-    def delete(self, name: str) -> bool | Any:
+    def delete(self, name: str) -> bool:
         """Remove a workflow from the library.
 
         Args:
@@ -184,16 +124,7 @@ class WorkflowsNamespace:
         Returns:
             True if workflow was deleted, False if not found.
         """
-        removed = self._library.remove(name)
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return removed
-
-        async def _coro() -> bool:
-            return removed
-
-        return _coro()
+        return self._library.remove(name)
 
     def __getattr__(self, name: str) -> Any:
         """Allow workflows.workflow_name(...) syntax."""
@@ -229,14 +160,11 @@ class WorkflowsNamespace:
         result = run_func(**kwargs)
 
         if inspect.iscoroutine(result):
-            try:
-                asyncio.get_running_loop()
-            except RuntimeError:
-                return asyncio.run(result)
+            # Default agent code execution runs in a worker thread without a
+            # running event loop, so asyncio.run(...) is safe and yields a
+            # synchronous result.
+            import asyncio
 
-            async def _coro() -> Any:
-                return await result
-
-            return _coro()
+            return asyncio.run(result)
 
         return result

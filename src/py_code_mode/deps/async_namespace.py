@@ -1,11 +1,6 @@
-"""Async-capable wrapper for deps namespace.
+"""Deprecated: async-capable wrapper for deps namespace.
 
-The base DepsNamespace API is synchronous (it may run pip). For sandbox
-consistency with async executors, this wrapper allows:
-  - deps.add(...)  (sync)
-  - await deps.add(...) (async)
-
-The async variants simply run the synchronous operations in-process.
+Kept for potential future use. The primary agent-facing API is synchronous.
 """
 
 from __future__ import annotations

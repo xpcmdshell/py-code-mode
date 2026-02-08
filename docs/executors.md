@@ -7,8 +7,7 @@ Executors determine where and how agent code runs. Four backends are available: 
 `DenoSandboxExecutor` runs Python in **Pyodide (WASM)** inside a **Deno** subprocess. It relies on the Deno permission model for sandboxing.
 
 Notes:
-- `DenoSandboxExecutor` is the friendly public name (an alias of `DenoPyodideExecutor`).
-- Backend keys: `"deno-sandbox"` and `"deno-pyodide"`.
+- Backend key: `"deno-sandbox"`.
 
 Key differences vs the other executors:
 - **Async-first sandbox API**: use `await tools.*`, `await workflows.*`, `await artifacts.*`, `await deps.*`.

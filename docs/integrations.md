@@ -157,16 +157,16 @@ When registering with your framework, provide a clear tool description:
 TOOL_DESCRIPTION = """Execute Python code with access to tools, workflows, and artifacts.
 
 NAMESPACES:
-- tools.* - Call registered tools (e.g., await tools.curl.get(url="..."))
-- workflows.* - Invoke reusable workflows (e.g., await workflows.invoke("fetch_json", url="..."))
-- artifacts.* - Persist data (e.g., await artifacts.save("key", data))
-- deps.* - Manage packages (e.g., await deps.add("pandas"))
+- tools.* - Call registered tools (e.g., tools.curl.get(url="..."))
+- workflows.* - Invoke reusable workflows (e.g., workflows.invoke("fetch_json", url="..."))
+- artifacts.* - Persist data (e.g., artifacts.save("key", data))
+- deps.* - Manage packages (e.g., deps.add("pandas"))
 
 Variables persist across calls within the same session.
 
 WORKFLOW:
-1. Search for existing workflows: await workflows.search("your task")
-2. If found, invoke it: await workflows.invoke("workflow_name", arg=value)
+1. Search for existing workflows: workflows.search("your task")
+2. If found, invoke it: workflows.invoke("workflow_name", arg=value)
 3. Otherwise, write code using tools
 4. Save successful workflows as workflows for reuse
 """

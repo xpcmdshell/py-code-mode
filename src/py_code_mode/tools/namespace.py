@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import threading
 from typing import TYPE_CHECKING, Any
 
 from py_code_mode.tools.types import Tool, ToolCallable
@@ -35,7 +36,11 @@ class ToolsNamespace:
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Set the event loop to use for async tool calls."""
+        """Set the event loop used by sync calls made from worker threads.
+
+        InProcessExecutor executes user code in a worker thread. Tool adapters are
+        async, so sync tool calls use run_coroutine_threadsafe against this loop.
+        """
         self._loop = loop
 
     def __getattr__(self, tool_name: str) -> ToolProxy:
@@ -57,46 +62,21 @@ class ToolsNamespace:
 
         return ToolProxy(self._registry, tool, self._loop)
 
-    def list(self) -> builtins.list[Tool] | Any:
-        """List all available tools.
+    def list(self) -> builtins.list[Tool]:
+        """List all available tools."""
+        return self._registry.get_all_tools()
 
-        In async context, returns an awaitable so code can use `await tools.list()`.
-        """
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return self._registry.get_all_tools()
-
-        async def _coro() -> builtins.list[Tool]:
-            return self._registry.get_all_tools()
-
-        return _coro()
-
-    def search(self, query: str, limit: int = 5) -> builtins.list[Tool] | Any:
-        """Search tools by query string.
-
-        In async context, returns an awaitable so code can use `await tools.search(...)`.
-        """
+    def search(self, query: str, limit: int = 5) -> builtins.list[Tool]:
+        """Search tools by query string."""
         from py_code_mode.tools.registry import substring_search
 
-        def _run() -> builtins.list[Tool]:
-            return substring_search(
-                query=query,
-                items=self._registry.get_all_tools(),
-                get_name=lambda t: t.name,
-                get_description=lambda t: t.description,
-                limit=limit,
-            )
-
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return _run()
-
-        async def _coro() -> builtins.list[Tool]:
-            return _run()
-
-        return _coro()
+        return substring_search(
+            query=query,
+            items=self._registry.get_all_tools(),
+            get_name=lambda t: t.name,
+            get_description=lambda t: t.description,
+            limit=limit,
+        )
 
 
 class ToolProxy:
@@ -138,31 +118,42 @@ class ToolProxy:
         """
         coro = self._execute(**kwargs)
 
-        # When called from a thread with loop reference, use run_coroutine_threadsafe
+        # When called from a worker thread, schedule onto the main loop.
         if self._loop is not None:
             future = asyncio.run_coroutine_threadsafe(coro, self._loop)
             return future.result()
 
-        # Standalone sync usage - create new loop
-        return asyncio.run(coro)
+        # If we're already inside an event loop on this thread, we cannot call
+        # asyncio.run(). For sync ergonomics (tools.x.y()), execute the coroutine
+        # in a dedicated thread with its own loop and block for completion.
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+
+        out: dict[str, Any] = {}
+        err: list[BaseException] = []
+
+        def _runner() -> None:
+            try:
+                out["value"] = asyncio.run(coro)
+            except BaseException as e:  # propagate exception across threads
+                err.append(e)
+
+        t = threading.Thread(target=_runner, daemon=True)
+        t.start()
+        t.join()
+        if err:
+            raise err[0]
+        return out.get("value")
 
     def __call__(self, **kwargs: Any) -> Any:
         """Escape hatch - invoke tool directly without recipe.
 
-        This delegates to the adapter's call_tool method, bypassing recipes.
-        Returns coroutine in async context, executes sync otherwise.
-
-        If set_loop() has been called, sync execution in a worker thread uses
-        run_coroutine_threadsafe to schedule work on the main loop.
+        Tool calls are synchronous in the agent-facing namespace. The underlying
+        adapter is async, so this blocks until completion.
         """
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            # No event loop running - use sync path
-            return self.call_sync(**kwargs)
-        else:
-            # In async context - return coroutine for await
-            return self._execute(**kwargs)
+        return self.call_sync(**kwargs)
 
     def __getattr__(self, callable_name: str) -> CallableProxy:
         """Get a callable proxy by name."""
@@ -216,31 +207,39 @@ class CallableProxy:
         """
         coro = self._execute(**kwargs)
 
-        # When called from a thread with loop reference, use run_coroutine_threadsafe
+        # When called from a worker thread, schedule onto the main loop.
         if self._loop is not None:
             future = asyncio.run_coroutine_threadsafe(coro, self._loop)
             return future.result()
 
-        # Standalone sync usage - create new loop
-        return asyncio.run(coro)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+
+        out: dict[str, Any] = {}
+        err: list[BaseException] = []
+
+        def _runner() -> None:
+            try:
+                out["value"] = asyncio.run(coro)
+            except BaseException as e:
+                err.append(e)
+
+        t = threading.Thread(target=_runner, daemon=True)
+        t.start()
+        t.join()
+        if err:
+            raise err[0]
+        return out.get("value")
 
     def __call__(self, **kwargs: Any) -> Any:
         """Invoke the callable with the given arguments.
 
-        Returns a coroutine if called from async context, executes sync otherwise.
-        This allows both `await tools.x.y()` and `tools.x.y()` to work.
-
-        If set_loop() has been called, sync execution in a worker thread uses
-        run_coroutine_threadsafe to schedule work on the main loop.
+        Callables are synchronous in the agent-facing namespace. The underlying
+        adapter is async, so this blocks until completion.
         """
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            # No event loop running - use sync path
-            return self.call_sync(**kwargs)
-        else:
-            # In async context - return coroutine for await
-            return self._execute(**kwargs)
+        return self.call_sync(**kwargs)
 
     async def describe(self) -> dict[str, str]:
         """Get parameter descriptions for this callable."""
