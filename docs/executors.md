@@ -33,6 +33,16 @@ async with Session(storage=storage, executor=executor) as session:
     result = await session.run("await tools.list()")
 ```
 
+### Security Model: Where Tools Execute
+
+`DenoSandboxExecutor` sandboxes **Python execution** (the Pyodide runtime) inside a Deno subprocess. However, **tool execution is host-side**:
+- If your agent calls `tools.*` while using `DenoSandboxExecutor`, the call is proxied over RPC back to the host Python process, and the tool runs there (using the configured ToolAdapters).
+- This means a YAML tool that can read files, run commands, or access the network will do so with **host permissions**, not Deno sandbox permissions.
+
+Practical guidance:
+- If you want "true sandboxed code exec", keep agent code to **pure Python + `deps.*`** (Pyodide `micropip`) and avoid `tools.*`.
+- If you attach host tools, treat them as a privileged escape hatch from the sandbox boundary.
+
 ### Network Profiles
 
 `DenoSandboxConfig.network_profile` controls network access for the Deno subprocess:

@@ -94,6 +94,7 @@ Tool calls inside `Session.run()` are **synchronous** in the default executors (
 Notes:
 - If you need async tool calls in Python code, use `call_async(...)` explicitly.
 - In `DenoSandboxExecutor`, tool calls are **async-first** and you must use `await tools.*`.
+- In `DenoSandboxExecutor`, tool calls execute **outside** the sandbox: `await tools.*` is an RPC back to the host Python process, and the tool runs with host permissions (or container permissions if the tool adapter/executor is containerized).
 
 ```python
 # Recipe invocation (recommended)
