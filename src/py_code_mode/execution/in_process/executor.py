@@ -17,6 +17,7 @@ import traceback
 from contextlib import redirect_stdout
 from typing import TYPE_CHECKING, Any
 
+from py_code_mode.artifacts import ArtifactsNamespace
 from py_code_mode.deps import (
     ControlledDepsNamespace,
     DepsNamespace,
@@ -24,6 +25,7 @@ from py_code_mode.deps import (
     PackageInstaller,
     collect_configured_deps,
 )
+from py_code_mode.deps.async_namespace import AsyncDepsNamespace
 from py_code_mode.deps.store import DepsStore, MemoryDepsStore
 from py_code_mode.execution.in_process.config import InProcessConfig
 from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
@@ -102,16 +104,15 @@ class InProcessExecutor:
 
         # Inject artifacts namespace if artifact_store provided
         if artifact_store is not None:
-            self._namespace["artifacts"] = artifact_store
+            self._namespace["artifacts"] = ArtifactsNamespace(artifact_store)
 
         # Inject deps namespace if provided (wrap if runtime deps disabled)
         if deps_namespace is not None:
+            deps_obj: Any = AsyncDepsNamespace(deps_namespace)
             if not self._config.allow_runtime_deps:
-                self._namespace["deps"] = ControlledDepsNamespace(
-                    deps_namespace, allow_runtime=False
-                )
+                self._namespace["deps"] = ControlledDepsNamespace(deps_obj, allow_runtime=False)
             else:
-                self._namespace["deps"] = deps_namespace
+                self._namespace["deps"] = deps_obj
 
     def supports(self, capability: str) -> bool:
         """Check if this backend supports a capability."""
@@ -151,17 +152,24 @@ class InProcessExecutor:
 
         timeout = timeout if timeout is not None else self._default_timeout
 
-        # Store loop reference for tool/workflow calls from thread context
-        loop = asyncio.get_running_loop()
-        if "tools" in self._namespace:
-            self._namespace["tools"].set_loop(loop)
-        if "workflows" in self._namespace:
-            self._namespace["workflows"].set_loop(loop)
+        sync_mode = not self._requires_top_level_await(code)
+
+        # Store loop reference for tool/workflow calls from thread context.
+        # Only used for the sync execution path; the async path executes in its
+        # own event loop in the worker thread.
+        if sync_mode:
+            loop = asyncio.get_running_loop()
+            if "tools" in self._namespace:
+                self._namespace["tools"].set_loop(loop)
+            if "workflows" in self._namespace:
+                self._namespace["workflows"].set_loop(loop)
 
         # Run in thread to allow timeout cancellation
         try:
             return await asyncio.wait_for(
-                asyncio.to_thread(self._run_sync, code),
+                asyncio.to_thread(self._run_sync, code)
+                if sync_mode
+                else asyncio.to_thread(self._run_async_in_thread, code),
                 timeout=timeout,
             )
         except TimeoutError:
@@ -170,6 +178,19 @@ class InProcessExecutor:
                 stdout="",
                 error=f"Execution timeout after {timeout} seconds",
             )
+
+    @staticmethod
+    def _requires_top_level_await(code: str) -> bool:
+        """Return True if code needs PyCF_ALLOW_TOP_LEVEL_AWAIT to compile."""
+        try:
+            compile(code, "<code>", "exec")
+            return False
+        except SyntaxError:
+            try:
+                compile(code, "<code>", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
+                return True
+            except SyntaxError:
+                return False
 
     def _run_sync(self, code: str) -> ExecutionResult:
         """Run code synchronously, capturing output."""
@@ -212,6 +233,52 @@ class InProcessExecutor:
         except Exception:
             # Intentionally broad: user code can throw any exception.
             # Does not catch KeyboardInterrupt/SystemExit (BaseException, not Exception).
+            return ExecutionResult(
+                value=None,
+                stdout=stdout_capture.getvalue(),
+                error=traceback.format_exc(),
+            )
+
+    def _run_async_in_thread(self, code: str) -> ExecutionResult:
+        """Execute code in a fresh event loop (supports top-level await)."""
+        try:
+            return asyncio.run(self._run_async(code))
+        except Exception:
+            return ExecutionResult(value=None, stdout="", error=traceback.format_exc())
+
+    async def _run_async(self, code: str) -> ExecutionResult:
+        """Run code allowing top-level await, preserving last-expression semantics."""
+        stdout_capture = io.StringIO()
+        try:
+            tree = ast.parse(code)
+            flags = ast.PyCF_ALLOW_TOP_LEVEL_AWAIT
+
+            with redirect_stdout(stdout_capture):
+                if tree.body and isinstance(tree.body[-1], ast.Expr):
+                    stmts = tree.body[:-1]
+                    expr = tree.body[-1]
+
+                    if stmts:
+                        stmt_tree = ast.Module(body=stmts, type_ignores=[])
+                        stmt_code = compile(stmt_tree, "<code>", "exec", flags=flags)
+                        maybe = _eval_code(stmt_code, self._namespace, self._namespace)
+                        if asyncio.iscoroutine(maybe):
+                            await maybe
+
+                    expr_tree = ast.Expression(body=expr.value)
+                    expr_code = compile(expr_tree, "<expr>", "eval", flags=flags)
+                    value = _eval_code(expr_code, self._namespace, self._namespace)
+                    if asyncio.iscoroutine(value):
+                        value = await value
+                else:
+                    stmt_code = compile(tree, "<code>", "exec", flags=flags)
+                    maybe = _eval_code(stmt_code, self._namespace, self._namespace)
+                    if asyncio.iscoroutine(maybe):
+                        await maybe
+                    value = None
+
+            return ExecutionResult(value=value, stdout=stdout_capture.getvalue(), error=None)
+        except Exception:
             return ExecutionResult(
                 value=None,
                 stdout=stdout_capture.getvalue(),
@@ -300,12 +367,11 @@ class InProcessExecutor:
             self._deps_namespace = DepsNamespace(store=deps_store, installer=installer)
 
         # Wrap deps namespace if runtime deps disabled
+        deps_obj: Any = AsyncDepsNamespace(self._deps_namespace)
         if not self._config.allow_runtime_deps:
-            self._namespace["deps"] = ControlledDepsNamespace(
-                self._deps_namespace, allow_runtime=False
-            )
+            self._namespace["deps"] = ControlledDepsNamespace(deps_obj, allow_runtime=False)
         else:
-            self._namespace["deps"] = self._deps_namespace
+            self._namespace["deps"] = deps_obj
 
         # Workflows and artifacts from storage (if provided)
         if storage is not None:
@@ -315,7 +381,7 @@ class InProcessExecutor:
             )
 
             self._artifact_store = storage.get_artifact_store()
-            self._namespace["artifacts"] = self._artifact_store
+            self._namespace["artifacts"] = ArtifactsNamespace(self._artifact_store)
         elif self._workflow_library is not None:
             # Use workflow_library from __init__ if provided
             self._namespace["workflows"] = WorkflowsNamespace(
@@ -324,7 +390,7 @@ class InProcessExecutor:
 
         if storage is None and self._artifact_store is not None:
             # Use artifact_store from __init__ if provided
-            self._namespace["artifacts"] = self._artifact_store
+            self._namespace["artifacts"] = ArtifactsNamespace(self._artifact_store)
 
     async def install_deps(self, packages: list[str]) -> dict[str, Any]:
         """Install packages in the in-process environment.

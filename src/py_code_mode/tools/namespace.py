@@ -57,21 +57,46 @@ class ToolsNamespace:
 
         return ToolProxy(self._registry, tool, self._loop)
 
-    def list(self) -> builtins.list[Tool]:
-        """List all available tools."""
-        return self._registry.get_all_tools()
+    def list(self) -> builtins.list[Tool] | Any:
+        """List all available tools.
 
-    def search(self, query: str, limit: int = 5) -> builtins.list[Tool]:
-        """Search tools by query string."""
+        In async context, returns an awaitable so code can use `await tools.list()`.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return self._registry.get_all_tools()
+
+        async def _coro() -> builtins.list[Tool]:
+            return self._registry.get_all_tools()
+
+        return _coro()
+
+    def search(self, query: str, limit: int = 5) -> builtins.list[Tool] | Any:
+        """Search tools by query string.
+
+        In async context, returns an awaitable so code can use `await tools.search(...)`.
+        """
         from py_code_mode.tools.registry import substring_search
 
-        return substring_search(
-            query=query,
-            items=self._registry.get_all_tools(),
-            get_name=lambda t: t.name,
-            get_description=lambda t: t.description,
-            limit=limit,
-        )
+        def _run() -> builtins.list[Tool]:
+            return substring_search(
+                query=query,
+                items=self._registry.get_all_tools(),
+                get_name=lambda t: t.name,
+                get_description=lambda t: t.description,
+                limit=limit,
+            )
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return _run()
+
+        async def _coro() -> builtins.list[Tool]:
+            return _run()
+
+        return _coro()
 
 
 class ToolProxy:
