@@ -35,6 +35,16 @@ except ImportError:
     SubprocessConfig = None  # type: ignore
     SubprocessExecutor = None  # type: ignore
 
+# Deno/Pyodide is optional at runtime (requires deno + pyodide assets).
+try:
+    from py_code_mode.execution.deno_pyodide import DenoPyodideConfig, DenoPyodideExecutor
+
+    DENO_PYODIDE_AVAILABLE = True
+except Exception:
+    DENO_PYODIDE_AVAILABLE = False
+    DenoPyodideConfig = None  # type: ignore
+    DenoPyodideExecutor = None  # type: ignore
+
 __all__ = [
     "Capability",
     "Executor",
@@ -52,4 +62,7 @@ __all__ = [
     "SubprocessExecutor",
     "SubprocessConfig",
     "SUBPROCESS_AVAILABLE",
+    "DenoPyodideExecutor",
+    "DenoPyodideConfig",
+    "DENO_PYODIDE_AVAILABLE",
 ]
