@@ -132,20 +132,20 @@ class _Tool:
         if recipe.startswith("_"):
             raise AttributeError(recipe)
         return _ToolCallable(self._name, recipe)
-    def recipes(self):
+    def list(self):
         return _RPC.call("tools", "list_tool_recipes", {"name": self._name})
 
-class tools:
+class _Tools:
     def __getattr__(self, name: str):
         if name.startswith("_"):
             raise AttributeError(name)
         return _Tool(name)
-    @staticmethod
-    def list():
+    def list(self):
         return _RPC.call("tools", "list_tools", {})
-    @staticmethod
-    def search(query: str, limit: int = 5):
+    def search(self, query: str, limit: int = 5):
         return _RPC.call("tools", "search_tools", {"query": query, "limit": limit})
+
+tools = _Tools()
 
 class workflows:
     @staticmethod
