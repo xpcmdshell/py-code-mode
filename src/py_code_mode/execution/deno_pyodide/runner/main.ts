@@ -7,6 +7,7 @@
 type Req =
   | { id: string; type: "init" }
   | { id: string; type: "exec"; code: string }
+  | { id: string; type: "deps_install"; packages: string[] }
   | { id: string; type: "reset" }
   | { id: string; type: "close" }
   | { id: string; type: "rpc_response"; ok: boolean; result?: unknown; error?: unknown };
@@ -14,6 +15,7 @@ type Req =
 type Resp =
   | { id: string; type: "ready" }
   | { id: string; type: "exec_result"; stdout: string; value: unknown; error: string | null }
+  | { id: string; type: "deps_install_result"; installed: string[]; already_present: string[]; failed: string[] }
   | { id: string; type: "rpc_request"; namespace: string; op: string; args: Record<string, unknown> }
   | { id: string; type: "error"; message: string };
 
@@ -107,6 +109,15 @@ function callExec(id: string, code: string): Promise<any> {
   });
 }
 
+function callDepsInstall(id: string, packages: string[]): Promise<any> {
+  ensureWorker();
+  return new Promise((resolve, reject) => {
+    if (workerBootError) return reject(new Error(workerBootError));
+    execPending.set(id, { resolve, reject });
+    worker!.postMessage({ type: "deps_install", id, packages });
+  });
+}
+
 function attachWorkerHandler() {
   if (!worker) return;
   worker.onmessage = (ev: MessageEvent<any>) => {
@@ -144,6 +155,15 @@ function attachWorkerHandler() {
       return;
     }
 
+    if (msg.type === "deps_install_result") {
+      const pending = execPending.get(msg.id);
+      if (pending) {
+        execPending.delete(msg.id);
+        pending.resolve(msg);
+      }
+      return;
+    }
+
     if (msg.type === "rpc_request") {
       currentRpcId = msg.id;
       writeMsg({ id: msg.id, type: "rpc_request", namespace: msg.namespace, op: msg.op, args: msg.args });
@@ -166,6 +186,71 @@ function attachWorkerHandler() {
   };
 }
 
+// Ensure exec/deps_install are single-flight, but don't block stdin processing:
+// the worker needs rpc_response messages to arrive while code is running.
+let runChain: Promise<unknown> = Promise.resolve();
+function enqueueRun(fn: () => Promise<void>) {
+  const p = runChain.then(fn, fn);
+  runChain = p.catch(() => {});
+}
+
+async function handleReq(req: Req) {
+  try {
+    if (req.type === "rpc_response") {
+      rpcWriteResponse(req.id, req.ok ? { ok: true, result: req.result } : { ok: false, error: req.error });
+      return;
+    }
+
+    if (req.type === "init") {
+      resetWorker();
+      attachWorkerHandler();
+      if (bootWait) await bootWait;
+      writeMsg({ id: req.id, type: "ready" });
+      return;
+    }
+
+    if (req.type === "reset") {
+      resetWorker();
+      attachWorkerHandler();
+      if (bootWait) await bootWait;
+      writeMsg({ id: req.id, type: "ready" });
+      return;
+    }
+
+    if (req.type === "exec") {
+      enqueueRun(async () => {
+        if (bootWait) await bootWait;
+        const res = await callExec(req.id, req.code);
+        writeMsg({
+          id: req.id,
+          type: "exec_result",
+          stdout: res.stdout ?? "",
+          value: res.value ?? null,
+          error: res.error ?? null,
+        });
+      });
+      return;
+    }
+
+    if (req.type === "deps_install") {
+      enqueueRun(async () => {
+        if (bootWait) await bootWait;
+        const res = await callDepsInstall(req.id, req.packages ?? []);
+        writeMsg({
+          id: req.id,
+          type: "deps_install_result",
+          installed: res.installed ?? [],
+          already_present: res.already_present ?? [],
+          failed: res.failed ?? [],
+        });
+      });
+      return;
+    }
+  } catch (e) {
+    writeMsg({ id: req.id, type: "error", message: String((e as any)?.stack ?? e) });
+  }
+}
+
 for await (const line of readNdjsonLines()) {
   if (!line.trim()) continue;
   let req: Req;
@@ -176,48 +261,15 @@ for await (const line of readNdjsonLines()) {
     continue;
   }
 
-  try {
-    if (req.type === "init") {
-      resetWorker();
-      attachWorkerHandler();
-      if (bootWait) await bootWait;
-      writeMsg({ id: req.id, type: "ready" });
-      continue;
-    }
-
-    if (req.type === "reset") {
-      resetWorker();
-      attachWorkerHandler();
-      if (bootWait) await bootWait;
-      writeMsg({ id: req.id, type: "ready" });
-      continue;
-    }
-
-    if (req.type === "close") {
+  if (req.type === "close") {
+    try {
       if (worker) worker.terminate();
       worker = null;
       writeMsg({ id: req.id, type: "ready" });
+    } finally {
       break;
     }
-
-    if (req.type === "rpc_response") {
-      rpcWriteResponse(req.id, req.ok ? { ok: true, result: req.result } : { ok: false, error: req.error });
-      continue;
-    }
-
-    if (req.type === "exec") {
-      if (bootWait) await bootWait;
-      const res = await callExec(req.id, req.code);
-      writeMsg({
-        id: req.id,
-        type: "exec_result",
-        stdout: res.stdout ?? "",
-        value: res.value ?? null,
-        error: res.error ?? null,
-      });
-      continue;
-    }
-  } catch (e) {
-    writeMsg({ id: req.id, type: "error", message: String((e as any)?.stack ?? e) });
   }
+
+  void handleReq(req);
 }

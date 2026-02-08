@@ -22,6 +22,7 @@ class DenoPyodideConfig:
     deps: tuple[str, ...] | None = None
     deps_file: Path | None = None
     ipc_timeout: float = 30.0
+    deps_timeout: float | None = 300.0
 
     deno_executable: str = "deno"
     # If None, the executor uses the packaged runner script adjacent to this module.
@@ -32,6 +33,15 @@ class DenoPyodideConfig:
     # sandbox (host) via `deno cache`, then the sandbox runs with --cached-only.
     deno_dir: Path | None = None
 
-    # Deno network mode: keep sandbox `--deny-net` by default.
-    # Future: allowlist support for deps/networking use cases.
-    network_mode: str = "deny"  # "deny" | "allow" | "allowlist"
+    # Network profile:
+    # - "none": deny all network access (no runtime dep installs)
+    # - "deps-only": allow just enough for micropip / pyodide package fetches
+    # - "full": allow all network access
+    network_profile: str = "full"  # "none" | "deps-only" | "full"
+
+    # Used when network_profile="deps-only".
+    deps_net_allowlist: tuple[str, ...] = (
+        "pypi.org",
+        "files.pythonhosted.org",
+        "cdn.jsdelivr.net",
+    )

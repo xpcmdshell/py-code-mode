@@ -62,6 +62,7 @@ class DenoPyodideExecutor:
             Capability.TIMEOUT,
             Capability.PROCESS_ISOLATION,
             Capability.NETWORK_ISOLATION,
+            Capability.NETWORK_FILTERING,
             Capability.FILESYSTEM_ISOLATION,
             Capability.RESET,
             Capability.DEPS_INSTALL,
@@ -73,6 +74,7 @@ class DenoPyodideExecutor:
         self._config = config or DenoPyodideConfig()
         self._proc: Process | None = None
         self._stdout_task: asyncio.Task[None] | None = None
+        self._stderr_task: asyncio.Task[None] | None = None
         self._pending: dict[str, _Pending] = {}
         self._closed = False
         self._wedged = False  # indicates a soft-timeout run may still be executing
@@ -188,14 +190,22 @@ class DenoPyodideExecutor:
             "--no-prompt",
             "--cached-only",
             "--location=https://pyodide.invalid/",
-            "--deny-write",
             "--deny-env",
             "--deny-run",
         ]
-        if self._config.network_mode == "allow":
+        # Pyodide caches wheels into the Deno npm cache under DENO_DIR.
+        # Allow writes only to that cache directory.
+        deno_args.append(f"--allow-write={deno_dir}")
+        profile = self._config.network_profile
+        if profile == "full":
             deno_args.append("--allow-net")
-        else:
+        elif profile == "deps-only":
+            allow = ",".join(self._config.deps_net_allowlist)
+            deno_args.append(f"--allow-net={allow}")
+        elif profile == "none":
             deno_args.append("--deny-net")
+        else:
+            raise ValueError(f"unknown network_profile: {profile!r}")
 
         deno_args.append(f"--allow-read={','.join(str(p) for p in allow_reads)}")
         deno_args.append(str(runner_path))
@@ -212,6 +222,7 @@ class DenoPyodideExecutor:
         assert self._proc.stdout is not None
 
         self._stdout_task = asyncio.create_task(self._stdout_loop())
+        self._stderr_task = asyncio.create_task(self._stderr_loop())
 
         # Initialize runner with runtime directory and wait for ready.
         init_id = uuid.uuid4().hex
@@ -252,6 +263,40 @@ class DenoPyodideExecutor:
                 pending = self._pending.pop(msg_id)
                 if not pending.fut.done():
                     pending.fut.set_result(msg)
+
+    async def _stderr_loop(self) -> None:
+        assert self._proc is not None and self._proc.stderr is not None
+        reader = self._proc.stderr
+        while True:
+            line = await reader.readline()
+            if not line:
+                return
+            # Keep stderr drained to avoid deadlocks; log at debug to aid diagnosis.
+            logger.debug("deno stderr: %s", line.decode("utf-8", errors="replace").rstrip())
+
+    async def _deps_install(self, packages: list[str]) -> dict[str, Any]:
+        if not packages:
+            return {"installed": [], "already_present": [], "failed": []}
+        if self._proc is None:
+            await self.start(storage=self._storage)
+
+        req_id = uuid.uuid4().hex
+        timeout = self._config.deps_timeout
+        res = await self._request(
+            {"id": req_id, "type": "deps_install", "packages": list(packages)},
+            timeout=timeout,
+        )
+        if res.get("type") != "deps_install_result":
+            return {
+                "installed": [],
+                "already_present": [],
+                "failed": [f"Unexpected runner response: {res!r}"],
+            }
+        return {
+            "installed": list(res.get("installed") or []),
+            "already_present": list(res.get("already_present") or []),
+            "failed": list(res.get("failed") or []),
+        }
 
     async def _handle_rpc_request(self, msg: dict[str, Any]) -> None:
         if self._proc is None or self._proc.stdin is None:
@@ -462,10 +507,13 @@ class DenoPyodideExecutor:
                 pass
         if self._stdout_task is not None:
             self._stdout_task.cancel()
+        if self._stderr_task is not None:
+            self._stderr_task.cancel()
         if self._tool_registry is not None:
             await self._tool_registry.close()
         self._proc = None
         self._stdout_task = None
+        self._stderr_task = None
         self._closed = True
         self._pending.clear()
         self._wedged = False
@@ -489,8 +537,8 @@ class DenoPyodideExecutor:
     # -------------------------------------------------------------------------
 
     async def install_deps(self, packages: list[str]) -> dict[str, Any]:
-        # Best-effort install is not implemented yet (no micropip integration).
-        return {"installed": [], "already_present": [], "failed": list(packages)}
+        # System-level API (used by Session._sync_deps()).
+        return await self._deps_install(packages)
 
     async def uninstall_deps(self, packages: list[str]) -> dict[str, Any]:
         # Pyodide does not reliably support uninstall. We treat this as config removal only.
@@ -512,7 +560,7 @@ class DenoPyodideExecutor:
             )
         if self._deps_store is not None:
             self._deps_store.add(package)
-        return {"installed": [], "already_present": [], "failed": [package]}
+        return await self._deps_install([package])
 
     async def remove_dep(self, package: str) -> dict[str, Any]:
         if not self._config.allow_runtime_deps:
@@ -538,11 +586,7 @@ class DenoPyodideExecutor:
     async def sync_deps(self) -> dict[str, Any]:
         if self._deps_store is None:
             return {"installed": [], "already_present": [], "failed": []}
-        return {
-            "installed": [],
-            "already_present": [],
-            "failed": [f"Deps sync not implemented (configured: {len(self._deps_store.list())})"],
-        }
+        return await self._deps_install(self._deps_store.list())
 
 
 register_backend("deno-pyodide", DenoPyodideExecutor)
