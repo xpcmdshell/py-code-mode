@@ -1,10 +1,14 @@
 # Executors
 
-Executors determine where and how agent code runs. Four backends are available: Subprocess, Container, InProcess, and DenoPyodide (experimental).
+Executors determine where and how agent code runs. Four backends are available: Subprocess, Container, InProcess, and DenoSandbox (experimental).
 
-## DenoPyodideExecutor (Experimental, Sandboxed)
+## DenoSandboxExecutor (Experimental, Sandboxed)
 
-`DenoPyodideExecutor` runs Python in **Pyodide (WASM)** inside a **Deno** subprocess. It relies on the Deno permission model for sandboxing.
+`DenoSandboxExecutor` runs Python in **Pyodide (WASM)** inside a **Deno** subprocess. It relies on the Deno permission model for sandboxing.
+
+Notes:
+- `DenoSandboxExecutor` is the friendly public name (an alias of `DenoPyodideExecutor`).
+- Backend keys: `"deno-sandbox"` and `"deno-pyodide"`.
 
 Key differences vs the other executors:
 - **Async-first sandbox API**: use `await tools.*`, `await workflows.*`, `await artifacts.*`, `await deps.*`.
@@ -13,18 +17,18 @@ Key differences vs the other executors:
 ```python
 from pathlib import Path
 from py_code_mode import Session, FileStorage
-from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
 
 storage = FileStorage(base_path=Path("./data"))
 
-config = DenoPyodideConfig(
+config = DenoSandboxConfig(
     tools_path=Path("./tools"),
     deno_dir=Path("./.deno-cache"),  # Deno cache directory (used with --cached-only)
     network_profile="deps-only",     # "none" | "deps-only" | "full"
     default_timeout=60.0,
 )
 
-executor = DenoPyodideExecutor(config)
+executor = DenoSandboxExecutor(config)
 
 async with Session(storage=storage, executor=executor) as session:
     result = await session.run("await tools.list()")
@@ -32,7 +36,7 @@ async with Session(storage=storage, executor=executor) as session:
 
 ### Network Profiles
 
-`DenoPyodideConfig.network_profile` controls network access for the Deno subprocess:
+`DenoSandboxConfig.network_profile` controls network access for the Deno subprocess:
 - `none`: deny all network access (no runtime dep installs)
 - `deps-only`: allow access to PyPI/CDN hosts needed for common `micropip` installs
 - `full`: allow all network access
@@ -56,7 +60,7 @@ Need stronger isolation? → ContainerExecutor
   - Filesystem and network isolation
   - Requires Docker
 
-Want sandboxing without Docker (and can accept Pyodide limitations)? → DenoPyodideExecutor (experimental)
+Want sandboxing without Docker (and can accept Pyodide limitations)? → DenoSandboxExecutor (experimental)
   - WASM-based Python runtime + Deno permission model
   - Network and filesystem sandboxing via Deno permissions
 
@@ -65,7 +69,7 @@ Need maximum speed AND trust the code completely? → InProcessExecutor
   - Only for trusted code you control
 ```
 
-| Requirement | Subprocess | Container | DenoPyodide | InProcess |
+| Requirement | Subprocess | Container | DenoSandbox | InProcess |
 |-------------|------------|-----------|------------|-----------|
 | **Recommended for most users** | **Yes** | | | |
 | Process isolation | Yes | Yes | Yes | No |

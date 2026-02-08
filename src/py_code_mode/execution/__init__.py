@@ -37,13 +37,20 @@ except ImportError:
 
 # Deno/Pyodide is optional at runtime (requires deno + pyodide assets).
 try:
-    from py_code_mode.execution.deno_pyodide import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution.deno_pyodide import (
+        DenoPyodideConfig,
+        DenoPyodideExecutor,
+        DenoSandboxConfig,
+        DenoSandboxExecutor,
+    )
 
     DENO_PYODIDE_AVAILABLE = True
 except Exception:
     DENO_PYODIDE_AVAILABLE = False
     DenoPyodideConfig = None  # type: ignore
     DenoPyodideExecutor = None  # type: ignore
+    DenoSandboxConfig = None  # type: ignore
+    DenoSandboxExecutor = None  # type: ignore
 
 __all__ = [
     "Capability",
@@ -64,5 +71,7 @@ __all__ = [
     "SUBPROCESS_AVAILABLE",
     "DenoPyodideExecutor",
     "DenoPyodideConfig",
+    "DenoSandboxExecutor",
+    "DenoSandboxConfig",
     "DENO_PYODIDE_AVAILABLE",
 ]

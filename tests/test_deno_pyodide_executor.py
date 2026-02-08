@@ -80,7 +80,7 @@ class _TestStorage:
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_basic(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -88,8 +88,8 @@ async def test_deno_pyodide_executor_basic(tmp_path: Path) -> None:
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             default_timeout=60.0,
             ipc_timeout=120.0,
@@ -112,7 +112,7 @@ async def test_deno_pyodide_executor_basic(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_deps_add_installs(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -120,8 +120,8 @@ async def test_deno_pyodide_executor_deps_add_installs(tmp_path: Path) -> None:
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             default_timeout=300.0,
             deps_timeout=300.0,
@@ -141,7 +141,7 @@ async def test_deno_pyodide_executor_deps_add_installs(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_sync_deps_on_start(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -149,8 +149,8 @@ async def test_deno_pyodide_executor_sync_deps_on_start(tmp_path: Path) -> None:
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             default_timeout=60.0,
             deps_timeout=300.0,
@@ -169,7 +169,7 @@ async def test_deno_pyodide_executor_sync_deps_on_start(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_network_none_blocks_installs(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -177,8 +177,8 @@ async def test_deno_pyodide_executor_network_none_blocks_installs(tmp_path: Path
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             default_timeout=120.0,
             deps_timeout=120.0,
@@ -196,7 +196,7 @@ async def test_deno_pyodide_executor_network_none_blocks_installs(tmp_path: Path
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_artifacts_roundtrip(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -204,8 +204,8 @@ async def test_deno_pyodide_executor_artifacts_roundtrip(tmp_path: Path) -> None
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             default_timeout=60.0,
             ipc_timeout=120.0,
@@ -224,7 +224,7 @@ async def test_deno_pyodide_executor_artifacts_roundtrip(tmp_path: Path) -> None
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_workflows_roundtrip(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -232,8 +232,8 @@ async def test_deno_pyodide_executor_workflows_roundtrip(tmp_path: Path) -> None
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             default_timeout=60.0,
             ipc_timeout=120.0,
@@ -260,7 +260,7 @@ async def test_deno_pyodide_executor_workflows_roundtrip(tmp_path: Path) -> None
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_tools_via_rpc(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -294,8 +294,8 @@ async def test_deno_pyodide_executor_tools_via_rpc(tmp_path: Path) -> None:
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             tools_path=tools_dir,
             default_timeout=60.0,
@@ -316,7 +316,7 @@ async def test_deno_pyodide_executor_tools_via_rpc(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_tool_large_output_is_chunked(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -350,8 +350,8 @@ async def test_deno_pyodide_executor_tool_large_output_is_chunked(tmp_path: Path
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             tools_path=tools_dir,
             default_timeout=180.0,
@@ -375,7 +375,7 @@ async def test_deno_pyodide_executor_tool_large_output_is_chunked(tmp_path: Path
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_rpc_does_not_deadlock(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -383,8 +383,8 @@ async def test_deno_pyodide_executor_rpc_does_not_deadlock(tmp_path: Path) -> No
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             default_timeout=15.0,
             ipc_timeout=120.0,
@@ -411,7 +411,7 @@ async def test_deno_pyodide_executor_rpc_does_not_deadlock(tmp_path: Path) -> No
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_reset_clears_state(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -419,8 +419,8 @@ async def test_deno_pyodide_executor_reset_clears_state(tmp_path: Path) -> None:
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             default_timeout=60.0,
             ipc_timeout=120.0,
@@ -441,7 +441,7 @@ async def test_deno_pyodide_executor_reset_clears_state(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_session_add_dep_installs(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -449,8 +449,8 @@ async def test_deno_pyodide_executor_session_add_dep_installs(tmp_path: Path) ->
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             default_timeout=300.0,
             deps_timeout=300.0,
@@ -470,7 +470,7 @@ async def test_deno_pyodide_executor_session_add_dep_installs(tmp_path: Path) ->
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_mcp_tool_via_rpc(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -517,8 +517,8 @@ async def test_deno_pyodide_executor_mcp_tool_via_rpc(tmp_path: Path) -> None:
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             tools_path=tools_dir,
             default_timeout=60.0,
@@ -539,15 +539,15 @@ async def test_deno_pyodide_executor_mcp_tool_via_rpc(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_workflows_search_via_rpc(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
 
     storage = _TestStorage(tmp_path / "storage")
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             default_timeout=60.0,
             ipc_timeout=120.0,
@@ -568,7 +568,7 @@ async def test_deno_pyodide_executor_workflows_search_via_rpc(tmp_path: Path) ->
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_artifact_payload_size_limits(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -579,8 +579,8 @@ async def test_deno_pyodide_executor_artifact_payload_size_limits(tmp_path: Path
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             default_timeout=180.0,
             ipc_timeout=120.0,
@@ -612,7 +612,7 @@ async def test_deno_pyodide_executor_artifact_payload_size_limits(tmp_path: Path
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_soft_timeout_wedges_until_reset(tmp_path: Path) -> None:
-    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
     from py_code_mode.storage import FileStorage
 
@@ -620,8 +620,8 @@ async def test_deno_pyodide_executor_soft_timeout_wedges_until_reset(tmp_path: P
     deno_dir = tmp_path / "deno_dir"
     deno_dir.mkdir(parents=True, exist_ok=True)
 
-    executor = DenoPyodideExecutor(
-        DenoPyodideConfig(
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
             deno_dir=deno_dir,
             default_timeout=0.05,
             ipc_timeout=120.0,

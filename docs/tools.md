@@ -89,7 +89,7 @@ recipes:
 
 ### Agent Usage
 
-Code executed via `Session.run()` supports **top-level `await`**. For portability across executors (and because `DenoPyodideExecutor` is async-first), prefer `await` when calling tools.
+Code executed via `Session.run()` supports **top-level `await`**. For portability across executors (and because `DenoSandboxExecutor` is async-first), prefer `await` when calling tools.
 
 ```python
 # Recipe invocation (recommended)

@@ -610,3 +610,4 @@ class DenoPyodideExecutor:
 
 
 register_backend("deno-pyodide", DenoPyodideExecutor)
+register_backend("deno-sandbox", DenoPyodideExecutor)
