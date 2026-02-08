@@ -253,6 +253,10 @@ async def test_deno_pyodide_executor_workflows_roundtrip(tmp_path: Path) -> None
         assert r.error is None
         assert r.value == source
 
+        r2 = await session.run("await workflows.invoke('hello', name='py-code-mode')")
+        assert r2.error is None
+        assert r2.value == "hi py-code-mode"
+
 
 @pytest.mark.asyncio
 async def test_deno_pyodide_executor_tools_via_rpc(tmp_path: Path) -> None:
@@ -554,7 +558,7 @@ async def test_deno_pyodide_executor_workflows_search_via_rpc(tmp_path: Path) ->
     src = "async def run() -> str:\n    return 'hello world'\n"
 
     async with Session(storage=storage, executor=executor) as session:
-        r1 = await session.run("await workflows.create('wf', " f"{src!r}, " "'greeting workflow')")
+        r1 = await session.run(f"await workflows.create('wf', {src!r}, 'greeting workflow')")
         assert r1.error is None
 
         r2 = await session.run("(await workflows.search('greeting', limit=5))[0]['name']")

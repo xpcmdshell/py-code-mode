@@ -156,11 +156,29 @@ class workflows:
     async def get(name: str):
         return await _RPC.call("workflows", "get_workflow", {"name": name})
     @staticmethod
-    async def create(name: str, source: str, description: str):
+    async def create(name: str, source: str, description: str = ""):
         return await _RPC.call("workflows", "create_workflow", {"name": name, "source": source, "description": description})
     @staticmethod
     async def delete(name: str):
         return await _RPC.call("workflows", "delete_workflow", {"name": name})
+    @staticmethod
+    async def invoke(workflow_name: str, **kwargs):
+        import asyncio
+        wf = await workflows.get(workflow_name)
+        if wf is None or not isinstance(wf, dict):
+            raise ValueError(f"Workflow not found: {workflow_name}")
+        source = wf.get("source")
+        if not source:
+            raise ValueError(f"Workflow has no source: {workflow_name}")
+        ns = {"tools": tools, "workflows": workflows, "artifacts": artifacts, "deps": deps}
+        exec(source, ns, ns)
+        run_func = ns.get("run")
+        if not callable(run_func):
+            raise ValueError(f"Workflow {workflow_name} has no run() function")
+        result = run_func(**kwargs)
+        if asyncio.iscoroutine(result):
+            result = await result
+        return result
 
 class artifacts:
     @staticmethod
