@@ -10,13 +10,37 @@ type Req =
   | { id: string; type: "deps_install"; packages: string[] }
   | { id: string; type: "reset" }
   | { id: string; type: "close" }
-  | { id: string; type: "rpc_response"; ok: boolean; result?: unknown; error?: unknown };
+  | {
+    id: string;
+    type: "rpc_response";
+    ok: boolean;
+    result?: unknown;
+    error?: unknown;
+  };
 
 type Resp =
   | { id: string; type: "ready" }
-  | { id: string; type: "exec_result"; stdout: string; value: unknown; error: string | null }
-  | { id: string; type: "deps_install_result"; installed: string[]; already_present: string[]; failed: string[] }
-  | { id: string; type: "rpc_request"; namespace: string; op: string; args: Record<string, unknown> }
+  | {
+    id: string;
+    type: "exec_result";
+    stdout: string;
+    value: unknown;
+    error: string | null;
+  }
+  | {
+    id: string;
+    type: "deps_install_result";
+    installed: string[];
+    already_present: string[];
+    failed: string[];
+  }
+  | {
+    id: string;
+    type: "rpc_request";
+    namespace: string;
+    op: string;
+    args_json: string;
+  }
   | { id: string; type: "error"; message: string };
 
 function writeMsg(msg: Resp) {
@@ -39,30 +63,6 @@ async function* readNdjsonLines(): AsyncGenerator<string> {
   if (buf) yield buf;
 }
 
-// Shared buffers for synchronous RPC from the Pyodide worker.
-// Single-flight: one outstanding RPC at a time.
-const rpcState = new Int32Array(new SharedArrayBuffer(8)); // [status, length]
-const rpcBuf = new Uint8Array(new SharedArrayBuffer(1024 * 1024)); // 1MB payload
-// status: 0 = idle, 1 = response ready
-let currentRpcId: string | null = null;
-
-function rpcWriteResponse(rpcId: string, payload: unknown) {
-  if (currentRpcId !== rpcId) {
-    writeMsg({ id: rpcId, type: "error", message: `rpc id mismatch: expected ${currentRpcId}, got ${rpcId}` });
-    return;
-  }
-  const data = new TextEncoder().encode(JSON.stringify(payload ?? null));
-  const out = data.length > rpcBuf.byteLength
-    ? new TextEncoder().encode(JSON.stringify({ ok: false, error: { type: "RPCTransportError", message: "rpc payload too large" } }))
-    : data;
-
-  rpcBuf.set(out.subarray(0, rpcBuf.byteLength));
-  rpcState[1] = out.length;
-  rpcState[0] = 1;
-  Atomics.notify(rpcState, 0, 1);
-  currentRpcId = null;
-}
-
 function newWorker(): Worker {
   const worker = new Worker(new URL("./worker.ts", import.meta.url), {
     type: "module",
@@ -70,8 +70,6 @@ function newWorker(): Worker {
   });
   worker.postMessage({
     type: "boot",
-    rpcState,
-    rpcBuf,
   });
   return worker;
 }
@@ -83,7 +81,10 @@ let bootWait: Promise<void> | null = null;
 let bootResolve: (() => void) | null = null;
 let bootReject: ((e: unknown) => void) | null = null;
 
-const execPending = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void }>();
+const execPending = new Map<
+  string,
+  { resolve: (v: any) => void; reject: (e: any) => void }
+>();
 
 function ensureWorker() {
   if (!worker) worker = newWorker();
@@ -165,10 +166,19 @@ function attachWorkerHandler() {
     }
 
     if (msg.type === "rpc_request") {
-      currentRpcId = msg.id;
-      writeMsg({ id: msg.id, type: "rpc_request", namespace: msg.namespace, op: msg.op, args: msg.args });
+      // args_json is required to avoid DataCloneError (Pyodide dict proxies are not cloneable).
+      writeMsg({
+        id: msg.id,
+        type: "rpc_request",
+        namespace: msg.namespace,
+        op: msg.op,
+        args_json: String(msg.args_json ?? "{}"),
+      });
       return;
     }
+
+    // Streamed RPC response from host -> runner -> worker.
+    // Note: worker only sends rpc_request messages.
   };
 
   worker.onerror = (e) => {
@@ -197,7 +207,28 @@ function enqueueRun(fn: () => Promise<void>) {
 async function handleReq(req: Req) {
   try {
     if (req.type === "rpc_response") {
-      rpcWriteResponse(req.id, req.ok ? { ok: true, result: req.result } : { ok: false, error: req.error });
+      // Forward as chunks to avoid fixed-size transport limits.
+      ensureWorker();
+      const payload = JSON.stringify(
+        req.ok ? { ok: true, result: req.result } : {
+          ok: false,
+          error: req.error,
+        },
+      );
+
+      const chunkSize = 64 * 1024;
+      let seq = 0;
+      for (let off = 0; off < payload.length; off += chunkSize) {
+        const chunk = payload.slice(off, off + chunkSize);
+        worker!.postMessage({
+          type: "rpc_response_chunk",
+          id: req.id,
+          seq,
+          chunk,
+        });
+        seq += 1;
+      }
+      worker!.postMessage({ type: "rpc_response_end", id: req.id, seq });
       return;
     }
 
@@ -247,7 +278,11 @@ async function handleReq(req: Req) {
       return;
     }
   } catch (e) {
-    writeMsg({ id: req.id, type: "error", message: String((e as any)?.stack ?? e) });
+    writeMsg({
+      id: req.id,
+      type: "error",
+      message: String((e as any)?.stack ?? e),
+    });
   }
 }
 
@@ -257,7 +292,11 @@ for await (const line of readNdjsonLines()) {
   try {
     req = JSON.parse(line);
   } catch (e) {
-    writeMsg({ id: "parse", type: "error", message: `invalid json: ${String(e)}` });
+    writeMsg({
+      id: "parse",
+      type: "error",
+      message: `invalid json: ${String(e)}`,
+    });
     continue;
   }
 

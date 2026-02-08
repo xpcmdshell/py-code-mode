@@ -131,7 +131,9 @@ async def test_deno_pyodide_executor_deps_add_installs(tmp_path: Path) -> None:
     )
 
     async with Session(storage=storage, executor=executor) as session:
-        r = await session.run("deps.add('packaging')\nimport packaging\npackaging.__version__")
+        r = await session.run(
+            "await deps.add('packaging')\nimport packaging\npackaging.__version__"
+        )
         assert r.error is None
         assert isinstance(r.value, str)
         assert r.value
@@ -186,7 +188,9 @@ async def test_deno_pyodide_executor_network_none_blocks_installs(tmp_path: Path
     )
 
     async with Session(storage=storage, executor=executor) as session:
-        r = await session.run("deps.add('packaging')\nimport packaging\npackaging.__version__")
+        r = await session.run(
+            "await deps.add('packaging')\nimport packaging\npackaging.__version__"
+        )
         assert r.error is not None
 
 
@@ -211,8 +215,8 @@ async def test_deno_pyodide_executor_artifacts_roundtrip(tmp_path: Path) -> None
 
     async with Session(storage=storage, executor=executor) as session:
         r = await session.run(
-            "artifacts.save('obj', {'a': 1, 'b': [2, 3]}, description='t')\n"
-            "artifacts.load('obj')['b'][1]"
+            "await artifacts.save('obj', {'a': 1, 'b': [2, 3]}, description='t')\n"
+            "(await artifacts.load('obj'))['b'][1]"
         )
         assert r.error is None
         assert r.value == 3
@@ -241,10 +245,10 @@ async def test_deno_pyodide_executor_workflows_roundtrip(tmp_path: Path) -> None
 
     async with Session(storage=storage, executor=executor) as session:
         r = await session.run(
-            "workflows.create('hello', "
+            "await workflows.create('hello', "
             f"{source!r}, "
             "'test wf')\n"
-            "workflows.get('hello')['source']"
+            "(await workflows.get('hello'))['source']"
         )
         assert r.error is None
         assert r.value == source
@@ -297,11 +301,11 @@ async def test_deno_pyodide_executor_tools_via_rpc(tmp_path: Path) -> None:
     )
 
     async with Session(storage=storage, executor=executor) as session:
-        r_list = await session.run("sorted([t['name'] for t in tools.list()])")
+        r_list = await session.run("_ts = await tools.list()\nsorted([t['name'] for t in _ts])")
         assert r_list.error is None
         assert "echo" in r_list.value
 
-        r = await session.run("tools.echo.say(message='hi').strip()")
+        r = await session.run("(await tools.echo.say(message='hi')).strip()")
         assert r.error is None
         assert r.value == "hi"
 
@@ -329,11 +333,11 @@ async def test_deno_pyodide_executor_rpc_does_not_deadlock(tmp_path: Path) -> No
         r = await session.run(
             "\n".join(
                 [
-                    "artifacts.save('x', {'n': 1}, description='')",
+                    "await artifacts.save('x', {'n': 1}, description='')",
                     "s = 0",
                     "for _ in range(50):",
-                    "    if artifacts.exists('x'):",
-                    "        s += artifacts.load('x')['n']",
+                    "    if await artifacts.exists('x'):",
+                    "        s += (await artifacts.load('x'))['n']",
                     "s",
                 ]
             )
@@ -461,11 +465,11 @@ async def test_deno_pyodide_executor_mcp_tool_via_rpc(tmp_path: Path) -> None:
     )
 
     async with Session(storage=storage, executor=executor) as session:
-        r_list = await session.run("sorted([t['name'] for t in tools.list()])")
+        r_list = await session.run("_ts = await tools.list()\nsorted([t['name'] for t in _ts])")
         assert r_list.error is None
         assert "math" in r_list.value
 
-        r = await session.run("tools.math.add(a=2, b=3).strip()")
+        r = await session.run("(await tools.math.add(a=2, b=3)).strip()")
         assert r.error is None
         assert r.value == "5"
 
@@ -491,10 +495,10 @@ async def test_deno_pyodide_executor_workflows_search_via_rpc(tmp_path: Path) ->
     src = "async def run() -> str:\n    return 'hello world'\n"
 
     async with Session(storage=storage, executor=executor) as session:
-        r1 = await session.run("workflows.create('wf', " f"{src!r}, " "'greeting workflow')")
+        r1 = await session.run("await workflows.create('wf', " f"{src!r}, " "'greeting workflow')")
         assert r1.error is None
 
-        r2 = await session.run("workflows.search('greeting', limit=5)[0]['name']")
+        r2 = await session.run("(await workflows.search('greeting', limit=5))[0]['name']")
         assert r2.error is None
         assert r2.value == "wf"
 
@@ -525,7 +529,7 @@ async def test_deno_pyodide_executor_artifact_payload_size_limits(tmp_path: Path
         r_ok = await session.run(
             "\n".join(
                 [
-                    "len(artifacts.load('small'))",
+                    "len(await artifacts.load('small'))",
                 ]
             )
         )
@@ -535,12 +539,12 @@ async def test_deno_pyodide_executor_artifact_payload_size_limits(tmp_path: Path
         r_big = await session.run(
             "\n".join(
                 [
-                    "artifacts.load('big')",
+                    "len(await artifacts.load('big'))",
                 ]
             )
         )
-        assert r_big.error is not None
-        assert "rpc payload too large" in r_big.error.lower()
+        assert r_big.error is None
+        assert r_big.value == 2 * 1024 * 1024
 
 
 @pytest.mark.asyncio

@@ -305,7 +305,27 @@ class DenoPyodideExecutor:
         req_id = msg.get("id")
         namespace = msg.get("namespace")
         op = msg.get("op")
-        args = msg.get("args") or {}
+        # Runner forwards rpc_request from the Pyodide worker. New protocol uses
+        # args_json (string) to avoid structured clone issues with Python proxy
+        # objects. Keep backwards-compat with args (dict) for older runners.
+        args: dict[str, Any]
+        if "args_json" in msg:
+            raw = msg.get("args_json")
+            if not isinstance(raw, str):
+                raw = "{}"
+            try:
+                parsed = json.loads(raw)
+            except Exception:
+                parsed = {}
+            if parsed is None:
+                args = {}
+            elif isinstance(parsed, dict):
+                args = parsed
+            else:
+                args = {}
+        else:
+            raw_args = msg.get("args") or {}
+            args = raw_args if isinstance(raw_args, dict) else {}
 
         if not isinstance(req_id, str) or not isinstance(namespace, str) or not isinstance(op, str):
             await self._send(
