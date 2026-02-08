@@ -311,6 +311,65 @@ async def test_deno_pyodide_executor_tools_via_rpc(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_deno_pyodide_executor_tool_large_output_is_chunked(tmp_path: Path) -> None:
+    from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+    from py_code_mode.session import Session
+    from py_code_mode.storage import FileStorage
+
+    tools_dir = tmp_path / "tools"
+    tools_dir.mkdir(parents=True, exist_ok=True)
+    (tools_dir / "pyrun.yaml").write_text(
+        "\n".join(
+            [
+                "name: pyrun",
+                "description: Run Python snippet",
+                "command: python",
+                "timeout: 10",
+                "schema:",
+                "  options:",
+                "    command:",
+                "      type: string",
+                "      short: c",
+                "      description: code snippet",
+                "recipes:",
+                "  run:",
+                "    description: Run snippet via -c",
+                "    params:",
+                "      command: {}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    storage = FileStorage(tmp_path / "storage")
+    deno_dir = tmp_path / "deno_dir"
+    deno_dir.mkdir(parents=True, exist_ok=True)
+
+    executor = DenoPyodideExecutor(
+        DenoPyodideConfig(
+            deno_dir=deno_dir,
+            tools_path=tools_dir,
+            default_timeout=180.0,
+            ipc_timeout=120.0,
+            network_profile="none",
+        )
+    )
+
+    async with Session(storage=storage, executor=executor) as session:
+        r = await session.run(
+            "\n".join(
+                [
+                    "code = \"import sys; sys.stdout.write('x' * (2 * 1024 * 1024))\"",
+                    "len(await tools.pyrun.run(command=code))",
+                ]
+            )
+        )
+        assert r.error is None
+        assert r.value == 2 * 1024 * 1024
+
+
+@pytest.mark.asyncio
 async def test_deno_pyodide_executor_rpc_does_not_deadlock(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
     from py_code_mode.session import Session
