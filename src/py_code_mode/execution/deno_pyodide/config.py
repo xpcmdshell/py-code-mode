@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -37,7 +38,7 @@ class DenoPyodideConfig:
     # - "none": deny all network access (no runtime dep installs)
     # - "deps-only": allow just enough for micropip / pyodide package fetches
     # - "full": allow all network access
-    network_profile: str = "full"  # "none" | "deps-only" | "full"
+    network_profile: Literal["none", "deps-only", "full"] = "full"
 
     # Used when network_profile="deps-only".
     deps_net_allowlist: tuple[str, ...] = (
