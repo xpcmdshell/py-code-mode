@@ -89,13 +89,15 @@ recipes:
 
 ### Agent Usage
 
+Code executed via `Session.run()` supports **top-level `await`**. For portability across executors (and because `DenoPyodideExecutor` is async-first), prefer `await` when calling tools.
+
 ```python
 # Recipe invocation (recommended)
-tools.curl.get(url="https://api.github.com/repos/owner/repo")
-tools.curl.post(url="https://api.example.com/data", data='{"key": "value"}')
+await tools.curl.get(url="https://api.github.com/repos/owner/repo")
+await tools.curl.post(url="https://api.example.com/data", data='{"key": "value"}')
 
 # Escape hatch - raw tool invocation (full control)
-tools.curl(
+await tools.curl(
     url="https://example.com",
     silent=True,
     location=True,
@@ -103,9 +105,9 @@ tools.curl(
 )
 
 # Discovery
-tools.list()                    # All tools
-tools.search("http")            # Search by name/description/tags
-tools.curl.list()               # Recipes for a specific tool
+await tools.list()              # All tools
+await tools.search("http")      # Search by name/description/tags
+await tools.curl.list()         # Recipes for a specific tool
 ```
 
 ## MCP Tools
@@ -192,15 +194,15 @@ Agents can discover and search tools:
 
 ```python
 # List all available tools
-all_tools = tools.list()
+all_tools = await tools.list()
 # Returns: [Tool(name="curl", description="...", callables=[...]), ...]
 
 # Search by keyword
-http_tools = tools.search("http")
+http_tools = await tools.search("http")
 # Searches tool names, descriptions, and tags
 
 # List recipes for a tool
-curl_recipes = tools.curl.list()
+curl_recipes = await tools.curl.list()
 # Returns: [{"name": "get", "description": "...", "params": {...}}, ...]
 ```
 

@@ -31,7 +31,7 @@ async def run(url: str, headers: dict = None) -> dict:
     """
     import json
     try:
-        response = tools.curl.get(url=url)
+        response = await tools.curl.get(url=url)
         return json.loads(response)
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Invalid JSON from {url}: {e}") from e
@@ -44,12 +44,12 @@ async def run(url: str, headers: dict = None) -> dict:
 Agents can create workflows dynamically:
 
 ```python
-workflows.create(
+await workflows.create(
     name="fetch_json",
     source='''async def run(url: str) -> dict:
     """Fetch and parse JSON from a URL."""
     import json
-    response = tools.curl.get(url=url)
+    response = await tools.curl.get(url=url)
     return json.loads(response)
 ''',
     description="Fetch JSON from URL and parse response"
@@ -62,14 +62,14 @@ Workflows support semantic search based on descriptions:
 
 ```python
 # Search by intent
-results = workflows.search("fetch github repository data")
+results = await workflows.search("fetch github repository data")
 # Returns workflows ranked by relevance to the query
 
 # List all workflows
-all_workflows = workflows.list()
+all_workflows = await workflows.list()
 
 # Get specific workflow details
-workflow = workflows.get("fetch_json")
+workflow = await workflows.get("fetch_json")
 ```
 
 The search uses embedding-based similarity, so it understands intent even if the exact words don't match.
@@ -78,10 +78,10 @@ The search uses embedding-based similarity, so it understands intent even if the
 
 ```python
 # Direct invocation
-data = workflows.invoke("fetch_json", url="https://api.github.com/repos/owner/repo")
+data = await workflows.invoke("fetch_json", url="https://api.github.com/repos/owner/repo")
 
 # With keyword arguments
-analysis = workflows.invoke(
+analysis = await workflows.invoke(
     "analyze_repo",
     owner="anthropics",
     repo="anthropic-sdk-python"
@@ -99,7 +99,7 @@ Workflows can invoke other workflows, enabling layered workflows:
 async def run(url: str) -> dict:
     """Fetch and parse JSON from a URL."""
     import json
-    response = tools.curl.get(url=url)
+    response = await tools.curl.get(url=url)
     return json.loads(response)
 ```
 
@@ -110,8 +110,10 @@ async def run(url: str) -> dict:
 async def run(owner: str, repo: str) -> dict:
     """Get GitHub repository metadata."""
     # Uses the fetch_json workflow
-    data = workflows.invoke("fetch_json",
-                         url=f"https://api.github.com/repos/{owner}/{repo}")
+    data = await workflows.invoke(
+        "fetch_json",
+        url=f"https://api.github.com/repos/{owner}/{repo}",
+    )
 
     return {
         "name": data["name"],
@@ -131,7 +133,7 @@ async def run(repos: list) -> dict:
     for repo in repos:
         owner, name = repo.split('/')
         # Uses the get_repo_metadata workflow
-        metadata = workflows.invoke("get_repo_metadata", owner=owner, repo=name)
+        metadata = await workflows.invoke("get_repo_metadata", owner=owner, repo=name)
         summaries.append(metadata)
 
     # Aggregate results
@@ -229,7 +231,7 @@ async def run(repo_url: str, incl_contrib: bool = False) -> dict:
 
 ```python
 # Delete a workflow by name
-workflows.delete("old_workflow_name")
+await workflows.delete("old_workflow_name")
 ```
 
 ### Updating Workflows
@@ -238,10 +240,10 @@ Workflows are immutable. To update, delete and recreate:
 
 ```python
 # Delete old version
-workflows.delete("fetch_json")
+await workflows.delete("fetch_json")
 
 # Create new version
-workflows.create(
+await workflows.create(
     name="fetch_json",
     source='''async def run(url: str, timeout: int = 30) -> dict:
     # Updated implementation with timeout
@@ -264,7 +266,7 @@ Create `.py` files in the workflows directory:
 """Fetch a URL and extract key information."""
 
 async def run(url: str) -> dict:
-    content = tools.fetch(url=url)
+    content = await tools.fetch(url=url)
     paragraphs = [p for p in content.split("\n\n") if p.strip()]
     return {
         "url": url,

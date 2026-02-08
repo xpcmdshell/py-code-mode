@@ -1,6 +1,45 @@
 # Executors
 
-Executors determine where and how agent code runs. Three backends are available: Subprocess, Container, and InProcess.
+Executors determine where and how agent code runs. Four backends are available: Subprocess, Container, InProcess, and DenoPyodide (experimental).
+
+## DenoPyodideExecutor (Experimental, Sandboxed)
+
+`DenoPyodideExecutor` runs Python in **Pyodide (WASM)** inside a **Deno** subprocess. It relies on the Deno permission model for sandboxing.
+
+Key differences vs the other executors:
+- **Async-first sandbox API**: use `await tools.*`, `await workflows.*`, `await artifacts.*`, `await deps.*`.
+- **Best-effort deps**: dependency installs run via Pyodide `micropip` and many packages (especially those requiring native extensions) will not work.
+
+```python
+from pathlib import Path
+from py_code_mode import Session, FileStorage
+from py_code_mode.execution import DenoPyodideConfig, DenoPyodideExecutor
+
+storage = FileStorage(base_path=Path("./data"))
+
+config = DenoPyodideConfig(
+    tools_path=Path("./tools"),
+    deno_dir=Path("./.deno-cache"),  # Deno cache directory (used with --cached-only)
+    network_profile="deps-only",     # "none" | "deps-only" | "full"
+    default_timeout=60.0,
+)
+
+executor = DenoPyodideExecutor(config)
+
+async with Session(storage=storage, executor=executor) as session:
+    result = await session.run("await tools.list()")
+```
+
+### Network Profiles
+
+`DenoPyodideConfig.network_profile` controls network access for the Deno subprocess:
+- `none`: deny all network access (no runtime dep installs)
+- `deps-only`: allow access to PyPI/CDN hosts needed for common `micropip` installs
+- `full`: allow all network access
+
+### Timeout And Reset
+
+Timeouts are **soft** (the host stops waiting). If an execution times out, the session may be wedged until you call `session.reset()`, which restarts the sandbox.
 
 ## Quick Decision Guide
 
@@ -17,20 +56,24 @@ Need stronger isolation? → ContainerExecutor
   - Filesystem and network isolation
   - Requires Docker
 
+Want sandboxing without Docker (and can accept Pyodide limitations)? → DenoPyodideExecutor (experimental)
+  - WASM-based Python runtime + Deno permission model
+  - Network and filesystem sandboxing via Deno permissions
+
 Need maximum speed AND trust the code completely? → InProcessExecutor
   - No isolation (runs in your process)
   - Only for trusted code you control
 ```
 
-| Requirement | Subprocess | Container | InProcess |
-|-------------|------------|-----------|-----------|
-| **Recommended for most users** | **Yes** | | |
-| Process isolation | Yes | Yes | No |
-| Crash recovery | Yes | Yes | No |
-| Container isolation | No | Yes | No |
-| No Docker required | Yes | No | Yes |
-| Resource limits | Partial | Full | No |
-| Untrusted code | No | Yes | No |
+| Requirement | Subprocess | Container | DenoPyodide | InProcess |
+|-------------|------------|-----------|------------|-----------|
+| **Recommended for most users** | **Yes** | | | |
+| Process isolation | Yes | Yes | Yes | No |
+| Crash recovery | Yes | Yes | Yes | No |
+| Container isolation | No | Yes | No | No |
+| No Docker required | Yes | No | Yes | Yes |
+| Resource limits | Partial | Full | Partial | No |
+| Untrusted code | No | Yes | Yes (experimental) | No |
 
 ---
 

@@ -91,7 +91,7 @@ RedisStorage(
 # Agent Instance 1
 async with Session(storage=redis_storage) as session:
     await session.run('''
-workflows.create(
+await workflows.create(
     name="analyze_sentiment",
     source="""async def run(text: str) -> dict:
         # Implementation
@@ -104,7 +104,7 @@ workflows.create(
 # Agent Instance 2 (different process, different machine)
 async with Session(storage=redis_storage) as session:
     # Workflow is already available!
-    result = await session.run('workflows.invoke("analyze_sentiment", text="Great product!")')
+    result = await session.run('await workflows.invoke("analyze_sentiment", text="Great product!")')
 ```
 
 ---

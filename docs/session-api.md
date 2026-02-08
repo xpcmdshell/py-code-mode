@@ -51,7 +51,7 @@ Session.from_base(
 
 ```python
 async with Session.from_base("./.code-mode") as session:
-    await session.run("tools.list()")
+    await session.run("await tools.list()")
 ```
 
 ### subprocess()

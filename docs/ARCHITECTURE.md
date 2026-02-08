@@ -791,14 +791,14 @@ async with Session(storage=storage, executor=executor) as session:
 ### Tool Execution
 
 ```
-Agent writes: "tools.curl.get(url='...')"
+Agent writes: "await tools.curl.get(url='...')"
         |
         v
 +------------------------+
 | ToolsNamespace         |
 |                        |
 | tools.curl(url=...)    |--> Escape hatch (direct invocation)
-| tools.curl.get(...)    |--> Recipe invocation
+| tools.curl.get(...)    |--> Recipe invocation (awaitable in async contexts)
 | tools.search(...)      |                |
 | tools.list()           |                v
 +------------------------+         +--------------+
@@ -811,7 +811,7 @@ Agent writes: "tools.curl.get(url='...')"
 ### ToolProxy Methods
 
 ```
-Agent writes: "tools.curl.get(url='...')"
+Agent writes: "await tools.curl.get(url='...')"
         |
         v
 +------------------------+
@@ -835,7 +835,7 @@ Agent writes: "tools.curl.get(url='...')"
 ### Skill Execution
 
 ```
-Agent writes: "workflows.analyze_repo(repo='...')"
+Agent writes: "await workflows.analyze_repo(repo='...')"
         |
         v
 +------------------------+
@@ -880,7 +880,7 @@ Skill has access to:
 ### Artifact Storage
 
 ```
-Agent writes: "artifacts.save('data.json', b'...', 'description')"
+Agent writes: "await artifacts.save('data.json', b'...', 'description')"
         |
         v
 +------------------------+

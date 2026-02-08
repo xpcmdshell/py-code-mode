@@ -48,14 +48,15 @@ from py_code_mode import Session
 # One line setup - auto-discovers tools/, workflows/, artifacts/, requirements.txt
 async with Session.from_base("./data") as session:
     result = await session.run('''
+# This code runs inside the executor sandbox and supports top-level `await`.
 # Search for existing workflows
-results = workflows.search("data processing")
+results = await workflows.search("data processing")
 
 # List available tools
-all_tools = tools.list()
+all_tools = await tools.list()
 
 # Create a simple workflow
-workflows.create(
+await workflows.create(
     name="hello_world",
     source="""async def run(name: str = "World") -> str:
     return f"Hello, {name}!"
@@ -64,7 +65,7 @@ workflows.create(
 )
 
 # Invoke the workflow
-greeting = workflows.invoke("hello_world", name="Python")
+greeting = await workflows.invoke("hello_world", name="Python")
 print(greeting)
 ''')
 
@@ -105,23 +106,23 @@ Claude will use the `search_workflows` MCP tool automatically.
 
 ```python
 # 1. Search
-results = workflows.search("fetch json from url")
+results = await workflows.search("fetch json from url")
 
 # 2. Invoke if found
 if results:
-    data = workflows.invoke(results[0]["name"], url="https://api.example.com/data")
+    data = await workflows.invoke(results[0]["name"], url="https://api.example.com/data")
 else:
     # 3. Script the solution
     import json
-    response = tools.curl.get(url="https://api.example.com/data")
+    response = await tools.curl.get(url="https://api.example.com/data")
     data = json.loads(response)
 
     # 4. Save as workflow
-    workflows.create(
+    await workflows.create(
         name="fetch_json",
         source='''async def run(url: str) -> dict:
     import json
-    response = tools.curl.get(url=url)
+    response = await tools.curl.get(url=url)
     return json.loads(response)
 ''',
         description="Fetch and parse JSON from a URL"
