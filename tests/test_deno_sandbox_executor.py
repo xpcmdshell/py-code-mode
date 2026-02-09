@@ -315,6 +315,74 @@ async def test_deno_sandbox_executor_tools_via_rpc(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_deno_sandbox_executor_tool_middleware_is_invoked(tmp_path: Path) -> None:
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
+    from py_code_mode.session import Session
+    from py_code_mode.storage import FileStorage
+    from py_code_mode.tools import ToolCallContext, ToolMiddleware
+
+    tools_dir = tmp_path / "tools"
+    tools_dir.mkdir(parents=True, exist_ok=True)
+    (tools_dir / "echo.yaml").write_text(
+        "\n".join(
+            [
+                "name: echo",
+                "description: Echo text",
+                "command: /bin/echo",
+                "timeout: 5",
+                "schema:",
+                "  positional:",
+                "    - name: message",
+                "      type: string",
+                "      required: true",
+                "      description: message",
+                "recipes:",
+                "  say:",
+                "    description: Echo message",
+                "    params:",
+                "      message: {}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    events: list[str] = []
+
+    class _Recorder(ToolMiddleware):
+        async def __call__(self, ctx: ToolCallContext, call_next):  # type: ignore[override]
+            events.append(f"pre:{ctx.full_name}:{ctx.executor_type}:{ctx.origin}")
+            out = await call_next(ctx)
+            events.append(f"post:{ctx.full_name}")
+            return out
+
+    storage = FileStorage(tmp_path / "storage")
+    deno_dir = tmp_path / "deno_dir"
+    deno_dir.mkdir(parents=True, exist_ok=True)
+
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
+            deno_dir=deno_dir,
+            tools_path=tools_dir,
+            tool_middlewares=(_Recorder(),),
+            default_timeout=60.0,
+            ipc_timeout=120.0,
+            network_profile="none",
+        )
+    )
+
+    async with Session(storage=storage, executor=executor) as session:
+        r = await session.run("(await tools.echo.say(message='hi')).strip()")
+        assert r.error is None
+        assert r.value == "hi"
+
+    assert events == [
+        "pre:echo.say:deno-sandbox:deno-sandbox",
+        "post:echo.say",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_deno_sandbox_executor_tool_large_output_is_chunked(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session

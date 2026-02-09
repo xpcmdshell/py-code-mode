@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from py_code_mode.tools.middleware import ToolMiddleware
 
 
 @dataclass(frozen=True)
@@ -46,3 +49,8 @@ class DenoSandboxConfig:
         "files.pythonhosted.org",
         "cdn.jsdelivr.net",
     )
+
+    # Optional host-side middleware invoked around tool calls.
+    # This is enforced for DenoSandbox tool calls because all `tools.*` calls
+    # are proxied back to the host Python process.
+    tool_middlewares: tuple[ToolMiddleware, ...] = ()

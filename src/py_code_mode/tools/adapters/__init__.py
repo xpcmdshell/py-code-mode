@@ -4,6 +4,7 @@ from py_code_mode.tools.adapters.base import ToolAdapter
 from py_code_mode.tools.adapters.cli import CLIAdapter
 from py_code_mode.tools.adapters.http import Endpoint, HTTPAdapter
 from py_code_mode.tools.adapters.mcp import MCPAdapter
+from py_code_mode.tools.adapters.middleware import MiddlewareAdapter
 
 __all__ = [
     "ToolAdapter",
@@ -11,4 +12,5 @@ __all__ = [
     "MCPAdapter",
     "HTTPAdapter",
     "Endpoint",
+    "MiddlewareAdapter",
 ]

@@ -117,6 +117,12 @@ class DenoSandboxExecutor:
             self._tool_registry = await load_tools_from_path(self._config.tools_path)
         else:
             self._tool_registry = ToolRegistry()
+        if self._config.tool_middlewares:
+            self._tool_registry.apply_tool_middlewares(
+                self._config.tool_middlewares,
+                executor_type="deno-sandbox",
+                origin="deno-sandbox",
+            )
 
         # Deps store from executor config (persistence only; installs happen in sandbox)
         initial_deps = collect_configured_deps(self._config.deps, self._config.deps_file)

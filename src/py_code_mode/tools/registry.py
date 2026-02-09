@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from py_code_mode.errors import CodeModeError, ToolCallError, ToolNotFoundError
 from py_code_mode.tools.adapters.base import ToolAdapter
+from py_code_mode.tools.middleware import ToolMiddleware
 from py_code_mode.tools.types import Tool
 from py_code_mode.workflows import EmbeddingProvider, cosine_similarity
 
@@ -500,6 +501,55 @@ class ToolRegistry:
         self._tools.clear()
         self._tool_to_adapter.clear()
         self._vectors.clear()
+
+    # -------------------------------------------------------------------------
+    # Middleware
+    # -------------------------------------------------------------------------
+
+    def apply_tool_middlewares(
+        self,
+        middlewares: Sequence[ToolMiddleware],
+        *,
+        executor_type: str | None = None,
+        origin: str | None = None,
+    ) -> None:
+        """Wrap all adapters with a tool call middleware chain.
+
+        This method mutates the registry in-place and updates internal mappings
+        so that *all* tool call paths (ToolsNamespace, RPC providers, registry.call_tool)
+        are routed through the middleware chain.
+
+        Notes:
+        - Only `call_tool()` is wrapped. `list_tools()` and `describe()` are passed through.
+        - Applying multiple times will stack wrappers; call once per registry instance.
+        """
+        mws = tuple(middlewares)
+        if not mws:
+            return
+
+        from py_code_mode.tools.adapters.middleware import MiddlewareAdapter
+
+        old_adapters = list(self._adapters)
+        adapter_map: dict[int, ToolAdapter] = {}
+        new_adapters: list[ToolAdapter] = []
+
+        for adapter in old_adapters:
+            wrapped: ToolAdapter = MiddlewareAdapter(
+                adapter,
+                mws,
+                executor_type=executor_type,
+                origin=origin,
+            )
+            new_adapters.append(wrapped)
+            adapter_map[id(adapter)] = wrapped
+
+        self._adapters = new_adapters
+
+        # Update tool->adapter mapping used by registry.call_tool().
+        for tool_name, adapter in list(self._tool_to_adapter.items()):
+            mapped = adapter_map.get(id(adapter))
+            if mapped is not None:
+                self._tool_to_adapter[tool_name] = mapped
 
 
 class ScopedToolRegistry:
