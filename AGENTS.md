@@ -106,6 +106,15 @@ PY_CODE_MODE_TEST_DENO=1 uv run pytest -n 0 tests/test_deno_sandbox_executor.py 
 
 # Filter subsets (markers are defined in pyproject.toml)
 uv run pytest -m "not docker"
+
+# Common subsets
+uv run pytest -m "not slow"
+uv run pytest -m docker
+uv run pytest -m subprocess
+uv run pytest -m "not docker and not subprocess"
+
+# CI uses all extras; for local repro of CI failures you may want:
+uv sync --all-extras
 ```
 
 ### Linting and Type Checking
