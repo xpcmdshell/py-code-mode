@@ -16,19 +16,6 @@ def _make_workflow(name: str, description: str, code: str) -> PythonWorkflow:
 class TestEmbeddingProviderProtocol:
     """Tests that define the EmbeddingProvider interface."""
 
-    def test_provider_has_embed_method(self) -> None:
-        """Provider must have embed() that returns vectors."""
-        from py_code_mode.workflows import EmbeddingProvider
-
-        # Protocol should define embed method
-        assert hasattr(EmbeddingProvider, "embed")
-
-    def test_provider_has_dimension_property(self) -> None:
-        """Provider exposes embedding dimension for index allocation."""
-        from py_code_mode.workflows import EmbeddingProvider
-
-        assert hasattr(EmbeddingProvider, "dimension")
-
     def test_embed_returns_list_of_vectors(self) -> None:
         """embed() takes list of strings, returns list of float vectors."""
         from py_code_mode.workflows import MockEmbedder
@@ -93,8 +80,6 @@ class TestEmbedder:
 
     def test_detects_device(self, embedder) -> None:
         """Uses MPS on Apple Silicon, CUDA if available, else CPU."""
-        # Just verify it has a device attribute
-        assert hasattr(embedder, "device")
         assert embedder.device in ("mps", "cuda", "cpu")
 
 

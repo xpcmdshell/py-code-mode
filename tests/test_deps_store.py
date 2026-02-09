@@ -48,51 +48,6 @@ class TestDepsStoreProtocol:
         store = RedisDepsStore(mock_redis, prefix="test")
         assert isinstance(store, DepsStore)
 
-    def test_protocol_requires_list_method(self) -> None:
-        """DepsStore protocol requires list() -> list[str].
-
-        Breaks when: Protocol doesn't define list method.
-        """
-        from py_code_mode.deps import DepsStore
-
-        assert hasattr(DepsStore, "list")
-
-    def test_protocol_requires_add_method(self) -> None:
-        """DepsStore protocol requires add(package: str) -> None.
-
-        Breaks when: Protocol doesn't define add method.
-        """
-        from py_code_mode.deps import DepsStore
-
-        assert hasattr(DepsStore, "add")
-
-    def test_protocol_requires_remove_method(self) -> None:
-        """DepsStore protocol requires remove(package: str) -> bool.
-
-        Breaks when: Protocol doesn't define remove method.
-        """
-        from py_code_mode.deps import DepsStore
-
-        assert hasattr(DepsStore, "remove")
-
-    def test_protocol_requires_clear_method(self) -> None:
-        """DepsStore protocol requires clear() -> None.
-
-        Breaks when: Protocol doesn't define clear method.
-        """
-        from py_code_mode.deps import DepsStore
-
-        assert hasattr(DepsStore, "clear")
-
-    def test_protocol_requires_hash_method(self) -> None:
-        """DepsStore protocol requires hash() -> str.
-
-        Breaks when: Protocol doesn't define hash method.
-        """
-        from py_code_mode.deps import DepsStore
-
-        assert hasattr(DepsStore, "hash")
-
 
 # =============================================================================
 # FileDepsStore Tests

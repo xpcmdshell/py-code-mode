@@ -286,9 +286,10 @@ class TestRedisWorkflowStore:
         assert loaded is not None
         assert loaded.name == "greet"
         assert loaded.description == "Greet someone"
-        # Stored workflows have source and can invoke - duck typing
-        assert hasattr(loaded, "source")
-        assert hasattr(loaded, "invoke")
+        # Stored workflows have source and can invoke.
+        assert isinstance(loaded.source, str)
+        assert loaded.source
+        assert callable(loaded.invoke)
 
     def test_load_nonexistent_returns_none(self, redis_store: RedisWorkflowStore):
         """Should return None for nonexistent workflow."""

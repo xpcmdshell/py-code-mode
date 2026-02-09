@@ -150,62 +150,6 @@ class TestDepsNamespaceUserJourney:
 class TestDepsNamespaceContract:
     """Tests for DepsNamespace public API."""
 
-    def test_namespace_has_add_method(self, tmp_path: Path) -> None:
-        """DepsNamespace has add(package) method.
-
-        Breaks when: add method is missing.
-        """
-        from py_code_mode.deps import DepsNamespace, FileDepsStore, PackageInstaller
-
-        store = FileDepsStore(tmp_path)
-        installer = PackageInstaller()
-        namespace = DepsNamespace(store=store, installer=installer)
-
-        assert hasattr(namespace, "add")
-        assert callable(namespace.add)
-
-    def test_namespace_has_list_method(self, tmp_path: Path) -> None:
-        """DepsNamespace has list() method.
-
-        Breaks when: list method is missing.
-        """
-        from py_code_mode.deps import DepsNamespace, FileDepsStore, PackageInstaller
-
-        store = FileDepsStore(tmp_path)
-        installer = PackageInstaller()
-        namespace = DepsNamespace(store=store, installer=installer)
-
-        assert hasattr(namespace, "list")
-        assert callable(namespace.list)
-
-    def test_namespace_has_remove_method(self, tmp_path: Path) -> None:
-        """DepsNamespace has remove(package) method.
-
-        Breaks when: remove method is missing.
-        """
-        from py_code_mode.deps import DepsNamespace, FileDepsStore, PackageInstaller
-
-        store = FileDepsStore(tmp_path)
-        installer = PackageInstaller()
-        namespace = DepsNamespace(store=store, installer=installer)
-
-        assert hasattr(namespace, "remove")
-        assert callable(namespace.remove)
-
-    def test_namespace_has_sync_method(self, tmp_path: Path) -> None:
-        """DepsNamespace has sync() method.
-
-        Breaks when: sync method is missing.
-        """
-        from py_code_mode.deps import DepsNamespace, FileDepsStore, PackageInstaller
-
-        store = FileDepsStore(tmp_path)
-        installer = PackageInstaller()
-        namespace = DepsNamespace(store=store, installer=installer)
-
-        assert hasattr(namespace, "sync")
-        assert callable(namespace.sync)
-
     def test_list_returns_list_of_strings(self, tmp_path: Path) -> None:
         """list() returns list[str].
 

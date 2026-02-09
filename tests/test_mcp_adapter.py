@@ -196,23 +196,6 @@ class TestMCPAdapterConnection:
     """Tests for MCP server connection management."""
 
     @pytest.mark.asyncio
-    async def test_connect_to_stdio_server(self) -> None:
-        """Can connect to MCP server via stdio."""
-        from py_code_mode.tools.adapters.mcp import MCPAdapter
-
-        # This test verifies the factory method exists
-        # Actual connection would require a real server
-        assert hasattr(MCPAdapter, "connect_stdio")
-
-    @pytest.mark.asyncio
-    async def test_connect_to_sse_server(self) -> None:
-        """Can connect to MCP server via SSE transport."""
-        from py_code_mode.tools.adapters.mcp import MCPAdapter
-
-        # This test verifies the factory method exists
-        assert hasattr(MCPAdapter, "connect_sse")
-
-    @pytest.mark.asyncio
     async def test_close_cleans_up(self) -> None:
         """close() cleans up resources."""
         from py_code_mode.tools.adapters.mcp import MCPAdapter
@@ -316,14 +299,6 @@ class TestMCPAdapterSSETransport:
             await MCPAdapter.connect_sse("http://localhost:8080/sse", namespace="test")
 
             mock_session.initialize.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_connect_sse_method_exists(self) -> None:
-        """connect_sse method exists on MCPAdapter."""
-        from py_code_mode.tools.adapters.mcp import MCPAdapter
-
-        assert hasattr(MCPAdapter, "connect_sse")
-        assert callable(MCPAdapter.connect_sse)
 
 
 class TestMCPAdapterNamespacing:

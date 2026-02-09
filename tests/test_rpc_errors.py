@@ -312,7 +312,7 @@ class TestErrorClassHierarchy:
         result = await executor_with_storage.run("issubclass(WorkflowError, NamespaceError)")
 
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_tool_error_is_namespace_error(self, executor_with_storage) -> None:
@@ -323,7 +323,7 @@ class TestErrorClassHierarchy:
         result = await executor_with_storage.run("issubclass(ToolError, NamespaceError)")
 
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_artifact_error_is_namespace_error(self, executor_with_storage) -> None:
@@ -334,7 +334,7 @@ class TestErrorClassHierarchy:
         result = await executor_with_storage.run("issubclass(ArtifactError, NamespaceError)")
 
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_deps_error_is_namespace_error(self, executor_with_storage) -> None:
@@ -345,7 +345,7 @@ class TestErrorClassHierarchy:
         result = await executor_with_storage.run("issubclass(DepsError, NamespaceError)")
 
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_namespace_error_is_rpc_error(self, executor_with_storage) -> None:
@@ -356,7 +356,7 @@ class TestErrorClassHierarchy:
         result = await executor_with_storage.run("issubclass(NamespaceError, RPCError)")
 
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_rpc_error_is_exception(self, executor_with_storage) -> None:
@@ -367,7 +367,7 @@ class TestErrorClassHierarchy:
         result = await executor_with_storage.run("issubclass(RPCError, Exception)")
 
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
 
 # =============================================================================
@@ -451,7 +451,7 @@ class TestRPCTransportErrors:
         result = await executor_with_storage.run("issubclass(RPCTransportError, RPCError)")
 
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_non_dict_error_raises_rpc_transport_error(self, executor_with_storage) -> None:

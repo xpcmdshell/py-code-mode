@@ -256,33 +256,6 @@ class TestStorageBackendProtocolSimplified:
     # NOTE: test_storage_backend_has_get_tool_registry removed
     # tools are now owned by executors, not storage
 
-    def test_storage_backend_has_get_workflow_library(self) -> None:
-        """StorageBackend protocol must have get_workflow_library method.
-
-        Breaks when: Method is missing from protocol.
-        """
-        from py_code_mode.storage.backends import StorageBackend
-
-        assert hasattr(StorageBackend, "get_workflow_library")
-
-    def test_storage_backend_has_get_artifact_store(self) -> None:
-        """StorageBackend protocol must have get_artifact_store method.
-
-        Breaks when: Method is missing from protocol.
-        """
-        from py_code_mode.storage.backends import StorageBackend
-
-        assert hasattr(StorageBackend, "get_artifact_store")
-
-    def test_storage_backend_has_get_serializable_access(self) -> None:
-        """StorageBackend protocol must have get_serializable_access method.
-
-        Breaks when: Method is missing from protocol.
-        """
-        from py_code_mode.storage.backends import StorageBackend
-
-        assert hasattr(StorageBackend, "get_serializable_access")
-
     def test_storage_backend_no_tools_property(self) -> None:
         """StorageBackend protocol must NOT have tools property.
 

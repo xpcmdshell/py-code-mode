@@ -1,85 +1,13 @@
-"""Tests for Executor protocol changes - Step 5 of implementation plan.
+"""Executor/storage integration tests.
 
-These tests verify:
-1. Executor protocol defines start() method
-2. All executors accept StorageBackend | None (not StorageAccess)
-3. StorageBackendAccess class is deleted
-4. Each executor correctly handles StorageBackend
-
-Written to FAIL initially (TDD RED phase).
+These focus on behavior at the executor<->storage boundary, not protocol/shape
+introspection (which is brittle and mostly redundant with behavioral tests).
 """
 
 from pathlib import Path
-from typing import get_type_hints
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-# =============================================================================
-# Protocol Compliance Tests
-# =============================================================================
-
-
-class TestExecutorProtocolDefinesStart:
-    """Verify the Executor protocol includes start() method."""
-
-    def test_protocol_has_start_method(self) -> None:
-        """Executor protocol must define start() method."""
-        from py_code_mode.execution.protocol import Executor
-
-        # Protocol should have start method
-        assert hasattr(Executor, "start"), "Executor protocol must define start() method"
-
-    def test_protocol_start_accepts_storage_backend(self) -> None:
-        """Executor.start() must accept StorageBackend | None parameter."""
-        from py_code_mode.execution.protocol import Executor
-        from py_code_mode.storage.backends import StorageBackend
-
-        # Get type hints for start method, providing StorageBackend for forward reference
-        hints = get_type_hints(Executor.start, globalns={"StorageBackend": StorageBackend})
-
-        # Should have 'storage' parameter that accepts StorageBackend | None
-        assert "storage" in hints, "start() must have 'storage' parameter"
-
-        # Check the type annotation includes StorageBackend
-        storage_type = hints["storage"]
-        # Handle Union types (StorageBackend | None)
-        storage_type_str = str(storage_type)
-        assert "StorageBackend" in storage_type_str, (
-            f"start() storage parameter must accept StorageBackend, got {storage_type_str}"
-        )
-
-    def test_protocol_start_is_async(self) -> None:
-        """Executor.start() must be an async method."""
-        import asyncio
-
-        from py_code_mode.execution.protocol import Executor
-
-        # start method should be a coroutine function
-        assert asyncio.iscoroutinefunction(Executor.start), "Executor.start() must be async"
-
-
-class TestStorageBackendAccessDeleted:
-    """Verify StorageBackendAccess class is removed."""
-
-    def test_storage_backend_access_not_in_protocol(self) -> None:
-        """StorageBackendAccess should not exist in protocol module."""
-        from py_code_mode.execution import protocol
-
-        assert not hasattr(protocol, "StorageBackendAccess"), (
-            "StorageBackendAccess should be deleted from protocol.py"
-        )
-
-    def test_storage_access_union_excludes_backend_access(self) -> None:
-        """StorageAccess type should not include StorageBackendAccess."""
-        from py_code_mode.execution.protocol import StorageAccess
-
-        # StorageAccess should only be FileStorageAccess | RedisStorageAccess
-        storage_access_str = str(StorageAccess)
-        assert "StorageBackendAccess" not in storage_access_str, (
-            f"StorageAccess should not include StorageBackendAccess: {storage_access_str}"
-        )
-
 
 # =============================================================================
 # InProcessExecutor Tests
@@ -88,36 +16,6 @@ class TestStorageBackendAccessDeleted:
 
 class TestInProcessExecutorAcceptsStorageBackend:
     """InProcessExecutor.start() must accept StorageBackend directly."""
-
-    def test_start_accepts_storage_backend(self, tmp_path: Path) -> None:
-        """InProcessExecutor.start() accepts StorageBackend parameter."""
-        from py_code_mode.execution.in_process import InProcessExecutor
-        from py_code_mode.storage.backends import FileStorage
-
-        storage = FileStorage(tmp_path)
-        executor = InProcessExecutor()
-
-        # This should NOT raise - executor accepts StorageBackend
-        # Type checker would fail if signature is still StorageAccess
-        import asyncio
-
-        asyncio.run(executor.start(storage=storage))
-
-    def test_start_parameter_named_storage_not_storage_access(self) -> None:
-        """InProcessExecutor.start() parameter must be named 'storage' not 'storage_access'."""
-        import inspect
-
-        from py_code_mode.execution.in_process import InProcessExecutor
-
-        sig = inspect.signature(InProcessExecutor.start)
-        param_names = list(sig.parameters.keys())
-
-        assert "storage" in param_names, (
-            f"start() must have 'storage' parameter, got: {param_names}"
-        )
-        assert "storage_access" not in param_names, (
-            "start() should NOT have 'storage_access' parameter (old name)"
-        )
 
     @pytest.mark.asyncio
     async def test_uses_executor_config_for_tools(self, tmp_path: Path) -> None:
@@ -266,22 +164,6 @@ class TestInProcessExecutorRejectsOldTypes:
 class TestContainerExecutorAcceptsStorageBackend:
     """ContainerExecutor.start() must accept StorageBackend directly."""
 
-    def test_start_parameter_named_storage(self) -> None:
-        """ContainerExecutor.start() parameter must be named 'storage'."""
-        import inspect
-
-        from py_code_mode.execution.container import ContainerExecutor
-
-        sig = inspect.signature(ContainerExecutor.start)
-        param_names = list(sig.parameters.keys())
-
-        assert "storage" in param_names, (
-            f"start() must have 'storage' parameter, got: {param_names}"
-        )
-        assert "storage_access" not in param_names, (
-            "start() should NOT have 'storage_access' parameter (old name)"
-        )
-
     @pytest.mark.asyncio
     async def test_calls_get_serializable_access_for_file_storage(self, tmp_path: Path) -> None:
         """ContainerExecutor calls storage.get_serializable_access() for FileStorage."""
@@ -408,22 +290,6 @@ class TestContainerExecutorRejectsOldTypes:
 class TestSubprocessExecutorAcceptsStorageBackend:
     """SubprocessExecutor.start() must accept StorageBackend directly."""
 
-    def test_start_parameter_named_storage(self) -> None:
-        """SubprocessExecutor.start() parameter must be named 'storage'."""
-        import inspect
-
-        from py_code_mode.execution.subprocess import SubprocessExecutor
-
-        sig = inspect.signature(SubprocessExecutor.start)
-        param_names = list(sig.parameters.keys())
-
-        assert "storage" in param_names, (
-            f"start() must have 'storage' parameter, got: {param_names}"
-        )
-        assert "storage_access" not in param_names, (
-            "start() should NOT have 'storage_access' parameter (old name)"
-        )
-
     @pytest.mark.asyncio
     async def test_calls_get_serializable_access(self, tmp_path: Path) -> None:
         """SubprocessExecutor calls storage.get_serializable_access().
@@ -513,50 +379,3 @@ class TestSubprocessExecutorRejectsOldTypes:
 # =============================================================================
 # Cross-Executor Consistency Tests
 # =============================================================================
-
-
-class TestAllExecutorsHaveConsistentStartSignature:
-    """All executors must have identical start() signatures."""
-
-    def test_all_executors_have_storage_parameter(self) -> None:
-        """All executor start() methods have 'storage' parameter."""
-        import inspect
-
-        from py_code_mode.execution.container import ContainerExecutor
-        from py_code_mode.execution.in_process import InProcessExecutor
-        from py_code_mode.execution.subprocess import SubprocessExecutor
-
-        executors = [
-            ("InProcessExecutor", InProcessExecutor),
-            ("ContainerExecutor", ContainerExecutor),
-            ("SubprocessExecutor", SubprocessExecutor),
-        ]
-
-        for name, executor_cls in executors:
-            sig = inspect.signature(executor_cls.start)
-            param_names = list(sig.parameters.keys())
-            assert "storage" in param_names, (
-                f"{name}.start() must have 'storage' parameter, got: {param_names}"
-            )
-
-    def test_all_executors_storage_defaults_to_none(self) -> None:
-        """All executor start() methods have storage default to None."""
-        import inspect
-
-        from py_code_mode.execution.container import ContainerExecutor
-        from py_code_mode.execution.in_process import InProcessExecutor
-        from py_code_mode.execution.subprocess import SubprocessExecutor
-
-        executors = [
-            ("InProcessExecutor", InProcessExecutor),
-            ("ContainerExecutor", ContainerExecutor),
-            ("SubprocessExecutor", SubprocessExecutor),
-        ]
-
-        for name, executor_cls in executors:
-            sig = inspect.signature(executor_cls.start)
-            storage_param = sig.parameters.get("storage")
-            assert storage_param is not None, f"{name}.start() missing storage parameter"
-            assert storage_param.default is None, (
-                f"{name}.start() storage must default to None, got: {storage_param.default}"
-            )

@@ -263,8 +263,8 @@ class TestGetSerializableAccess:
             """
             storage = FileStorage(tmp_path)
 
-            assert hasattr(storage, "get_serializable_access")
-            assert callable(storage.get_serializable_access)
+            # Covered by tests that call get_serializable_access() and assert return types.
+            assert storage.get_serializable_access() is not None
 
         def test_method_exists_on_redis_storage(self, mock_redis: MockRedisClient) -> None:
             """RedisStorage has get_serializable_access method.
@@ -273,8 +273,7 @@ class TestGetSerializableAccess:
             """
             storage = RedisStorage(redis=mock_redis, prefix="test")
 
-            assert hasattr(storage, "get_serializable_access")
-            assert callable(storage.get_serializable_access)
+            assert storage.get_serializable_access() is not None
 
 
 # NOTE: TestStorageBackendExecutionMethods was removed in the executor-ownership refactor.

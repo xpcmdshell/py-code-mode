@@ -35,15 +35,6 @@ if TYPE_CHECKING:
 class TestFileStorageVectorStoreIntegration:
     """Tests for FileStorage vector store integration."""
 
-    def test_get_vector_store_method_exists(self, tmp_path: Path) -> None:
-        """FileStorage has get_vector_store() method.
-
-        Breaks when: Method doesn't exist on FileStorage.
-        """
-        storage = FileStorage(tmp_path)
-        assert hasattr(storage, "get_vector_store")
-        assert callable(storage.get_vector_store)
-
     def test_get_vector_store_returns_chroma_when_available(self, tmp_path: Path) -> None:
         """get_vector_store() returns ChromaVectorStore when chromadb installed.
 
@@ -55,11 +46,10 @@ class TestFileStorageVectorStoreIntegration:
 
         # Should return ChromaVectorStore if chromadb available
         assert vector_store is not None
-        # Check it has VectorStore protocol methods
-        assert hasattr(vector_store, "add")
-        assert hasattr(vector_store, "remove")
-        assert hasattr(vector_store, "search")
-        assert hasattr(vector_store, "count")
+        # Runtime-checkable protocol: ensure it satisfies VectorStore.
+        from py_code_mode.workflows.vector_store import VectorStore
+
+        assert isinstance(vector_store, VectorStore)
 
     def test_get_vector_store_uses_correct_path(self, tmp_path: Path) -> None:
         """get_vector_store() uses {base_path}/vectors/ directory.
@@ -114,18 +104,6 @@ class TestFileStorageVectorStoreIntegration:
 class TestFileStorageWorkflowLibraryVectorStoreIntegration:
     """Tests for WorkflowLibrary receiving vector_store from FileStorage."""
 
-    def test_workflow_library_has_vector_store_attribute(self, tmp_path: Path) -> None:
-        """WorkflowLibrary created by FileStorage has vector_store attribute.
-
-        Breaks when: create_workflow_library() not called with vector_store parameter.
-        """
-        storage = FileStorage(tmp_path)
-
-        library = storage.get_workflow_library()
-
-        # Should have vector_store attribute
-        assert hasattr(library, "vector_store")
-
     def test_workflow_library_vector_store_matches_get_vector_store(self, tmp_path: Path) -> None:
         """WorkflowLibrary.vector_store is same instance as storage.get_vector_store().
 
@@ -173,15 +151,6 @@ class TestFileStorageWorkflowLibraryVectorStoreIntegration:
 class TestRedisStorageVectorStorePlaceholder:
     """Tests for RedisStorage vector store integration (Phase 6 placeholder)."""
 
-    def test_get_vector_store_method_exists(self, mock_redis: MockRedisClient) -> None:
-        """RedisStorage has get_vector_store() method.
-
-        Breaks when: Method doesn't exist on RedisStorage.
-        """
-        storage = RedisStorage(redis=mock_redis, prefix="test")
-        assert hasattr(storage, "get_vector_store")
-        assert callable(storage.get_vector_store)
-
     def test_get_vector_store_returns_none_for_now(self, mock_redis: MockRedisClient) -> None:
         """get_vector_store() returns None (RedisVectorStore not implemented yet).
 
@@ -204,15 +173,13 @@ class TestFileStorageAccessVectorsPath:
     """Tests for vectors_path field in FileStorageAccess."""
 
     def test_file_storage_access_has_vectors_path_field(self, tmp_path: Path) -> None:
-        """FileStorageAccess has vectors_path field.
-
-        Breaks when: Field doesn't exist in dataclass definition.
-        """
+        """FileStorageAccess has vectors_path field (cross-process config)."""
         storage = FileStorage(tmp_path)
 
         access = storage.get_serializable_access()
 
-        assert hasattr(access, "vectors_path")
+        # Attribute access is the behavior: this will raise AttributeError if missing.
+        _ = access.vectors_path
 
     def test_vectors_path_is_optional(self, tmp_path: Path) -> None:
         """vectors_path can be None when vector store unavailable.
@@ -225,8 +192,7 @@ class TestFileStorageAccessVectorsPath:
         with patch.object(storage, "get_vector_store", return_value=None):
             access = storage.get_serializable_access()
 
-        # Should be None when vector store not available
-        # (or set to path if chromadb is available)
+        # Should be None when vector store not available (or set to a Path if available).
         assert access.vectors_path is None or isinstance(access.vectors_path, Path)
 
     def test_vectors_path_points_to_vectors_directory(self, tmp_path: Path) -> None:
@@ -266,15 +232,12 @@ class TestRedisStorageAccessVectorsPrefixPlaceholder:
     def test_redis_storage_access_has_vectors_prefix_field(
         self, mock_redis: MockRedisClient
     ) -> None:
-        """RedisStorageAccess has vectors_prefix field.
-
-        Breaks when: Field doesn't exist in dataclass definition.
-        """
+        """RedisStorageAccess has vectors_prefix field (placeholder for Phase 6)."""
         storage = RedisStorage(redis=mock_redis, prefix="test")
 
         access = storage.get_serializable_access()
 
-        assert hasattr(access, "vectors_prefix")
+        _ = access.vectors_prefix
 
     def test_vectors_prefix_is_optional(self, mock_redis: MockRedisClient) -> None:
         """vectors_prefix can be None when RedisVectorStore not implemented.
@@ -285,7 +248,7 @@ class TestRedisStorageAccessVectorsPrefixPlaceholder:
 
         access = storage.get_serializable_access()
 
-        # Should be None until Phase 6 implements RedisVectorStore
+        # Should be None until Phase 6 implements RedisVectorStore.
         assert access.vectors_prefix is None or isinstance(access.vectors_prefix, str)
 
     def test_vectors_prefix_follows_pattern_when_implemented(
