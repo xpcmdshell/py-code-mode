@@ -34,30 +34,6 @@ from py_code_mode.execution.protocol import Capability
 class TestInProcessExecutorInstallDepsContract:
     """Contract tests for InProcessExecutor.install_deps()."""
 
-    def test_executor_has_install_deps_method(self) -> None:
-        """InProcessExecutor has install_deps() method.
-
-        Contract: Executor protocol requires install_deps(packages) method.
-        Breaks when: Method not implemented.
-        """
-        from py_code_mode.execution.in_process import InProcessExecutor
-
-        executor = InProcessExecutor()
-        assert hasattr(executor, "install_deps")
-        assert callable(executor.install_deps)
-
-    def test_executor_has_uninstall_deps_method(self) -> None:
-        """InProcessExecutor has uninstall_deps() method.
-
-        Contract: Executor protocol requires uninstall_deps(packages) method.
-        Breaks when: Method not implemented.
-        """
-        from py_code_mode.execution.in_process import InProcessExecutor
-
-        executor = InProcessExecutor()
-        assert hasattr(executor, "uninstall_deps")
-        assert callable(executor.uninstall_deps)
-
     def test_executor_supports_deps_install_capability(self) -> None:
         """InProcessExecutor reports DEPS_INSTALL capability.
 
@@ -483,22 +459,6 @@ class TestVenvManagerRemovePackage:
     """
 
     @pytest.mark.asyncio
-    async def test_remove_package_exists(self) -> None:
-        """VenvManager has remove_package() method.
-
-        Contract: VenvManager.remove_package(venv, package) exists.
-        Breaks when: Method not implemented.
-        """
-        from py_code_mode.execution.subprocess.config import SubprocessConfig
-        from py_code_mode.execution.subprocess.venv import VenvManager
-
-        config = SubprocessConfig(python_version="3.12")
-        manager = VenvManager(config)
-
-        assert hasattr(manager, "remove_package")
-        assert callable(manager.remove_package)
-
-    @pytest.mark.asyncio
     async def test_remove_package_uninstalls_from_venv(self, tmp_path: Path) -> None:
         """remove_package() uninstalls package from venv.
 
@@ -581,30 +541,6 @@ class TestVenvManagerRemovePackage:
 @pytest.mark.xdist_group("subprocess")
 class TestSubprocessExecutorDepsMethodsContract:
     """Contract tests for SubprocessExecutor.install_deps() and uninstall_deps()."""
-
-    def test_executor_has_install_deps_method(self) -> None:
-        """SubprocessExecutor has install_deps() method.
-
-        Contract: Executor protocol requires install_deps(packages) method.
-        Breaks when: Method not implemented.
-        """
-        from py_code_mode.execution.subprocess import SubprocessExecutor
-
-        executor = SubprocessExecutor()
-        assert hasattr(executor, "install_deps")
-        assert callable(executor.install_deps)
-
-    def test_executor_has_uninstall_deps_method(self) -> None:
-        """SubprocessExecutor has uninstall_deps() method.
-
-        Contract: Executor protocol requires uninstall_deps(packages) method.
-        Breaks when: Method not implemented.
-        """
-        from py_code_mode.execution.subprocess import SubprocessExecutor
-
-        executor = SubprocessExecutor()
-        assert hasattr(executor, "uninstall_deps")
-        assert callable(executor.uninstall_deps)
 
     @pytest.mark.asyncio
     async def test_install_deps_returns_dict(self, tmp_path: Path) -> None:
@@ -897,38 +833,6 @@ class TestSubprocessExecutorDepsMethodsIntegration:
 # =============================================================================
 # Capability Constants Tests
 # =============================================================================
-
-
-class TestDepsCapabilityConstants:
-    """Tests for DEPS_INSTALL and DEPS_UNINSTALL capability constants."""
-
-    def test_deps_install_capability_exists(self) -> None:
-        """DEPS_INSTALL capability constant exists.
-
-        Contract: Capability.DEPS_INSTALL is defined.
-        Breaks when: Constant not added to Capability class.
-        """
-        assert hasattr(Capability, "DEPS_INSTALL")
-        assert Capability.DEPS_INSTALL == "deps_install"
-
-    def test_deps_uninstall_capability_exists(self) -> None:
-        """DEPS_UNINSTALL capability constant exists.
-
-        Contract: Capability.DEPS_UNINSTALL is defined.
-        Breaks when: Constant not added to Capability class.
-        """
-        assert hasattr(Capability, "DEPS_UNINSTALL")
-        assert Capability.DEPS_UNINSTALL == "deps_uninstall"
-
-    def test_deps_capabilities_in_all_set(self) -> None:
-        """DEPS_INSTALL and DEPS_UNINSTALL in Capability.all() set.
-
-        Contract: All capabilities returned by Capability.all().
-        Breaks when: New capabilities not added to all() method.
-        """
-        all_caps = Capability.all()
-        assert Capability.DEPS_INSTALL in all_caps
-        assert Capability.DEPS_UNINSTALL in all_caps
 
 
 # =============================================================================

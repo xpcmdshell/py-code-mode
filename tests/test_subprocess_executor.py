@@ -8,7 +8,7 @@ import pytest
 
 from py_code_mode.execution.protocol import Capability
 from py_code_mode.execution.subprocess.config import SubprocessConfig
-from py_code_mode.execution.subprocess.venv import KernelVenv, VenvManager
+from py_code_mode.execution.subprocess.venv import VenvManager
 
 
 class TestSubprocessConfig:
@@ -212,76 +212,6 @@ class TestSubprocessConfig:
 # =============================================================================
 # KernelVenv Dataclass Tests
 # =============================================================================
-
-
-class TestKernelVenv:
-    """Tests for KernelVenv dataclass structure."""
-
-    # =========================================================================
-    # Field Existence
-    # =========================================================================
-
-    def test_has_path_field(self, tmp_path: Path) -> None:
-        """KernelVenv has path field."""
-        venv = KernelVenv(
-            path=tmp_path / "venv",
-            python_path=tmp_path / "venv" / "bin" / "python",
-            kernel_spec_name="test-kernel",
-        )
-        assert hasattr(venv, "path")
-        assert venv.path == tmp_path / "venv"
-
-    def test_has_python_path_field(self, tmp_path: Path) -> None:
-        """KernelVenv has python_path field."""
-        python_path = tmp_path / "venv" / "bin" / "python"
-        venv = KernelVenv(
-            path=tmp_path / "venv",
-            python_path=python_path,
-            kernel_spec_name="test-kernel",
-        )
-        assert hasattr(venv, "python_path")
-        assert venv.python_path == python_path
-
-    def test_has_kernel_spec_name_field(self, tmp_path: Path) -> None:
-        """KernelVenv has kernel_spec_name field."""
-        venv = KernelVenv(
-            path=tmp_path / "venv",
-            python_path=tmp_path / "venv" / "bin" / "python",
-            kernel_spec_name="my-kernel-spec",
-        )
-        assert hasattr(venv, "kernel_spec_name")
-        assert venv.kernel_spec_name == "my-kernel-spec"
-
-    # =========================================================================
-    # Type Correctness
-    # =========================================================================
-
-    def test_path_is_path_type(self, tmp_path: Path) -> None:
-        """path field is Path type."""
-        venv = KernelVenv(
-            path=tmp_path / "venv",
-            python_path=tmp_path / "venv" / "bin" / "python",
-            kernel_spec_name="test-kernel",
-        )
-        assert isinstance(venv.path, Path)
-
-    def test_python_path_is_path_type(self, tmp_path: Path) -> None:
-        """python_path field is Path type."""
-        venv = KernelVenv(
-            path=tmp_path / "venv",
-            python_path=tmp_path / "venv" / "bin" / "python",
-            kernel_spec_name="test-kernel",
-        )
-        assert isinstance(venv.python_path, Path)
-
-    def test_kernel_spec_name_is_str_type(self, tmp_path: Path) -> None:
-        """kernel_spec_name field is str type."""
-        venv = KernelVenv(
-            path=tmp_path / "venv",
-            python_path=tmp_path / "venv" / "bin" / "python",
-            kernel_spec_name="test-kernel",
-        )
-        assert isinstance(venv.kernel_spec_name, str)
 
 
 # =============================================================================
@@ -1095,13 +1025,13 @@ class TestSubprocessExecutorLifecycle:
 
             # Verify namespaces are injected
             result = await executor.run("'tools' in dir()")
-            assert result.value in (True, "True")
+            assert result.value is True
 
             result = await executor.run("'workflows' in dir()")
-            assert result.value in (True, "True")
+            assert result.value is True
 
             result = await executor.run("'artifacts' in dir()")
-            assert result.value in (True, "True")
+            assert result.value is True
         finally:
             await executor.close()
 
@@ -1566,19 +1496,19 @@ class TestSubprocessExecutorReset:
         """reset() preserves tools, workflows, artifacts namespaces."""
         # Verify namespaces exist before reset
         result = await executor.run("'tools' in dir()")
-        assert result.value in (True, "True")
+        assert result.value is True
 
         await executor.reset()
 
         # Namespaces should still exist after reset
         result = await executor.run("'tools' in dir()")
-        assert result.value in (True, "True")
+        assert result.value is True
 
         result = await executor.run("'workflows' in dir()")
-        assert result.value in (True, "True")
+        assert result.value is True
 
         result = await executor.run("'artifacts' in dir()")
-        assert result.value in (True, "True")
+        assert result.value is True
 
 
 # =============================================================================
@@ -1736,7 +1666,7 @@ class TestSubprocessExecutorDepsNamespace:
         result = await executor_with_storage.run("'deps' in dir()")
 
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_deps_list_returns_list(self, executor_with_storage) -> None:
@@ -1761,7 +1691,7 @@ class TestSubprocessExecutorDepsNamespace:
         result = await executor_with_storage.run("callable(deps.add)")
 
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_deps_has_remove_method(self, executor_with_storage) -> None:
@@ -1773,7 +1703,7 @@ class TestSubprocessExecutorDepsNamespace:
         result = await executor_with_storage.run("callable(deps.remove)")
 
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_deps_has_sync_method(self, executor_with_storage) -> None:
@@ -1785,7 +1715,7 @@ class TestSubprocessExecutorDepsNamespace:
         result = await executor_with_storage.run("callable(deps.sync)")
 
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_deps_repr_shows_package_count(self, executor_with_storage) -> None:
@@ -1808,14 +1738,14 @@ class TestSubprocessExecutorDepsNamespace:
         """
         # Verify deps exists before reset
         result = await executor_with_storage.run("'deps' in dir()")
-        assert result.value in (True, "True")
+        assert result.value is True
 
         await executor_with_storage.reset()
 
         # deps should still exist after reset
         result = await executor_with_storage.run("'deps' in dir()")
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
 
 @pytest.mark.slow
@@ -1906,7 +1836,7 @@ class TestSubprocessExecutorDepsRuntimeInstall:
         # Verify it's in the list
         result = await executor_allow_deps.run("'requests' in str(deps.list())")
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_deps_add_raises_when_runtime_deps_disabled(self, executor_deny_deps) -> None:

@@ -27,6 +27,7 @@ def get_kernel_init_code(ipc_timeout: float | None = None) -> str:
 from __future__ import annotations
 
 import json
+import asyncio
 import threading
 import uuid
 from typing import Any, NamedTuple
@@ -50,6 +51,23 @@ if _ip is not None:
 
 # Threading lock to prevent concurrent RPC corruption
 _rpc_lock = threading.Lock()
+
+# Async lock to prevent concurrent RPC corruption when used with await/to_thread
+_rpc_async_lock = asyncio.Lock()
+
+
+def _in_async_context() -> bool:
+    # IPython / ipykernel runs an event loop even for "sync" code execution,
+    # so using get_running_loop() here would force the entire sandbox surface
+    # to return coroutine objects and break existing agent code.
+    #
+    # SubprocessExecutor's agent-facing namespaces are intentionally synchronous.
+    return False
+
+
+async def _rpc_call_async(method: str, **kwargs) -> Any:
+    async with _rpc_async_lock:
+        return await asyncio.to_thread(_rpc_call, method, **kwargs)
 
 # Configurable timeout for RPC calls
 _RPC_TIMEOUT = {ipc_timeout}
@@ -307,7 +325,12 @@ class _ToolRecipeProxy:
 
     def __call__(self, **kwargs) -> Any:
         """Invoke the recipe with given arguments."""
-        # Recipe invocation: name is "tool.recipe"
+        if _in_async_context():
+            return _rpc_call_async(
+                "tools.call",
+                name=f"{{self._tool_name}}.{{self._recipe_name}}",
+                args=kwargs,
+            )
         return _rpc_call(
             "tools.call",
             name=f"{{self._tool_name}}.{{self._recipe_name}}",
@@ -324,6 +347,8 @@ class _ToolProxy:
 
     def __call__(self, **kwargs) -> Any:
         """Direct tool invocation (escape hatch)."""
+        if _in_async_context():
+            return _rpc_call_async("tools.call", name=self._name, args=kwargs)
         return _rpc_call("tools.call", name=self._name, args=kwargs)
 
     def __getattr__(self, recipe_name: str) -> _ToolRecipeProxy:
@@ -334,6 +359,8 @@ class _ToolProxy:
 
     def list(self) -> list[dict[str, Any]]:
         """List recipes for this tool."""
+        if _in_async_context():
+            return _rpc_call_async("tools.list_recipes", name=self._name)
         return _rpc_call("tools.list_recipes", name=self._name)
 
 
@@ -388,7 +415,8 @@ class ToolsProxy:
         Returns:
             List of dicts with name, description, and tags keys.
         """
-        # Return raw dicts (not NamedTuples) so they serialize cleanly through IPython
+        if _in_async_context():
+            return _rpc_call_async("tools.list")
         return _rpc_call("tools.list")
 
     def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
@@ -397,7 +425,8 @@ class ToolsProxy:
         Returns:
             List of dicts matching the query.
         """
-        # Return raw dicts (not NamedTuples) so they serialize cleanly through IPython
+        if _in_async_context():
+            return _rpc_call_async("tools.search", query=query, limit=limit)
         return _rpc_call("tools.search", query=query, limit=limit)
 
 
@@ -418,7 +447,8 @@ class WorkflowsProxy:
 
         Gets workflow source from host and executes it locally in the kernel.
         This ensures workflows can import packages installed at runtime.
-        Handles async workflows by running them with asyncio.run().
+        Handles async workflows by running them to completion in the kernel's
+        event loop (ipykernel runs a loop even for "sync" execution).
 
         Args:
             workflow_name: Name of the workflow to invoke.
@@ -427,7 +457,35 @@ class WorkflowsProxy:
         Note: Uses workflow_name (not name) to avoid collision with workflows
         that have a 'name' parameter.
         """
-        import asyncio
+        if _in_async_context():
+            async def _coro() -> Any:
+                workflow = await _rpc_call_async("workflows.get", name=workflow_name)
+                if workflow is None:
+                    raise ValueError(f"Workflow not found: {{workflow_name}}")
+
+                source = workflow.get("source")
+                if not source:
+                    raise ValueError(f"Workflow has no source: {{workflow_name}}")
+
+                workflow_namespace = {{
+                    "tools": tools,
+                    "workflows": workflows,
+                    "artifacts": artifacts,
+                    "deps": deps,
+                }}
+                code = compile(source, f"<workflow:{{workflow_name}}>", "exec")
+                exec(code, workflow_namespace)
+
+                run_func = workflow_namespace.get("run")
+                if not callable(run_func):
+                    raise ValueError(f"Workflow {{workflow_name}} has no run() function")
+
+                result = run_func(**kwargs)
+                if asyncio.iscoroutine(result):
+                    return await result
+                return result
+
+            return _coro()
 
         workflow = _rpc_call("workflows.get", name=workflow_name)
         if workflow is None:
@@ -452,18 +510,13 @@ class WorkflowsProxy:
 
         result = run_func(**kwargs)
         if asyncio.iscoroutine(result):
-            try:
-                asyncio.get_running_loop()
-                has_loop = True
-            except RuntimeError:
-                has_loop = False
+            # ipykernel runs an event loop already, so asyncio.run() is not valid.
+            # Use nest_asyncio to allow re-entrant run_until_complete.
+            import nest_asyncio
 
-            if has_loop:
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(asyncio.run, result)
-                    return future.result()
-            return asyncio.run(result)
+            nest_asyncio.apply()
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(result)
         return result
 
     def search(self, query: str, limit: int = 5) -> list[Workflow]:
@@ -472,15 +525,25 @@ class WorkflowsProxy:
         Returns:
             List of Workflow objects matching the query.
         """
+        def _convert(result: list[dict[str, Any]]) -> list[Workflow]:
+            return [
+                Workflow(
+                    name=s["name"],
+                    description=s.get("description", ""),
+                    params=s.get("params", {{}}),
+                )
+                for s in result
+            ]
+
+        if _in_async_context():
+            async def _coro() -> list[Workflow]:
+                result = await _rpc_call_async("workflows.search", query=query, limit=limit)
+                return _convert(result)
+
+            return _coro()
+
         result = _rpc_call("workflows.search", query=query, limit=limit)
-        return [
-            Workflow(
-                name=s["name"],
-                description=s.get("description", ""),
-                params=s.get("params", {{}}),
-            )
-            for s in result
-        ]
+        return _convert(result)
 
     def list(self) -> list[Workflow]:
         """List all available workflows.
@@ -488,21 +551,33 @@ class WorkflowsProxy:
         Returns:
             List of Workflow objects.
         """
+        def _convert(result: list[dict[str, Any]]) -> list[Workflow]:
+            return [
+                Workflow(
+                    name=s["name"],
+                    description=s.get("description", ""),
+                    params=s.get("params", {{}}),
+                )
+                for s in result
+            ]
+
+        if _in_async_context():
+            async def _coro() -> list[Workflow]:
+                result = await _rpc_call_async("workflows.list")
+                return _convert(result)
+
+            return _coro()
+
         result = _rpc_call("workflows.list")
-        return [
-            Workflow(
-                name=s["name"],
-                description=s.get("description", ""),
-                params=s.get("params", {{}}),
-            )
-            for s in result
-        ]
+        return _convert(result)
 
     def get(self, name: str) -> dict[str, Any] | None:
         """Get a workflow by name.
 
         Returns full workflow details including source.
         """
+        if _in_async_context():
+            return _rpc_call_async("workflows.get", name=name)
         return _rpc_call("workflows.get", name=name)
 
     def create(self, name: str, source: str, description: str = "") -> Workflow:
@@ -511,6 +586,19 @@ class WorkflowsProxy:
         Returns:
             Workflow object for the created workflow.
         """
+        if _in_async_context():
+            async def _coro() -> Workflow:
+                result = await _rpc_call_async(
+                    "workflows.create", name=name, source=source, description=description
+                )
+                return Workflow(
+                    name=result["name"],
+                    description=result.get("description", ""),
+                    params=result.get("params", {{}}),
+                )
+
+            return _coro()
+
         result = _rpc_call("workflows.create", name=name, source=source, description=description)
         return Workflow(
             name=result["name"],
@@ -520,6 +608,8 @@ class WorkflowsProxy:
 
     def delete(self, name: str) -> bool:
         """Delete a workflow."""
+        if _in_async_context():
+            return _rpc_call_async("workflows.delete", name=name)
         return _rpc_call("workflows.delete", name=name)
 
     def __getattr__(self, name: str) -> Any:
@@ -543,6 +633,8 @@ class ArtifactsProxy:
 
     def load(self, name: str) -> Any:
         """Load an artifact by name."""
+        if _in_async_context():
+            return _rpc_call_async("artifacts.load", name=name)
         return _rpc_call("artifacts.load", name=name)
 
     def save(self, name: str, data: Any, description: str = "") -> ArtifactMeta:
@@ -551,13 +643,25 @@ class ArtifactsProxy:
         Returns:
             ArtifactMeta with name, path, description, created_at.
         """
+        def _convert(result: dict[str, Any]) -> ArtifactMeta:
+            return ArtifactMeta(
+                name=result["name"],
+                path=result.get("path", ""),
+                description=result.get("description", ""),
+                created_at=result.get("created_at", ""),
+            )
+
+        if _in_async_context():
+            async def _coro() -> ArtifactMeta:
+                result = await _rpc_call_async(
+                    "artifacts.save", name=name, data=data, description=description
+                )
+                return _convert(result)
+
+            return _coro()
+
         result = _rpc_call("artifacts.save", name=name, data=data, description=description)
-        return ArtifactMeta(
-            name=result["name"],
-            path=result.get("path", ""),
-            description=result.get("description", ""),
-            created_at=result.get("created_at", ""),
-        )
+        return _convert(result)
 
     def list(self) -> list[ArtifactMeta]:
         """List all artifacts.
@@ -565,36 +669,60 @@ class ArtifactsProxy:
         Returns:
             List of ArtifactMeta objects.
         """
+        def _convert(result: list[dict[str, Any]]) -> list[ArtifactMeta]:
+            return [
+                ArtifactMeta(
+                    name=a["name"],
+                    path=a.get("path", ""),
+                    description=a.get("description", ""),
+                    created_at=a.get("created_at", ""),
+                )
+                for a in result
+            ]
+
+        if _in_async_context():
+            async def _coro() -> list[ArtifactMeta]:
+                result = await _rpc_call_async("artifacts.list")
+                return _convert(result)
+
+            return _coro()
+
         result = _rpc_call("artifacts.list")
-        return [
-            ArtifactMeta(
-                name=a["name"],
-                path=a.get("path", ""),
-                description=a.get("description", ""),
-                created_at=a.get("created_at", ""),
-            )
-            for a in result
-        ]
+        return _convert(result)
 
     def delete(self, name: str) -> None:
         """Delete an artifact."""
+        if _in_async_context():
+            return _rpc_call_async("artifacts.delete", name=name)
         return _rpc_call("artifacts.delete", name=name)
 
     def exists(self, name: str) -> bool:
         """Check if an artifact exists."""
+        if _in_async_context():
+            return _rpc_call_async("artifacts.exists", name=name)
         return _rpc_call("artifacts.exists", name=name)
 
     def get(self, name: str) -> ArtifactMeta | None:
         """Get artifact metadata."""
+        def _convert(result: dict[str, Any] | None) -> ArtifactMeta | None:
+            if result is None:
+                return None
+            return ArtifactMeta(
+                name=result["name"],
+                path=result.get("path", ""),
+                description=result.get("description", ""),
+                created_at=result.get("created_at", ""),
+            )
+
+        if _in_async_context():
+            async def _coro() -> ArtifactMeta | None:
+                result = await _rpc_call_async("artifacts.get", name=name)
+                return _convert(result)
+
+            return _coro()
+
         result = _rpc_call("artifacts.get", name=name)
-        if result is None:
-            return None
-        return ArtifactMeta(
-            name=result["name"],
-            path=result.get("path", ""),
-            description=result.get("description", ""),
-            created_at=result.get("created_at", ""),
-        )
+        return _convert(result)
 
 
 class DepsProxy:
@@ -616,19 +744,33 @@ class DepsProxy:
         Returns:
             SyncResult with installed, already_present, and failed tuples.
         """
+        def _convert(result: dict[str, Any]) -> SyncResult:
+            return SyncResult(
+                installed=tuple(result.get("installed", [])),
+                already_present=tuple(result.get("already_present", [])),
+                failed=tuple(result.get("failed", [])),
+            )
+
+        if _in_async_context():
+            async def _coro() -> SyncResult:
+                result = await _rpc_call_async("deps.add", package=package)
+                return _convert(result)
+
+            return _coro()
+
         result = _rpc_call("deps.add", package=package)
-        return SyncResult(
-            installed=tuple(result.get("installed", [])),
-            already_present=tuple(result.get("already_present", [])),
-            failed=tuple(result.get("failed", [])),
-        )
+        return _convert(result)
 
     def remove(self, package: str) -> bool:
         """Remove a package from configuration."""
+        if _in_async_context():
+            return _rpc_call_async("deps.remove", package=package)
         return _rpc_call("deps.remove", package=package)
 
     def list(self) -> list[str]:
         """List configured packages."""
+        if _in_async_context():
+            return _rpc_call_async("deps.list")
         return _rpc_call("deps.list")
 
     def sync(self) -> SyncResult:
@@ -637,12 +779,22 @@ class DepsProxy:
         Returns:
             SyncResult with installed, already_present, and failed tuples.
         """
+        def _convert(result: dict[str, Any]) -> SyncResult:
+            return SyncResult(
+                installed=tuple(result.get("installed", [])),
+                already_present=tuple(result.get("already_present", [])),
+                failed=tuple(result.get("failed", [])),
+            )
+
+        if _in_async_context():
+            async def _coro() -> SyncResult:
+                result = await _rpc_call_async("deps.sync")
+                return _convert(result)
+
+            return _coro()
+
         result = _rpc_call("deps.sync")
-        return SyncResult(
-            installed=tuple(result.get("installed", [])),
-            already_present=tuple(result.get("already_present", [])),
-            failed=tuple(result.get("failed", [])),
-        )
+        return _convert(result)
 
     def __repr__(self) -> str:
         """String representation showing it's a DepsNamespace."""

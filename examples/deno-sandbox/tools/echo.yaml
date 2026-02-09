@@ -1,0 +1,18 @@
+name: echo
+description: Echo text (host-side tool; executed outside the Deno sandbox)
+command: /bin/echo
+timeout: 5
+
+schema:
+  positional:
+    - name: message
+      type: string
+      required: true
+      description: Message to echo
+
+recipes:
+  say:
+    description: Echo the message
+    params:
+      message: {}
+

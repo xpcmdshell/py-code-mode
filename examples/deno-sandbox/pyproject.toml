@@ -1,0 +1,15 @@
+[project]
+name = "py-code-mode-deno-sandbox-example"
+version = "0.1.0"
+description = "DenoSandboxExecutor example using Deno + Pyodide sandbox"
+requires-python = ">=3.12"
+dependencies = [
+    "py-code-mode",
+]
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.uv.sources]
+py-code-mode = { path = "../..", editable = true }
+

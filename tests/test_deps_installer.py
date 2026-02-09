@@ -122,76 +122,12 @@ class TestPackageInstallerUserJourney:
 
 
 # =============================================================================
-# Contract Tests (SyncResult)
-# =============================================================================
-
-
-class TestSyncResultContract:
-    """Tests for SyncResult dataclass/structure."""
-
-    def test_sync_result_has_installed_attribute(self) -> None:
-        """SyncResult has 'installed' attribute (set of packages).
-
-        Breaks when: SyncResult structure is wrong.
-        """
-        from py_code_mode.deps import SyncResult
-
-        result = SyncResult(installed=set(), already_present=set(), failed=set())
-        assert hasattr(result, "installed")
-        assert isinstance(result.installed, set)
-
-    def test_sync_result_has_already_present_attribute(self) -> None:
-        """SyncResult has 'already_present' attribute (set of packages).
-
-        Breaks when: SyncResult structure is wrong.
-        """
-        from py_code_mode.deps import SyncResult
-
-        result = SyncResult(installed=set(), already_present=set(), failed=set())
-        assert hasattr(result, "already_present")
-        assert isinstance(result.already_present, set)
-
-    def test_sync_result_has_failed_attribute(self) -> None:
-        """SyncResult has 'failed' attribute (set of packages).
-
-        Breaks when: SyncResult structure is wrong.
-        """
-        from py_code_mode.deps import SyncResult
-
-        result = SyncResult(installed=set(), already_present=set(), failed=set())
-        assert hasattr(result, "failed")
-        assert isinstance(result.failed, set)
-
-    def test_sync_result_is_dataclass(self) -> None:
-        """SyncResult is a dataclass for easy construction.
-
-        Breaks when: SyncResult is not a dataclass.
-        """
-        from dataclasses import is_dataclass
-
-        from py_code_mode.deps import SyncResult
-
-        assert is_dataclass(SyncResult)
-
-
-# =============================================================================
 # PackageInstaller Contract Tests
 # =============================================================================
 
 
 class TestPackageInstallerContract:
     """Tests for PackageInstaller public API."""
-
-    def test_installer_has_sync_method(self) -> None:
-        """PackageInstaller has sync(store) method.
-
-        Breaks when: sync method is missing.
-        """
-        from py_code_mode.deps import PackageInstaller
-
-        installer = PackageInstaller()
-        assert hasattr(installer, "sync")
-        assert callable(installer.sync)
 
     def test_sync_returns_sync_result(self, tmp_path: Path) -> None:
         """sync() returns SyncResult.
@@ -576,7 +512,6 @@ class TestPackageInstallerConfiguration:
         from py_code_mode.deps import PackageInstaller
 
         installer = PackageInstaller()
-        assert hasattr(installer, "timeout")
         assert installer.timeout >= 60  # At least 60 seconds
 
     def test_installer_accepts_extra_pip_args(self, tmp_path: Path) -> None:

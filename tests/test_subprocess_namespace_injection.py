@@ -203,7 +203,7 @@ class TestToolsNamespaceContract:
 
         # Verify it returns a list
         check_result = await executor_with_storage.run("isinstance(tools.list(), list)")
-        assert check_result.value in (True, "True")
+        assert check_result.value is True
 
         # Verify tools have expected keys (returned as dicts, not objects)
         result = await executor_with_storage.run("[t['name'] for t in tools.list()]")
@@ -318,8 +318,7 @@ workflows.create(
             "'multiply' in [s['name'] if isinstance(s, dict) else s.name for s in workflows.list()]"
         )
         assert result.error is None
-        # Accept True as bool or string
-        assert result.value in (True, "True"), f"Workflow not found in list: {result.value}"
+        assert result.value is True, f"Workflow not found in list: {result.value}"
 
     @pytest.mark.asyncio
     async def test_workflows_invoke_executes_workflow(self, executor_empty_storage) -> None:
@@ -438,7 +437,7 @@ class TestArtifactsNamespaceContract:
         # Verify exists
         result = await executor_empty_storage.run('artifacts.exists("test_data")')
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_artifacts_load_retrieves_data(self, executor_empty_storage) -> None:
@@ -479,7 +478,7 @@ class TestArtifactsNamespaceContract:
         # Should not exist
         result = await executor_empty_storage.run('artifacts.exists("nonexistent")')
         assert result.error is None
-        assert result.value in (False, "False")
+        assert result.value is False
 
         # Save it
         await executor_empty_storage.run('artifacts.save("now_exists", "data")')
@@ -487,7 +486,7 @@ class TestArtifactsNamespaceContract:
         # Should exist
         result = await executor_empty_storage.run('artifacts.exists("now_exists")')
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
 
 # =============================================================================
@@ -529,7 +528,7 @@ class TestStorageAccessIntegration:
             # Tools should be loaded from tools_path (dicts, not objects)
             result = await executor.run("'echo' in [t['name'] for t in tools.list()]")
             assert result.error is None
-            assert result.value in (True, "True")
+            assert result.value is True
         finally:
             await executor.close()
 
@@ -559,7 +558,7 @@ workflows.create(
             "'counter' in str(workflows.list()) and 'state_test' in str(artifacts.list())"
         )
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
     @pytest.mark.asyncio
     async def test_namespace_state_preserved_after_reset(self, tmp_path: Path) -> None:
@@ -593,14 +592,14 @@ workflows.create(
 
             # Namespaces should still be accessible
             result = await executor.run("'tools' in dir() and 'workflows' in dir()")
-            assert result.value in (True, "True")
+            assert result.value is True
 
             # Persisted data should still be there (it's in storage, not kernel memory)
             result = await executor.run("'persist' in str(workflows.list())")
-            assert result.value in (True, "True")
+            assert result.value is True
 
             result = await executor.run("'persist_artifact' in str(artifacts.list())")
-            assert result.value in (True, "True")
+            assert result.value is True
         finally:
             await executor.close()
 
@@ -637,7 +636,7 @@ class TestNamespaceInvariants:
                 "'tools' in dir() and 'workflows' in dir() and 'artifacts' in dir()"
             )
             assert result.error is None
-            assert result.value in (True, "True")
+            assert result.value is True
         finally:
             await executor.close()
 
@@ -653,7 +652,7 @@ class TestNamespaceInvariants:
         # Check ID is same in next run
         result = await executor_empty_storage.run("id(tools) == _tools_id")
         assert result.error is None
-        assert result.value in (True, "True")
+        assert result.value is True
 
 
 # =============================================================================
@@ -1128,7 +1127,7 @@ class TestRedisStorageIntegration:
                 "'tools' in dir() and 'workflows' in dir() and 'artifacts' in dir()"
             )
             assert result.error is None, f"Namespace check failed: {result.error}"
-            assert result.value in (True, "True"), "Namespaces should be available"
+            assert result.value is True, "Namespaces should be available"
 
             # Verify artifacts work with Redis backend
             result = await executor.run('artifacts.save("redis_test", {"from": "redis"}) or True')

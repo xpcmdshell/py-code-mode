@@ -59,6 +59,16 @@ except ImportError:
     TESTCONTAINERS_AVAILABLE = False
 
 
+def _docker_daemon_is_available() -> bool:
+    try:
+        import docker
+
+        docker.from_env().ping()
+        return True
+    except Exception:
+        return False
+
+
 # =============================================================================
 # Docker Image Staleness Check
 # =============================================================================
@@ -211,13 +221,22 @@ def docker_image_check():
 
 def pytest_collection_modifyitems(config, items):  # noqa: ARG001
     """Add docker_image_check fixture to all tests in xdist_group('docker')."""
+    docker_fixtures = {"redis_container", "redis_client", "redis_url"}
     for item in items:
+        if docker_fixtures.intersection(getattr(item, "fixturenames", ())):
+            item.add_marker(pytest.mark.docker)
+
         # Check if test is in the docker xdist group
         for marker in item.iter_markers("xdist_group"):
             if marker.args and marker.args[0] == "docker":
+                item.add_marker(pytest.mark.docker)
                 # Add the fixture as a dependency
                 if "docker_image_check" not in item.fixturenames:
                     item.fixturenames.insert(0, "docker_image_check")
+            elif marker.args and marker.args[0] == "subprocess":
+                item.add_marker(pytest.mark.subprocess)
+            elif marker.args and marker.args[0] == "venv":
+                item.add_marker(pytest.mark.venv)
 
 
 class MockAdapter:
@@ -781,6 +800,12 @@ def redis_container():
     """
     if not TESTCONTAINERS_AVAILABLE:
         pytest.skip("testcontainers[redis] not installed")
+    if not _docker_daemon_is_available():
+        if os.environ.get("CI"):
+            pytest.fail(
+                "Docker daemon not available for testcontainers Redis (CI should provide Docker)"
+            )
+        pytest.skip("Docker daemon not available for testcontainers Redis")
 
     with RedisContainer(image="redis:7-alpine") as container:
         yield container

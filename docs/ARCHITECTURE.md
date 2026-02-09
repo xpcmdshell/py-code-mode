@@ -791,7 +791,7 @@ async with Session(storage=storage, executor=executor) as session:
 ### Tool Execution
 
 ```
-Agent writes: "tools.curl.get(url='...')"
+Agent writes: "tools.curl.get(url='...')" (use `await` only in DenoSandboxExecutor)
         |
         v
 +------------------------+
@@ -808,6 +808,12 @@ Agent writes: "tools.curl.get(url='...')"
                                    +--------------+
 ```
 
+Note on sandboxing:
+- `DenoSandboxExecutor` sandboxes Python execution in Pyodide, but **tools execute host-side** (the sandbox calls back to the host over RPC to run tools). If you need strict sandbox boundaries, avoid `tools.*` and stick to pure Python plus `deps.*` in the sandbox.
+
+Note on tool middleware:
+- Tool calls can be wrapped by a host-side middleware chain (audit logging, approvals, allow/deny, retries, etc.). Enforcement guarantees are strongest for `DenoSandboxExecutor`, because sandboxed Python can only access tools via host RPC.
+
 ### ToolProxy Methods
 
 ```
@@ -819,7 +825,7 @@ Agent writes: "tools.curl.get(url='...')"
 |                        |
 | .call_async(**kwargs)  |--> Always returns awaitable
 | .call_sync(**kwargs)   |--> Always blocks, returns result
-| .__call__(**kwargs)    |--> Context-aware (sync/async detection)
+| .__call__(**kwargs)    |--> Synchronous invocation
 +------------------------+
         |
         v
@@ -828,14 +834,14 @@ Agent writes: "tools.curl.get(url='...')"
 |                        |
 | .call_async(**kwargs)  |--> Always returns awaitable
 | .call_sync(**kwargs)   |--> Always blocks, returns result
-| .__call__(**kwargs)    |--> Context-aware (sync/async detection)
+| .__call__(**kwargs)    |--> Synchronous invocation
 +------------------------+
 ```
 
 ### Skill Execution
 
 ```
-Agent writes: "workflows.analyze_repo(repo='...')"
+Agent writes: "workflows.analyze_repo(repo='...')" (use `await` only in DenoSandboxExecutor)
         |
         v
 +------------------------+
@@ -880,7 +886,7 @@ Skill has access to:
 ### Artifact Storage
 
 ```
-Agent writes: "artifacts.save('data.json', b'...', 'description')"
+Agent writes: "artifacts.save('data.json', b'...', 'description')" (use `await` only in DenoSandboxExecutor)
         |
         v
 +------------------------+

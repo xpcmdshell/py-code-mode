@@ -10,13 +10,14 @@ Over time, the workflow library grows. Simple workflows become building blocks f
 
 ## Creating Workflows
 
-Workflows are async Python functions with an `async def run()` entry point:
+Workflows are Python functions with a `run()` entry point. Both `def run(...)` and
+`async def run(...)` are supported:
 
 ```python
 # workflows/fetch_json.py
 """Fetch and parse JSON from a URL."""
 
-async def run(url: str, headers: dict = None) -> dict:
+def run(url: str, headers: dict = None) -> dict:
     """Fetch JSON data from a URL.
 
     Args:
@@ -37,7 +38,7 @@ async def run(url: str, headers: dict = None) -> dict:
         raise RuntimeError(f"Invalid JSON from {url}: {e}") from e
 ```
 
-> **Note:** All workflows must use `async def run()`. Synchronous `def run()` is not supported.
+> **Note:** If your workflow uses `async def run(...)`, it can still call tools/workflows/artifacts synchronously.
 
 ### Runtime Creation
 
@@ -46,7 +47,7 @@ Agents can create workflows dynamically:
 ```python
 workflows.create(
     name="fetch_json",
-    source='''async def run(url: str) -> dict:
+    source='''def run(url: str) -> dict:
     """Fetch and parse JSON from a URL."""
     import json
     response = tools.curl.get(url=url)
@@ -96,7 +97,7 @@ Workflows can invoke other workflows, enabling layered workflows:
 
 ```python
 # workflows/fetch_json.py
-async def run(url: str) -> dict:
+def run(url: str) -> dict:
     """Fetch and parse JSON from a URL."""
     import json
     response = tools.curl.get(url=url)
@@ -107,11 +108,13 @@ async def run(url: str) -> dict:
 
 ```python
 # workflows/get_repo_metadata.py
-async def run(owner: str, repo: str) -> dict:
+def run(owner: str, repo: str) -> dict:
     """Get GitHub repository metadata."""
     # Uses the fetch_json workflow
-    data = workflows.invoke("fetch_json",
-                         url=f"https://api.github.com/repos/{owner}/{repo}")
+    data = workflows.invoke(
+        "fetch_json",
+        url=f"https://api.github.com/repos/{owner}/{repo}",
+    )
 
     return {
         "name": data["name"],
@@ -125,7 +128,7 @@ async def run(owner: str, repo: str) -> dict:
 
 ```python
 # workflows/analyze_multiple_repos.py
-async def run(repos: list) -> dict:
+def run(repos: list) -> dict:
     """Analyze multiple GitHub repositories."""
     summaries = []
     for repo in repos:

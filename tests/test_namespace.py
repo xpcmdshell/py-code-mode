@@ -93,7 +93,7 @@ async def test_callable_proxy_invokes_tool(namespace: ToolsNamespace, monkeypatc
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", mock_create_subprocess_exec)
 
-    result = await namespace.nmap.syn_scan(target="10.0.0.1")
+    result = namespace.nmap.syn_scan(target="10.0.0.1")
     assert result == "Mock nmap output"
 
 

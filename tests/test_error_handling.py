@@ -167,71 +167,43 @@ def mock_redis_with_corruption() -> MagicMock:
 
 
 class TestStorageExceptionHierarchy:
-    """Tests for new exception types that need to be added.
-
-    These tests will FAIL until the exceptions are added to errors.py:
-    - StorageError (base)
-    - StorageReadError (read failures)
-    - StorageWriteError (write failures)
-    - ConfigurationError (invalid configuration)
-    """
+    """Tests for storage/configuration exception hierarchy."""
 
     def test_storage_error_exists(self):
-        """StorageError should be defined in errors module."""
-        from py_code_mode import errors
+        """StorageError is defined and inherits from CodeModeError."""
+        from py_code_mode.errors import StorageError
 
-        assert hasattr(errors, "StorageError"), (
-            "StorageError not defined. Add to py_code_mode/errors.py:\n"
-            "class StorageError(CodeModeError):\n"
-            '    """Base class for storage-related errors."""\n'
-            "    pass"
-        )
+        assert issubclass(StorageError, CodeModeError)
 
     def test_storage_read_error_exists(self):
         """StorageReadError should be defined and inherit from StorageError."""
-        from py_code_mode import errors
+        from py_code_mode.errors import StorageError, StorageReadError
 
-        assert hasattr(errors, "StorageReadError"), (
-            "StorageReadError not defined. Add to py_code_mode/errors.py"
-        )
-        # This will fail until both are defined
-        if hasattr(errors, "StorageError") and hasattr(errors, "StorageReadError"):
-            assert issubclass(errors.StorageReadError, errors.StorageError)
+        assert issubclass(StorageReadError, StorageError)
 
     def test_storage_write_error_exists(self):
         """StorageWriteError should be defined and inherit from StorageError."""
-        from py_code_mode import errors
+        from py_code_mode.errors import StorageError, StorageWriteError
 
-        assert hasattr(errors, "StorageWriteError"), (
-            "StorageWriteError not defined. Add to py_code_mode/errors.py"
-        )
-        if hasattr(errors, "StorageError") and hasattr(errors, "StorageWriteError"):
-            assert issubclass(errors.StorageWriteError, errors.StorageError)
+        assert issubclass(StorageWriteError, StorageError)
 
     def test_configuration_error_exists(self):
         """ConfigurationError should be defined."""
-        from py_code_mode import errors
+        from py_code_mode.errors import ConfigurationError
 
-        assert hasattr(errors, "ConfigurationError"), (
-            "ConfigurationError not defined. Add to py_code_mode/errors.py"
-        )
-        if hasattr(errors, "ConfigurationError"):
-            assert issubclass(errors.ConfigurationError, CodeModeError)
+        assert issubclass(ConfigurationError, CodeModeError)
 
     def test_storage_read_error_preserves_cause(self):
         """StorageReadError should preserve the original exception as __cause__."""
-        from py_code_mode import errors
-
-        if not hasattr(errors, "StorageReadError"):
-            pytest.skip("StorageReadError not yet implemented")
+        from py_code_mode.errors import StorageReadError
 
         original = ValueError("original error")
         try:
             try:
                 raise original
             except ValueError as e:
-                raise errors.StorageReadError("read failed", path="/some/path") from e
-        except errors.StorageReadError as err:
+                raise StorageReadError("read failed", path="/some/path") from e
+        except StorageReadError as err:
             assert err.__cause__ is original
             assert "read failed" in str(err)
             assert hasattr(err, "path") or "/some/path" in str(err)
@@ -446,28 +418,13 @@ class TestFileWorkflowStoreErrorHandling:
 
         assert result is None  # Expected behavior
 
-    def test_load_raises_for_syntax_error(
-        self, workflows_dir_with_corruption: Path, log_capture: pytest.LogCaptureFixture
-    ):
+    def test_load_raises_for_syntax_error(self, workflows_dir_with_corruption: Path):
         """load() should raise StorageReadError for Python syntax errors."""
+        from py_code_mode.errors import StorageReadError
         from py_code_mode.workflows import FileWorkflowStore
 
         store = FileWorkflowStore(workflows_dir_with_corruption)
-
-        from py_code_mode import errors
-
-        if not hasattr(errors, "StorageReadError"):
-            # Current behavior: returns None with warning
-            result = store.load("syntax_error")
-            if result is None:
-                # Check at least warning is logged (current behavior has this)
-                assert any("syntax_error" in record.message for record in log_capture.records), (
-                    "At minimum, a warning should be logged for syntax errors"
-                )
-            pytest.skip("StorageReadError not yet implemented - upgrade test when added")
-
-        # After fix: should raise StorageReadError
-        with pytest.raises(errors.StorageReadError):
+        with pytest.raises(StorageReadError):
             store.load("syntax_error")
 
 
@@ -514,49 +471,22 @@ class TestRedisWorkflowStoreErrorHandling:
 
         assert result is None
 
-    def test_load_raises_for_invalid_json(
-        self, mock_redis_with_corruption, log_capture: pytest.LogCaptureFixture
-    ):
+    def test_load_raises_for_invalid_json(self, mock_redis_with_corruption):
         """load() should raise StorageReadError for invalid JSON."""
+        from py_code_mode.errors import StorageReadError
         from py_code_mode.workflows import RedisWorkflowStore
 
         store = RedisWorkflowStore(mock_redis_with_corruption, prefix="workflows")
-
-        from py_code_mode import errors
-
-        if not hasattr(errors, "StorageReadError"):
-            # Current behavior: returns None with warning
-            result = store.load("corrupt_json")
-            if result is None:
-                # At least check warning is logged
-                assert any("corrupt_json" in record.message for record in log_capture.records), (
-                    "Warning should be logged for corrupt JSON"
-                )
-            pytest.skip("StorageReadError not yet implemented")
-
-        # After fix: should raise StorageReadError
-        with pytest.raises(errors.StorageReadError):
+        with pytest.raises(StorageReadError):
             store.load("corrupt_json")
 
-    def test_load_raises_for_missing_fields(
-        self, mock_redis_with_corruption, log_capture: pytest.LogCaptureFixture
-    ):
+    def test_load_raises_for_missing_fields(self, mock_redis_with_corruption):
         """load() should raise StorageReadError for incomplete workflow data."""
+        from py_code_mode.errors import StorageReadError
         from py_code_mode.workflows import RedisWorkflowStore
 
         store = RedisWorkflowStore(mock_redis_with_corruption, prefix="workflows")
-
-        from py_code_mode import errors
-
-        if not hasattr(errors, "StorageReadError"):
-            result = store.load("missing_fields")
-            if result is None:
-                assert any("missing" in record.message.lower() for record in log_capture.records), (
-                    "Warning should be logged for missing fields"
-                )
-            pytest.skip("StorageReadError not yet implemented")
-
-        with pytest.raises(errors.StorageReadError):
+        with pytest.raises(StorageReadError):
             store.load("missing_fields")
 
     def test_list_all_logs_warning_for_corrupt_entries(

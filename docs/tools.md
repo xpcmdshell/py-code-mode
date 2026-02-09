@@ -8,6 +8,23 @@ Tools wrap external capabilities as callable functions. Three adapter types supp
 
 Define command-line tools with YAML schema + recipes.
 
+## Tool Middleware (Experimental)
+
+py-code-mode supports a host-side middleware chain around tool execution. This is intended for:
+- Audit logging and metrics
+- Allow/deny decisions and interactive approvals
+- Argument rewriting, retries, caching, etc.
+
+Notes:
+- Middleware runs where tools execute (host-side ToolAdapters).
+- Enforcement guarantees are strongest with `DenoSandboxExecutor` because sandboxed Python can only access tools via RPC back to the host.
+
+API surface:
+- `ToolMiddleware`: `async def __call__(ctx: ToolCallContext, call_next) -> Any`
+- `ToolCallContext`: includes `tool_name`, `callable_name`, `args`, and metadata like `executor_type`, `origin`, `request_id`.
+
+To enable for `DenoSandboxExecutor`, pass `tool_middlewares` in `DenoSandboxConfig`.
+
 ### Schema Definition
 
 ```yaml
@@ -89,6 +106,13 @@ recipes:
 
 ### Agent Usage
 
+Tool calls inside `Session.run()` are **synchronous** in the default executors (Subprocess/Container/InProcess).
+
+Notes:
+- If you need async tool calls in Python code, use `call_async(...)` explicitly.
+- In `DenoSandboxExecutor`, tool calls are **async-first** and you must use `await tools.*`.
+- In `DenoSandboxExecutor`, tool calls execute **outside** the sandbox: `await tools.*` is an RPC back to the host Python process, and the tool runs with host permissions (or container permissions if the tool adapter/executor is containerized).
+
 ```python
 # Recipe invocation (recommended)
 tools.curl.get(url="https://api.github.com/repos/owner/repo")
@@ -103,9 +127,13 @@ tools.curl(
 )
 
 # Discovery
-tools.list()                    # All tools
-tools.search("http")            # Search by name/description/tags
-tools.curl.list()               # Recipes for a specific tool
+tools.list()              # All tools
+tools.search("http")      # Search by name/description/tags
+tools.curl.list()         # Recipes for a specific tool
+
+# Explicit async (if you need it)
+await tools.curl.call_async(url="https://example.com")
+await tools.curl.get.call_async(url="https://example.com")
 ```
 
 ## MCP Tools

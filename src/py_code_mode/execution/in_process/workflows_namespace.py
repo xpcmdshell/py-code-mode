@@ -6,7 +6,6 @@ invoke, create, and delete workflows during code execution.
 
 from __future__ import annotations
 
-import asyncio
 import builtins
 import inspect
 from typing import TYPE_CHECKING, Any
@@ -46,15 +45,8 @@ class WorkflowsNamespace:
 
         self._library = library
         self._namespace = namespace
-        self._loop: asyncio.AbstractEventLoop | None = None
-
-    def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Set the event loop to use for async workflow invocations.
-
-        When code runs in a thread (via asyncio.to_thread), we need a reference
-        to the main event loop to execute async workflows via run_coroutine_threadsafe.
-        """
-        self._loop = loop
+        # Intentionally synchronous surface. Async workflows are supported via
+        # asyncio.run(...) when invoked from sync code (the default execution mode).
 
     @property
     def library(self) -> WorkflowLibrary:
@@ -65,7 +57,7 @@ class WorkflowsNamespace:
         return self._library
 
     def search(self, query: str, limit: int = 10) -> builtins.list[dict[str, Any]]:
-        """Search for workflows matching query. Returns simplified workflow info."""
+        """Search for workflows matching query."""
         workflows = self._library.search(query, limit)
         return [self._simplify(w) for w in workflows]
 
@@ -74,7 +66,7 @@ class WorkflowsNamespace:
         return self._library.get(name)
 
     def list(self) -> builtins.list[dict[str, Any]]:
-        """List all available workflows. Returns simplified workflow info."""
+        """List all available workflows."""
         workflows = self._library.list()
         return [self._simplify(w) for w in workflows]
 
@@ -168,10 +160,11 @@ class WorkflowsNamespace:
         result = run_func(**kwargs)
 
         if inspect.iscoroutine(result):
-            try:
-                asyncio.get_running_loop()
-            except RuntimeError:
-                return asyncio.run(result)
-            raise RuntimeError("Cannot invoke async workflows from a running event loop")
+            # Default agent code execution runs in a worker thread without a
+            # running event loop, so asyncio.run(...) is safe and yields a
+            # synchronous result.
+            import asyncio
+
+            return asyncio.run(result)
 
         return result

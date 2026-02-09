@@ -595,19 +595,6 @@ class TestVectorStoreProtocolCompliance:
         # Should pass isinstance check
         assert isinstance(mock, VectorStore)
 
-    def test_mock_vector_store_has_all_required_methods(self) -> None:
-        """Verify MockVectorStore has all VectorStore methods."""
-        mock = MockVectorStore()
-
-        # All protocol methods should exist
-        assert hasattr(mock, "add")
-        assert hasattr(mock, "remove")
-        assert hasattr(mock, "search")
-        assert hasattr(mock, "get_content_hash")
-        assert hasattr(mock, "get_model_info")
-        assert hasattr(mock, "clear")
-        assert hasattr(mock, "count")
-
 
 class TestWarmStartupCaching:
     """Test that vector_store caching works across library instances."""

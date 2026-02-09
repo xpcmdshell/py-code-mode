@@ -35,6 +35,16 @@ except ImportError:
     SubprocessConfig = None  # type: ignore
     SubprocessExecutor = None  # type: ignore
 
+# Deno sandbox is optional at runtime (requires deno + pyodide assets).
+try:
+    from py_code_mode.execution.deno_sandbox import DenoSandboxConfig, DenoSandboxExecutor
+
+    DENO_SANDBOX_AVAILABLE = True
+except Exception:
+    DENO_SANDBOX_AVAILABLE = False
+    DenoSandboxConfig = None  # type: ignore
+    DenoSandboxExecutor = None  # type: ignore
+
 __all__ = [
     "Capability",
     "Executor",
@@ -52,4 +62,7 @@ __all__ = [
     "SubprocessExecutor",
     "SubprocessConfig",
     "SUBPROCESS_AVAILABLE",
+    "DenoSandboxExecutor",
+    "DenoSandboxConfig",
+    "DENO_SANDBOX_AVAILABLE",
 ]

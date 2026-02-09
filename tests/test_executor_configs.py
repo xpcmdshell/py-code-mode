@@ -422,57 +422,7 @@ class TestContainerConfig:
         assert str(deps_file.parent.absolute()) in docker_config["volumes"]
 
 
-class TestAllConfigsHaveNewFields:
-    """Cross-cutting tests to ensure all configs have the new fields."""
-
-    def test_all_configs_have_tools_path(self) -> None:
-        """All executor configs have tools_path field.
-
-        Contract: Consistent API across all executors.
-        Breaks when: Any config missing the field.
-        """
-        from py_code_mode.execution import ContainerConfig, InProcessConfig, SubprocessConfig
-
-        assert hasattr(InProcessConfig(), "tools_path")
-        assert hasattr(SubprocessConfig(), "tools_path")
-        assert hasattr(ContainerConfig(), "tools_path")
-
-    def test_all_configs_have_deps(self) -> None:
-        """All executor configs have deps field.
-
-        Contract: Consistent API across all executors.
-        Breaks when: Any config missing the field.
-        """
-        from py_code_mode.execution import ContainerConfig, InProcessConfig, SubprocessConfig
-
-        assert hasattr(InProcessConfig(), "deps")
-        assert hasattr(SubprocessConfig(), "deps")
-        assert hasattr(ContainerConfig(), "deps")
-
-    def test_all_configs_have_deps_file(self) -> None:
-        """All executor configs have deps_file field.
-
-        Contract: Consistent API across all executors.
-        Breaks when: Any config missing the field.
-        """
-        from py_code_mode.execution import ContainerConfig, InProcessConfig, SubprocessConfig
-
-        assert hasattr(InProcessConfig(), "deps_file")
-        assert hasattr(SubprocessConfig(), "deps_file")
-        assert hasattr(ContainerConfig(), "deps_file")
-
-    def test_all_configs_have_ipc_timeout(self) -> None:
-        """All executor configs have ipc_timeout field.
-
-        Contract: All configs support ipc_timeout.
-        Breaks when: Any config missing ipc_timeout.
-        Note: SubprocessConfig defaults to None (unlimited), others to 30.0.
-        """
-        from py_code_mode.execution import ContainerConfig, InProcessConfig, SubprocessConfig
-
-        assert hasattr(InProcessConfig(), "ipc_timeout")
-        assert hasattr(SubprocessConfig(), "ipc_timeout")
-        assert hasattr(ContainerConfig(), "ipc_timeout")
-        assert InProcessConfig().ipc_timeout == 30.0
-        assert SubprocessConfig().ipc_timeout is None
-        assert ContainerConfig().ipc_timeout == 30.0
+#
+# NOTE: Previously this file had "field presence" tests (mostly `hasattr(...)`)
+# to enforce config consistency. Those were removed as low-value/performative:
+# any real API break here should be caught by executor construction/start tests.

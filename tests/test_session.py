@@ -98,14 +98,14 @@ class TestSessionCodeExecution:
 
     @pytest.mark.asyncio
     async def test_run_returns_execution_result(self, storage: FileStorage) -> None:
-        """run() returns an ExecutionResult."""
+        """run() returns an ExecutionResult.
+
+        Covered by tests that assert specific `ExecutionResult` behavior (value/stdout/error).
+        """
         async with Session(storage=storage) as session:
             result = await session.run("42")
-
-            assert hasattr(result, "is_ok")
-            assert hasattr(result, "value")
-            assert hasattr(result, "error")
-            assert hasattr(result, "stdout")
+            assert result.error is None
+            assert result.value == 42
 
     @pytest.mark.asyncio
     async def test_run_evaluates_expression(self, storage: FileStorage) -> None:
@@ -435,81 +435,16 @@ class TestSessionCapabilities:
     async def test_session_supports_method(self, storage: FileStorage) -> None:
         """Session has supports() method for capability queries."""
         async with Session(storage=storage) as session:
-            # Should have this method
-            assert hasattr(session, "supports")
-            assert callable(session.supports)
+            # Calls through to the active executor.
+            assert isinstance(session.supports("timeout"), bool)
 
     @pytest.mark.asyncio
     async def test_session_supported_capabilities(self, storage: FileStorage) -> None:
         """Session has supported_capabilities() method."""
         async with Session(storage=storage) as session:
-            assert hasattr(session, "supported_capabilities")
             caps = session.supported_capabilities()
             assert isinstance(caps, set)
-
-
-# =============================================================================
-# StorageAccess Type Tests
-# =============================================================================
-
-
-class TestStorageAccessTypes:
-    """Tests for StorageAccess type definitions."""
-
-    def test_file_storage_access_exists(self) -> None:
-        """FileStorageAccess type is importable."""
-        from py_code_mode.execution.protocol import FileStorageAccess
-
-        assert FileStorageAccess is not None
-
-    def test_redis_storage_access_exists(self) -> None:
-        """RedisStorageAccess type is importable."""
-        from py_code_mode.execution.protocol import RedisStorageAccess
-
-        assert RedisStorageAccess is not None
-
-    def test_file_storage_access_has_paths(self) -> None:
-        """FileStorageAccess has workflows_path, artifacts_path.
-
-        NOTE: tools_path and deps_path removed - tools/deps now owned by executors.
-        """
-        from py_code_mode.execution.protocol import FileStorageAccess
-
-        access = FileStorageAccess(
-            workflows_path=Path("/tmp/workflows"),
-            artifacts_path=Path("/tmp/artifacts"),
-        )
-        assert access.workflows_path == Path("/tmp/workflows")
-        assert access.artifacts_path == Path("/tmp/artifacts")
-
-    def test_file_storage_access_paths_optional(self) -> None:
-        """FileStorageAccess allows None for workflows_path.
-
-        NOTE: tools_path and deps_path removed - tools/deps now owned by executors.
-        """
-        from py_code_mode.execution.protocol import FileStorageAccess
-
-        access = FileStorageAccess(
-            workflows_path=None,
-            artifacts_path=Path("/tmp/artifacts"),
-        )
-        assert access.workflows_path is None
-
-    def test_redis_storage_access_has_url_and_prefixes(self) -> None:
-        """RedisStorageAccess has redis_url and prefix fields.
-
-        NOTE: tools_prefix and deps_prefix removed - tools/deps now owned by executors.
-        """
-        from py_code_mode.execution.protocol import RedisStorageAccess
-
-        access = RedisStorageAccess(
-            redis_url="redis://localhost:6379",
-            workflows_prefix="app:workflows",
-            artifacts_prefix="app:artifacts",
-        )
-        assert access.redis_url == "redis://localhost:6379"
-        assert access.workflows_prefix == "app:workflows"
-        assert access.artifacts_prefix == "app:artifacts"
+            assert "timeout" in caps
 
 
 # =============================================================================
@@ -931,17 +866,17 @@ async def run(a: int, b: int) -> int:
             # Verify tools namespace exists
             result = await session.run("'tools' in dir()")
             assert result.is_ok, f"Failed to check tools: {result.error}"
-            assert result.value in (True, "True"), "tools namespace not found"
+            assert result.value is True, "tools namespace not found"
 
             # Verify workflows namespace exists
             result = await session.run("'workflows' in dir()")
             assert result.is_ok, f"Failed to check workflows: {result.error}"
-            assert result.value in (True, "True"), "workflows namespace not found"
+            assert result.value is True, "workflows namespace not found"
 
             # Verify artifacts namespace exists
             result = await session.run("'artifacts' in dir()")
             assert result.is_ok, f"Failed to check artifacts: {result.error}"
-            assert result.value in (True, "True"), "artifacts namespace not found"
+            assert result.value is True, "artifacts namespace not found"
 
             # Verify workflows.list() works and contains our workflow
             result = await session.run("workflows.list()")
@@ -1038,6 +973,6 @@ async def run(a: int, b: int) -> int:
             # the subprocess won't be able to reconstruct the storage
             result = await session.run("'artifacts' in dir()")
             assert result.is_ok, f"Failed: {result.error}"
-            assert result.value in (True, "True"), (
+            assert result.value is True, (
                 "artifacts namespace not available - serializable access likely broken"
             )
