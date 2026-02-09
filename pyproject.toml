@@ -98,6 +98,14 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-n auto --dist loadgroup"
+markers = [
+    "slow: Long-running tests (often subprocess/docker integration).",
+    "integration: Integration tests that may require external services (e.g. Redis).",
+    "docker: Tests that require Docker (typically xdist_group('docker')).",
+    "subprocess: Tests that use the SubprocessExecutor / kernel subprocess (typically xdist_group('subprocess')).",
+    "venv: Tests that touch venv caching/management (typically xdist_group('venv')).",
+    "deno: Tests that require Deno (DenoSandboxExecutor integration).",
+]
 
 [tool.ruff]
 target-version = "py312"
