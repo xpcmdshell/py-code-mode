@@ -32,6 +32,26 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v${{ steps.version.outputs.version }}"
-          git push origin "v${{ steps.version.outputs.version }}"
-          echo "Created tag: v${{ steps.version.outputs.version }}"
+          TAG="v${{ steps.version.outputs.version }}"
+
+          if git ls-remote --tags --exit-code origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag already exists: ${TAG}"
+            exit 0
+          fi
+
+          git tag "${TAG}"
+          git push origin "${TAG}"
+          echo "Created tag: ${TAG}"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "GitHub release already exists: ${TAG}"
+            exit 0
+          fi
+
+          gh release create "${TAG}" --verify-tag --generate-notes
