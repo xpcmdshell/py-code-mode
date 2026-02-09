@@ -8,6 +8,7 @@ Executors determine where and how agent code runs. Four backends are available: 
 
 Notes:
 - Backend key: `"deno-sandbox"`.
+- Example: `examples/deno-sandbox/`.
 
 Key differences vs the other executors:
 - **Async-first sandbox API**: use `await tools.*`, `await workflows.*`, `await artifacts.*`, `await deps.*`.
