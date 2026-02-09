@@ -49,3 +49,23 @@ jobs:
           verbose: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  test-deno-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: denoland/setup-deno@v2
+      - name: Cache Deno modules
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/deno
+          key: deno-${{ runner.os }}-${{ hashFiles('src/py_code_mode/execution/deno_sandbox/runner/**') }}
+          restore-keys: |
+            deno-${{ runner.os }}-
+      - run: uv sync --all-extras
+      - name: Run Deno sandbox integration tests
+        env:
+          PY_CODE_MODE_TEST_DENO: "1"
+          DENO_DIR: ~/.cache/deno
+        run: uv run pytest -n 0 tests/test_deno_sandbox_imports.py tests/test_deno_sandbox_executor.py -v
