@@ -8,6 +8,23 @@ Tools wrap external capabilities as callable functions. Three adapter types supp
 
 Define command-line tools with YAML schema + recipes.
 
+## Tool Middleware (Experimental)
+
+py-code-mode supports a host-side middleware chain around tool execution. This is intended for:
+- Audit logging and metrics
+- Allow/deny decisions and interactive approvals
+- Argument rewriting, retries, caching, etc.
+
+Notes:
+- Middleware runs where tools execute (host-side ToolAdapters).
+- Enforcement guarantees are strongest with `DenoSandboxExecutor` because sandboxed Python can only access tools via RPC back to the host.
+
+API surface:
+- `ToolMiddleware`: `async def __call__(ctx: ToolCallContext, call_next) -> Any`
+- `ToolCallContext`: includes `tool_name`, `callable_name`, `args`, and metadata like `executor_type`, `origin`, `request_id`.
+
+To enable for `DenoSandboxExecutor`, pass `tool_middlewares` in `DenoSandboxConfig`.
+
 ### Schema Definition
 
 ```yaml

@@ -12,6 +12,7 @@ Notes:
 Key differences vs the other executors:
 - **Async-first sandbox API**: use `await tools.*`, `await workflows.*`, `await artifacts.*`, `await deps.*`.
 - **Best-effort deps**: dependency installs run via Pyodide `micropip` and many packages (especially those requiring native extensions) will not work.
+- **Tool middleware support (host-side)**: you can attach tool call middleware via `DenoSandboxConfig.tool_middlewares` (useful for audit logging, approvals, allow/deny, etc.).
 
 ```python
 from pathlib import Path
