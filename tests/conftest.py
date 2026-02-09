@@ -801,6 +801,10 @@ def redis_container():
     if not TESTCONTAINERS_AVAILABLE:
         pytest.skip("testcontainers[redis] not installed")
     if not _docker_daemon_is_available():
+        if os.environ.get("CI"):
+            pytest.fail(
+                "Docker daemon not available for testcontainers Redis (CI should provide Docker)"
+            )
         pytest.skip("Docker daemon not available for testcontainers Redis")
 
     with RedisContainer(image="redis:7-alpine") as container:
