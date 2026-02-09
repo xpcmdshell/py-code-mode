@@ -34,6 +34,7 @@ src/py_code_mode/
     subprocess/     # Jupyter kernel-based subprocess executor
     container/      # Docker container executor
     in_process/     # Same-process executor
+    deno_sandbox/   # Deno + Pyodide (WASM) sandbox executor (experimental)
   workflows/           # Skill storage, library, and vector stores
   tools/            # Tool adapters: CLI, MCP, HTTP
     adapters/       # CLI, MCP, HTTP adapter implementations
@@ -76,6 +77,7 @@ When agents write code, four namespaces are available:
 | SubprocessExecutor | Recommended default. Process isolation via Jupyter kernel. |
 | ContainerExecutor | Docker isolation for untrusted code. |
 | InProcessExecutor | Maximum speed for trusted code. |
+| DenoSandboxExecutor | Sandboxed Python via Deno + Pyodide (WASM). Tools execute host-side. |
 
 ---
 
@@ -98,6 +100,12 @@ uv run pytest -k "test_workflow"
 
 # Run without parallelism (for debugging)
 uv run pytest -n 0
+
+# Run Deno sandbox integration tests (requires Deno installed)
+PY_CODE_MODE_TEST_DENO=1 uv run pytest -n 0 tests/test_deno_sandbox_executor.py -v
+
+# Filter subsets (markers are defined in pyproject.toml)
+uv run pytest -m "not docker"
 ```
 
 ### Linting and Type Checking
@@ -192,6 +200,7 @@ Tools are defined in YAML files. Key patterns:
 - Container tests are in `tests/container/` - require Docker
 - Use `@pytest.mark.xdist_group("group_name")` for tests that need isolation
 - Redis tests use testcontainers - spin up automatically
+- Markers like `docker`, `subprocess`, `venv`, and `deno` are used to filter test subsets
 
 ---
 
