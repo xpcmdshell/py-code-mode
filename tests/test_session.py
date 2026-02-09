@@ -907,9 +907,9 @@ async def run(a: int, b: int) -> int:
 
         async with Session(storage=storage, executor=executor) as session:
             # SubprocessExecutor advertises PROCESS_ISOLATION
-            assert session.supports(
-                Capability.PROCESS_ISOLATION
-            ), "SubprocessExecutor should support PROCESS_ISOLATION"
+            assert session.supports(Capability.PROCESS_ISOLATION), (
+                "SubprocessExecutor should support PROCESS_ISOLATION"
+            )
 
             # SubprocessExecutor supports TIMEOUT
             assert session.supports(Capability.TIMEOUT), "SubprocessExecutor should support TIMEOUT"
@@ -918,14 +918,14 @@ async def run(a: int, b: int) -> int:
             assert session.supports(Capability.RESET), "SubprocessExecutor should support RESET"
 
             # SubprocessExecutor does NOT support NETWORK_ISOLATION
-            assert not session.supports(
-                Capability.NETWORK_ISOLATION
-            ), "SubprocessExecutor should NOT support NETWORK_ISOLATION"
+            assert not session.supports(Capability.NETWORK_ISOLATION), (
+                "SubprocessExecutor should NOT support NETWORK_ISOLATION"
+            )
 
             # SubprocessExecutor does NOT support FILESYSTEM_ISOLATION
-            assert not session.supports(
-                Capability.FILESYSTEM_ISOLATION
-            ), "SubprocessExecutor should NOT support FILESYSTEM_ISOLATION"
+            assert not session.supports(Capability.FILESYSTEM_ISOLATION), (
+                "SubprocessExecutor should NOT support FILESYSTEM_ISOLATION"
+            )
 
             # supported_capabilities() returns the full set
             caps = session.supported_capabilities()
@@ -962,9 +962,9 @@ async def run(a: int, b: int) -> int:
         executor = SubprocessExecutor(config=config)
 
         # Verify the invariant: PROCESS_ISOLATION capability exists
-        assert executor.supports(
-            Capability.PROCESS_ISOLATION
-        ), "SubprocessExecutor must have PROCESS_ISOLATION capability"
+        assert executor.supports(Capability.PROCESS_ISOLATION), (
+            "SubprocessExecutor must have PROCESS_ISOLATION capability"
+        )
 
         # Start and verify it can access storage-based namespaces
         # (this implicitly verifies serializable access works)
@@ -973,6 +973,6 @@ async def run(a: int, b: int) -> int:
             # the subprocess won't be able to reconstruct the storage
             result = await session.run("'artifacts' in dir()")
             assert result.is_ok, f"Failed: {result.error}"
-            assert (
-                result.value is True
-            ), "artifacts namespace not available - serializable access likely broken"
+            assert result.value is True, (
+                "artifacts namespace not available - serializable access likely broken"
+            )

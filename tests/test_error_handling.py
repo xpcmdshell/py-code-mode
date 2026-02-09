@@ -727,9 +727,9 @@ class TestDeveloperErrorDiscovery:
         log_messages = " ".join(r.message for r in log_capture.records)
         assert "syntax_error" in log_messages, "Log should mention which file had errors"
         # Ideally also shows the error type
-        assert (
-            "syntax" in log_messages.lower() or "error" in log_messages.lower()
-        ), "Log should indicate type of error"
+        assert "syntax" in log_messages.lower() or "error" in log_messages.lower(), (
+            "Log should indicate type of error"
+        )
 
 
 # =============================================================================

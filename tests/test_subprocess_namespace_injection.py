@@ -805,9 +805,9 @@ class TestRedisNamespaceSetup:
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
-        assert (
-            "from redis import Redis" in code or "import redis" in code
-        ), "Generated code must import Redis client"
+        assert "from redis import Redis" in code or "import redis" in code, (
+            "Generated code must import Redis client"
+        )
 
     def test_redis_storage_code_uses_provided_url(self) -> None:
         """Generated code should use the exact redis_url provided.
@@ -854,12 +854,12 @@ class TestRedisNamespaceSetup:
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
         # NOTE: tools_prefix assertion removed - tools now owned by executors
-        assert (
-            workflows_prefix in code
-        ), f"Generated code should contain workflows_prefix: {workflows_prefix}"
-        assert (
-            artifacts_prefix in code
-        ), f"Generated code should contain artifacts_prefix: {artifacts_prefix}"
+        assert workflows_prefix in code, (
+            f"Generated code should contain workflows_prefix: {workflows_prefix}"
+        )
+        assert artifacts_prefix in code, (
+            f"Generated code should contain artifacts_prefix: {artifacts_prefix}"
+        )
 
     def test_redis_storage_code_sets_up_tools(self) -> None:
         """Generated code should set up tools namespace with empty registry.
@@ -878,9 +878,9 @@ class TestRedisNamespaceSetup:
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
-        assert (
-            "tools = " in code or "tools=" in code
-        ), "Generated code should assign tools namespace"
+        assert "tools = " in code or "tools=" in code, (
+            "Generated code should assign tools namespace"
+        )
         # Tools are now owned by executor, not storage - empty registry is created
         assert "ToolRegistry()" in code, "Generated code should create empty ToolRegistry"
 
@@ -900,12 +900,12 @@ class TestRedisNamespaceSetup:
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
-        assert (
-            "workflows = " in code or "workflows=" in code
-        ), "Generated code should assign workflows namespace"
-        assert (
-            "RedisWorkflowStore" in code
-        ), "Generated code should use RedisWorkflowStore for workflows"
+        assert "workflows = " in code or "workflows=" in code, (
+            "Generated code should assign workflows namespace"
+        )
+        assert "RedisWorkflowStore" in code, (
+            "Generated code should use RedisWorkflowStore for workflows"
+        )
 
     def test_redis_storage_code_sets_up_artifacts(self) -> None:
         """Generated code should set up artifacts namespace with RedisArtifactStore.
@@ -923,12 +923,12 @@ class TestRedisNamespaceSetup:
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
-        assert (
-            "artifacts = " in code or "artifacts=" in code
-        ), "Generated code should assign artifacts namespace"
-        assert (
-            "RedisArtifactStore" in code
-        ), "Generated code should use RedisArtifactStore for artifacts"
+        assert "artifacts = " in code or "artifacts=" in code, (
+            "Generated code should assign artifacts namespace"
+        )
+        assert "RedisArtifactStore" in code, (
+            "Generated code should use RedisArtifactStore for artifacts"
+        )
 
 
 class TestUnknownStorageType:
@@ -986,9 +986,9 @@ class TestRedisCodeGenerationDetails:
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
-        assert (
-            "from_url" in code.lower() or "Redis(" in code
-        ), "Generated code should use Redis.from_url() or Redis constructor"
+        assert "from_url" in code.lower() or "Redis(" in code, (
+            "Generated code should use Redis.from_url() or Redis constructor"
+        )
 
     def test_redis_code_handles_nest_asyncio(self) -> None:
         """Generated code should apply nest_asyncio for sync wrappers.
@@ -1006,9 +1006,9 @@ class TestRedisCodeGenerationDetails:
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
-        assert (
-            "nest_asyncio" in code
-        ), "Generated code should import and apply nest_asyncio for nested event loop support"
+        assert "nest_asyncio" in code, (
+            "Generated code should import and apply nest_asyncio for nested event loop support"
+        )
 
     def test_redis_code_imports_cli_adapter(self) -> None:
         """Generated code should import CLIAdapter for tool execution.

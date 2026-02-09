@@ -1,8 +1,8 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.0
+    # Keep in sync with the ruff version pinned in uv.lock / used in CI.
+    rev: v0.14.9
     hooks:
       - id: ruff
         args: [--fix]
       - id: ruff-format
-
