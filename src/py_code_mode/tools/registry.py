@@ -153,6 +153,32 @@ class ToolRegistry:
         self._tools: dict[str, Tool] = {}  # name -> Tool
         self._tool_to_adapter: dict[str, ToolAdapter] = {}  # name -> adapter
         self._vectors: dict[str, list[float]] = {}  # name -> embedding vector
+        self._tool_middlewares: tuple[ToolMiddleware, ...] = ()
+        self._tool_middleware_executor_type: str | None = None
+        self._tool_middleware_origin: str | None = None
+
+    def _unwrap_adapter(self, adapter: ToolAdapter) -> ToolAdapter:
+        # Local import to avoid mandatory dependency on middleware wrapper.
+        from py_code_mode.tools.adapters.middleware import MiddlewareAdapter
+
+        while isinstance(adapter, MiddlewareAdapter):
+            adapter = adapter.inner
+        return adapter
+
+    def _wrap_adapter_if_needed(self, adapter: ToolAdapter) -> ToolAdapter:
+        if not self._tool_middlewares:
+            return adapter
+
+        from py_code_mode.tools.adapters.middleware import MiddlewareAdapter
+
+        # Avoid stacking wrappers.
+        adapter = self._unwrap_adapter(adapter)
+        return MiddlewareAdapter(
+            adapter,
+            self._tool_middlewares,
+            executor_type=self._tool_middleware_executor_type,
+            origin=self._tool_middleware_origin,
+        )
 
     @classmethod
     async def from_dir(
@@ -253,7 +279,7 @@ class ToolRegistry:
         Args:
             adapter: The adapter to add.
         """
-        self._adapters.append(adapter)
+        self._adapters.append(self._wrap_adapter_if_needed(adapter))
 
     def get_adapters(self) -> list[ToolAdapter]:
         """Get all registered adapters.
@@ -309,6 +335,7 @@ class ToolRegistry:
         Raises:
             ValueError: If a tool name conflicts with an existing tool.
         """
+        adapter = self._wrap_adapter_if_needed(adapter)
         self._adapters.append(adapter)
         adapter_tools = adapter.list_tools()
         registered = []
@@ -397,10 +424,16 @@ class ToolRegistry:
             ToolNotFoundError: If tool not found.
             ToolCallError: If tool execution fails.
         """
-        if name not in self._tools:
-            raise ToolNotFoundError(name, list(self._tools.keys()))
+        # Normal path: tools registered via register_adapter()
+        adapter = self._tool_to_adapter.get(name)
 
-        adapter = self._tool_to_adapter[name]
+        # Compatibility path: some code uses add_adapter() (no registration),
+        # but ToolsNamespace still discovers tools via adapter.list_tools().
+        if adapter is None:
+            adapter = self.find_adapter_for_tool(name)
+            if adapter is None:
+                available = [t.name for t in self.get_all_tools()]
+                raise ToolNotFoundError(name, available)
 
         try:
             return await adapter.call_tool(name, callable_name, args)
@@ -513,7 +546,7 @@ class ToolRegistry:
         executor_type: str | None = None,
         origin: str | None = None,
     ) -> None:
-        """Wrap all adapters with a tool call middleware chain.
+        """Apply tool call middleware chain to all adapters.
 
         This method mutates the registry in-place and updates internal mappings
         so that *all* tool call paths (ToolsNamespace, RPC providers, registry.call_tool)
@@ -521,33 +554,21 @@ class ToolRegistry:
 
         Notes:
         - Only `call_tool()` is wrapped. `list_tools()` and `describe()` are passed through.
-        - Applying multiple times will stack wrappers; call once per registry instance.
+        - Applying multiple times replaces the active middleware chain.
         """
-        mws = tuple(middlewares)
-        if not mws:
-            return
+        self._tool_middlewares = tuple(middlewares)
+        self._tool_middleware_executor_type = executor_type
+        self._tool_middleware_origin = origin
 
-        from py_code_mode.tools.adapters.middleware import MiddlewareAdapter
-
-        old_adapters = list(self._adapters)
-        adapter_map: dict[int, ToolAdapter] = {}
-        new_adapters: list[ToolAdapter] = []
-
-        for adapter in old_adapters:
-            wrapped: ToolAdapter = MiddlewareAdapter(
-                adapter,
-                mws,
-                executor_type=executor_type,
-                origin=origin,
-            )
-            new_adapters.append(wrapped)
-            adapter_map[id(adapter)] = wrapped
-
-        self._adapters = new_adapters
+        base_adapters = [self._unwrap_adapter(a) for a in self._adapters]
+        wrapped_adapters = [self._wrap_adapter_if_needed(a) for a in base_adapters]
+        base_to_wrapped = {id(b): w for b, w in zip(base_adapters, wrapped_adapters, strict=True)}
+        self._adapters = wrapped_adapters
 
         # Update tool->adapter mapping used by registry.call_tool().
         for tool_name, adapter in list(self._tool_to_adapter.items()):
-            mapped = adapter_map.get(id(adapter))
+            base = self._unwrap_adapter(adapter)
+            mapped = base_to_wrapped.get(id(base))
             if mapped is not None:
                 self._tool_to_adapter[tool_name] = mapped
 

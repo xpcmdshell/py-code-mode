@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
-if TYPE_CHECKING:
-    from py_code_mode.tools.middleware import ToolMiddleware
+from py_code_mode.tools.middleware import ToolMiddleware
 
 
 @dataclass(frozen=True)

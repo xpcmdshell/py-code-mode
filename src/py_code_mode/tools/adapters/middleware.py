@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from py_code_mode.tools.adapters.base import ToolAdapter
@@ -51,6 +52,7 @@ class MiddlewareAdapter:
             adapter_name=type(self._inner).__name__,
             executor_type=self._executor_type,
             origin=self._origin,
+            request_id=uuid.uuid4().hex,
         )
 
         async def _terminal(c: ToolCallContext) -> Any:

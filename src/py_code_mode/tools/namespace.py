@@ -99,10 +99,7 @@ class ToolProxy:
     async def _execute(self, **kwargs: Any) -> Any:
         """Execute the tool asynchronously."""
         tool_name = self._tool.name
-        adapter = self._registry.find_adapter_for_tool(tool_name)
-        if adapter is None:
-            raise RuntimeError(f"No adapter found for tool: {tool_name}")
-        return await adapter.call_tool(tool_name, None, kwargs)
+        return await self._registry.call_tool(tool_name, None, kwargs)
 
     async def call_async(self, **kwargs: Any) -> Any:
         """Execute tool asynchronously. Always returns awaitable.
@@ -188,10 +185,7 @@ class CallableProxy:
 
     async def _execute(self, **kwargs: Any) -> Any:
         """Execute the callable asynchronously."""
-        adapter = self._registry.find_adapter_for_tool(self._tool_name)
-        if adapter is None:
-            raise RuntimeError(f"No adapter found for tool: {self._tool_name}")
-        return await adapter.call_tool(self._tool_name, self._callable.name, kwargs)
+        return await self._registry.call_tool(self._tool_name, self._callable.name, kwargs)
 
     async def call_async(self, **kwargs: Any) -> Any:
         """Execute callable asynchronously. Always returns awaitable.

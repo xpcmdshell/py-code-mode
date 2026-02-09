@@ -77,11 +77,7 @@ class StorageResourceProvider:
             tool_name = name
             recipe_name = None
 
-        adapter = registry.find_adapter_for_tool(tool_name)
-        if adapter is None:
-            raise ValueError(f"Unknown tool: {tool_name}")
-
-        return await adapter.call_tool(tool_name, recipe_name, args)
+        return await registry.call_tool(tool_name, recipe_name, args)
 
     async def list_tools(self) -> list[dict[str, Any]]:
         registry = self._get_tool_registry()
