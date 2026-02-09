@@ -259,6 +259,48 @@ async def test_deno_sandbox_executor_workflows_roundtrip(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
+async def test_deno_sandbox_executor_workflow_calls_other_workflow(tmp_path: Path) -> None:
+    """Ensure a workflow can invoke another workflow inside the sandbox."""
+
+    from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
+    from py_code_mode.session import Session
+    from py_code_mode.storage import FileStorage
+
+    storage = FileStorage(tmp_path / "storage")
+    deno_dir = tmp_path / "deno_dir"
+    deno_dir.mkdir(parents=True, exist_ok=True)
+
+    executor = DenoSandboxExecutor(
+        DenoSandboxConfig(
+            deno_dir=deno_dir,
+            default_timeout=60.0,
+            ipc_timeout=120.0,
+            network_profile="none",
+        )
+    )
+
+    src_double = "async def run(x: int) -> int:\n    return x * 2\n"
+    src_quadruple = (
+        "async def run(x: int) -> int:\n"
+        "    d = await workflows.invoke(workflow_name='double', x=x)\n"
+        "    return await workflows.invoke(workflow_name='double', x=d)\n"
+    )
+
+    async with Session(storage=storage, executor=executor) as session:
+        r1 = await session.run(f"await workflows.create('double', {src_double!r}, 'double')")
+        assert r1.error is None
+
+        r2 = await session.run(
+            f"await workflows.create('quadruple', {src_quadruple!r}, 'quadruple')"
+        )
+        assert r2.error is None
+
+        r3 = await session.run("await workflows.invoke('quadruple', x=10)")
+        assert r3.error is None
+        assert r3.value == 40
+
+
+@pytest.mark.asyncio
 async def test_deno_sandbox_executor_tools_via_rpc(tmp_path: Path) -> None:
     from py_code_mode.execution import DenoSandboxConfig, DenoSandboxExecutor
     from py_code_mode.session import Session
