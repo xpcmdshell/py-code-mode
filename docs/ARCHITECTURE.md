@@ -811,6 +811,9 @@ Agent writes: "tools.curl.get(url='...')" (use `await` only in DenoSandboxExecut
 Note on sandboxing:
 - `DenoSandboxExecutor` sandboxes Python execution in Pyodide, but **tools execute host-side** (the sandbox calls back to the host over RPC to run tools). If you need strict sandbox boundaries, avoid `tools.*` and stick to pure Python plus `deps.*` in the sandbox.
 
+Note on tool middleware:
+- Tool calls can be wrapped by a host-side middleware chain (audit logging, approvals, allow/deny, retries, etc.). Enforcement guarantees are strongest for `DenoSandboxExecutor`, because sandboxed Python can only access tools via host RPC.
+
 ### ToolProxy Methods
 
 ```
