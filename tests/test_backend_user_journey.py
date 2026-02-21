@@ -23,6 +23,7 @@ from py_code_mode.execution.container import ContainerConfig, ContainerExecutor
 from py_code_mode.execution.in_process import InProcessConfig, InProcessExecutor
 from py_code_mode.session import Session
 from py_code_mode.storage import FileStorage, RedisStorage
+from tests.docker_diagnostics import did_test_fail, emit_testcontainer_logs
 
 # =============================================================================
 # Helpers
@@ -570,7 +571,7 @@ class TestRedisStackIntegration:
     """
 
     @pytest.fixture
-    def redis_stack_container(self):
+    def redis_stack_container(self, request: pytest.FixtureRequest):
         """Redis container with RediSearch support."""
         pytest.importorskip("testcontainers")
         from testcontainers.redis import RedisContainer
@@ -578,8 +579,15 @@ class TestRedisStackIntegration:
         # redis-stack includes RediSearch module
         container = RedisContainer(image="redis/redis-stack:latest")
         container.start()
-        yield container
-        container.stop()
+        try:
+            yield container
+        finally:
+            if did_test_fail(request.node):
+                emit_testcontainer_logs(
+                    container,
+                    source=f"testcontainers.RedisContainer ({request.node.nodeid})",
+                )
+            container.stop()
 
     @pytest.fixture
     def redis_stack_url(self, redis_stack_container) -> str:

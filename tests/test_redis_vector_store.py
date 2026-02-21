@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from tests.docker_diagnostics import did_test_fail, emit_testcontainer_logs
+
 if TYPE_CHECKING:
     from redis import Redis
 
@@ -20,7 +22,7 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def redis_container():
+def redis_container(request: pytest.FixtureRequest):
     """Redis container with RediSearch support."""
     pytest.importorskip("testcontainers")
     from testcontainers.redis import RedisContainer
@@ -28,8 +30,15 @@ def redis_container():
     # redis-stack includes RediSearch module
     container = RedisContainer(image="redis/redis-stack:latest")
     container.start()
-    yield container
-    container.stop()
+    try:
+        yield container
+    finally:
+        if did_test_fail(request.node):
+            emit_testcontainer_logs(
+                container,
+                source=f"testcontainers.RedisContainer ({request.node.nodeid})",
+            )
+        container.stop()
 
 
 @pytest.fixture
