@@ -20,14 +20,9 @@ jobs:
       - run: uv run ruff check src/ tests/
       - run: uv run ruff format --check src/ tests/
 
-  test:
+  test-core:
     runs-on: ubuntu-latest
     steps:
-      - name: Free disk space
-        run: |
-          # Remove large pre-installed packages we don't need
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          # NOTE: Don't prune Docker images - keeps base images cached for faster builds
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
       - name: Cache HuggingFace models
@@ -38,13 +33,50 @@ jobs:
           restore-keys: |
             huggingface-${{ runner.os }}-
       - run: uv sync --all-extras
-      # Keep coverage job fast; container backend E2E runs in dedicated job below.
-      - name: Run tests with coverage
-        run: uv run pytest tests/ -v --ignore=tests/test_container.py -m "not docker" -k "not Container" --cov=src/py_code_mode --cov-report=xml --cov-report=term
-      - name: Upload coverage to Codecov
+      - name: Run core tests (non-docker, non-deno, non-subprocess, non-venv)
+        run: |
+          uv run pytest tests/ -v \
+            -m "not docker and not deno and not subprocess and not venv" \
+            --cov=src/py_code_mode \
+            --cov-report=xml:coverage-core.xml \
+            --cov-report=term \
+            --cov-fail-under=0
+      - name: Upload core coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: ./coverage.xml
+          files: ./coverage-core.xml
+          flags: core
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  test-subprocess-venv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - name: Cache HuggingFace models
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/huggingface
+          key: huggingface-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            huggingface-${{ runner.os }}-
+      - run: uv sync --all-extras
+      - name: Run subprocess + venv tests
+        run: |
+          uv run pytest tests/ -v \
+            -m "(subprocess or venv) and not docker and not deno" \
+            --cov=src/py_code_mode \
+            --cov-report=xml:coverage-subprocess-venv.xml \
+            --cov-report=term \
+            --cov-fail-under=0
+      - name: Upload subprocess/venv coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage-subprocess-venv.xml
+          flags: subprocess,venv
           fail_ci_if_error: false
           verbose: true
         env:
@@ -75,7 +107,7 @@ jobs:
             tests/test_mcp_server_executor_selection.py::test_mcp_server_deno_backend_options_e2e \
             -v
 
-  test-mcp-container-backend:
+  test-docker-shard-a:
     runs-on: ubuntu-latest
     steps:
       - name: Free disk space
@@ -85,5 +117,32 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --all-extras
-      - name: Run MCP container backend E2E test
-        run: uv run pytest -n 0 tests/test_mcp_server_executor_selection.py::test_mcp_server_container_backend_options_e2e -v
+      - name: Run docker tests (shard A)
+        run: |
+          # Docker tests start real containers; keep intra-job execution serial.
+          uv run pytest -n 0 -v -m docker \
+            tests/test_backend_user_journey.py \
+            tests/test_deps_config_gaps.py \
+            tests/test_feature_matrix_comprehensive.py \
+            tests/test_mcp_server_executor_selection.py
+
+  test-docker-shard-b:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space
+        run: |
+          # Remove large pre-installed packages we don't need
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-extras
+      - name: Run docker tests (shard B)
+        run: |
+          # Docker tests start real containers; keep intra-job execution serial.
+          uv run pytest -n 0 -v -m docker \
+            tests/test_redis_vector_store.py \
+            tests/test_session.py \
+            tests/test_redis_artifacts.py \
+            tests/test_deps_store.py \
+            tests/test_redis_tools.py \
+            tests/test_subprocess_namespace_injection.py
