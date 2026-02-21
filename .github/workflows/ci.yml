@@ -119,12 +119,10 @@ jobs:
       - run: uv sync --all-extras
       - name: Run docker tests (shard A)
         run: |
-          # Docker tests start real containers; keep intra-job execution serial.
-          uv run pytest -n 0 -v -m docker \
-            tests/test_backend_user_journey.py \
-            tests/test_deps_config_gaps.py \
-            tests/test_feature_matrix_comprehensive.py \
-            tests/test_mcp_server_executor_selection.py
+          # Run docker tests in-process parallelism with conservative worker count.
+          # Use loadscope to spread classes/modules while preserving local fixture grouping.
+          uv run pytest -n 2 --dist loadscope -v -m docker \
+            tests/test_backend_user_journey.py
 
   test-docker-shard-b:
     runs-on: ubuntu-latest
@@ -138,9 +136,27 @@ jobs:
       - run: uv sync --all-extras
       - name: Run docker tests (shard B)
         run: |
-          # Docker tests start real containers; keep intra-job execution serial.
-          uv run pytest -n 0 -v -m docker \
-            tests/test_redis_vector_store.py \
+          # Run docker tests in-process parallelism with conservative worker count.
+          uv run pytest -n 2 --dist loadscope -v -m docker \
+            tests/test_deps_config_gaps.py \
+            tests/test_feature_matrix_comprehensive.py \
+            tests/test_mcp_server_executor_selection.py \
+            tests/test_redis_vector_store.py
+
+  test-docker-shard-c:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space
+        run: |
+          # Remove large pre-installed packages we don't need
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-extras
+      - name: Run docker tests (shard C)
+        run: |
+          # Run docker tests in-process parallelism with conservative worker count.
+          uv run pytest -n 2 --dist loadscope -v -m docker \
             tests/test_session.py \
             tests/test_redis_artifacts.py \
             tests/test_deps_store.py \
