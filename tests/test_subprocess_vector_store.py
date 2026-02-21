@@ -25,6 +25,7 @@ import pytest
 
 from py_code_mode.execution.protocol import FileStorageAccess
 from py_code_mode.execution.subprocess.namespace import build_namespace_setup_code
+from tests.subprocess_test_utils import worker_cached_subprocess_venv_path
 
 # =============================================================================
 # Phase 5.1: Code generation with vectors_path
@@ -222,7 +223,9 @@ class TestSubprocessVectorStoreIntegration:
     @pytest.mark.slow
     @pytest.mark.xdist_group("subprocess")
     @pytest.mark.asyncio
-    async def test_subprocess_executor_with_vector_store(self, tmp_path: Path) -> None:
+    async def test_subprocess_executor_with_vector_store(
+        self, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
         """SubprocessExecutor uses vector store for semantic search.
 
         User journey: Developer uses SubprocessExecutor with semantic search.
@@ -248,7 +251,9 @@ class TestSubprocessVectorStoreIntegration:
 
         # Create subprocess executor
         config = SubprocessConfig(
-            venv_path=tmp_path / "venv",
+            venv_path=worker_cached_subprocess_venv_path(
+                tmp_path_factory, "subprocess-vector-store-pycm"
+            ),
             base_deps=("ipykernel", "py-code-mode"),
         )
         executor = SubprocessExecutor(config=config)
@@ -270,7 +275,7 @@ class TestSubprocessVectorStoreIntegration:
     @pytest.mark.xdist_group("subprocess")
     @pytest.mark.asyncio
     async def test_subprocess_executor_without_vector_store_falls_back(
-        self, tmp_path: Path
+        self, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
     ) -> None:
         """SubprocessExecutor works without vector store (fallback to MockEmbedder).
 
@@ -285,7 +290,9 @@ class TestSubprocessVectorStoreIntegration:
 
         # Create subprocess executor
         config = SubprocessConfig(
-            venv_path=tmp_path / "venv",
+            venv_path=worker_cached_subprocess_venv_path(
+                tmp_path_factory, "subprocess-vector-store-pycm"
+            ),
             base_deps=("ipykernel", "py-code-mode"),
         )
         executor = SubprocessExecutor(config=config)
