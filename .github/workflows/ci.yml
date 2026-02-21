@@ -40,7 +40,7 @@ jobs:
       - run: uv sync --all-extras
       # Keep coverage job fast; container backend E2E runs in dedicated job below.
       - name: Run tests with coverage
-        run: uv run pytest tests/ -v --ignore=tests/test_container.py -k "not Container" --cov=src/py_code_mode --cov-report=xml --cov-report=term
+        run: uv run pytest tests/ -v --ignore=tests/test_container.py -m "not docker" -k "not Container" --cov=src/py_code_mode --cov-report=xml --cov-report=term
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
