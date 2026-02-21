@@ -6,10 +6,13 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    os.environ.get("PY_CODE_MODE_TEST_DENO") != "1",
-    reason="Set PY_CODE_MODE_TEST_DENO=1 to run Deno/Pyodide integration tests.",
-)
+pytestmark = [
+    pytest.mark.deno,
+    pytest.mark.skipif(
+        os.environ.get("PY_CODE_MODE_TEST_DENO") != "1",
+        reason="Set PY_CODE_MODE_TEST_DENO=1 to run Deno/Pyodide integration tests.",
+    ),
+]
 
 
 class _StableEmbedder:

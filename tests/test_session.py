@@ -24,6 +24,7 @@ import pytest
 # These imports will fail initially - that's expected (TDD red phase)
 from py_code_mode.session import Session
 from py_code_mode.storage import FileStorage
+from tests.subprocess_test_utils import worker_cached_subprocess_venv_path
 
 if TYPE_CHECKING:
     pass
@@ -767,7 +768,9 @@ class TestSessionWithSubprocessExecutor:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _subprocess_executor_available(), reason="uv not available")
-    async def test_session_with_subprocess_executor(self, tmp_path: Path) -> None:
+    async def test_session_with_subprocess_executor(
+        self, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
         """Session works with SubprocessExecutor through unified API.
 
         User action: Create Session with SubprocessExecutor
@@ -779,7 +782,9 @@ class TestSessionWithSubprocessExecutor:
 
         config = SubprocessConfig(
             python_version="3.12",
-            venv_path=tmp_path / "venv",
+            venv_path=worker_cached_subprocess_venv_path(
+                tmp_path_factory, "session-subprocess-pycm"
+            ),
             # py-code-mode required for namespace injection in subprocess
             base_deps=("ipykernel", "py-code-mode"),
         )
@@ -794,7 +799,9 @@ class TestSessionWithSubprocessExecutor:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _subprocess_executor_available(), reason="uv not available")
-    async def test_subprocess_executor_gets_serializable_access(self, tmp_path: Path) -> None:
+    async def test_subprocess_executor_gets_serializable_access(
+        self, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
         """Verify get_serializable_access() is called for isolated executors.
 
         User action: Session.start() with SubprocessExecutor
@@ -814,7 +821,9 @@ class TestSessionWithSubprocessExecutor:
 
         config = SubprocessConfig(
             python_version="3.12",
-            venv_path=tmp_path / "venv",
+            venv_path=worker_cached_subprocess_venv_path(
+                tmp_path_factory, "session-subprocess-pycm"
+            ),
             # py-code-mode required for namespace injection in subprocess
             base_deps=("ipykernel", "py-code-mode"),
         )
@@ -830,7 +839,9 @@ class TestSessionWithSubprocessExecutor:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _subprocess_executor_available(), reason="uv not available")
-    async def test_subprocess_namespaces_work_via_session(self, tmp_path: Path) -> None:
+    async def test_subprocess_namespaces_work_via_session(
+        self, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
         """tools/workflows/artifacts namespaces accessible via Session.
 
         User action: Access namespaces in code via Session.run()
@@ -856,7 +867,9 @@ async def run(a: int, b: int) -> int:
 
         config = SubprocessConfig(
             python_version="3.12",
-            venv_path=tmp_path / "venv",
+            venv_path=worker_cached_subprocess_venv_path(
+                tmp_path_factory, "session-subprocess-pycm"
+            ),
             # py-code-mode must be in the venv for namespaces to work
             base_deps=("ipykernel", "py-code-mode"),
         )
@@ -884,7 +897,9 @@ async def run(a: int, b: int) -> int:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _subprocess_executor_available(), reason="uv not available")
-    async def test_subprocess_capabilities_via_session(self, tmp_path: Path) -> None:
+    async def test_subprocess_capabilities_via_session(
+        self, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
         """session.supports() reports correct capabilities for SubprocessExecutor.
 
         User action: Query session capabilities
@@ -899,7 +914,9 @@ async def run(a: int, b: int) -> int:
 
         config = SubprocessConfig(
             python_version="3.12",
-            venv_path=tmp_path / "venv",
+            venv_path=worker_cached_subprocess_venv_path(
+                tmp_path_factory, "session-subprocess-pycm"
+            ),
             # py-code-mode required for namespace injection in subprocess
             base_deps=("ipykernel", "py-code-mode"),
         )
@@ -935,7 +952,9 @@ async def run(a: int, b: int) -> int:
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(not _subprocess_executor_available(), reason="uv not available")
-    async def test_process_isolation_implies_serializable_access(self, tmp_path: Path) -> None:
+    async def test_process_isolation_implies_serializable_access(
+        self, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
         """Any executor with PROCESS_ISOLATION uses serializable access.
 
         User action: Use any executor with PROCESS_ISOLATION capability
@@ -955,7 +974,9 @@ async def run(a: int, b: int) -> int:
 
         config = SubprocessConfig(
             python_version="3.12",
-            venv_path=tmp_path / "venv",
+            venv_path=worker_cached_subprocess_venv_path(
+                tmp_path_factory, "session-subprocess-pycm"
+            ),
             # py-code-mode required for namespace injection in subprocess
             base_deps=("ipykernel", "py-code-mode"),
         )

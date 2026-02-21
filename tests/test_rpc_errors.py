@@ -16,6 +16,7 @@ import pytest
 from py_code_mode.execution.subprocess import SubprocessExecutor
 from py_code_mode.execution.subprocess.config import SubprocessConfig
 from py_code_mode.storage.backends import FileStorage
+from tests.subprocess_test_utils import worker_cached_subprocess_venv_path
 
 # =============================================================================
 # Fixtures
@@ -23,13 +24,13 @@ from py_code_mode.storage.backends import FileStorage
 
 
 @pytest.fixture
-async def executor_with_storage(tmp_path: Path):
+async def executor_with_storage(tmp_path: Path, tmp_path_factory: pytest.TempPathFactory):
     """Provide a started SubprocessExecutor with storage for RPC error tests."""
     storage = FileStorage(tmp_path)
 
     config = SubprocessConfig(
         python_version="3.12",
-        venv_path=tmp_path / "venv",
+        venv_path=worker_cached_subprocess_venv_path(tmp_path_factory, "rpc-errors-pycm"),
         base_deps=("ipykernel", "py-code-mode"),
         allow_runtime_deps=False,  # Block runtime deps for DepsError test
     )
@@ -40,13 +41,13 @@ async def executor_with_storage(tmp_path: Path):
 
 
 @pytest.fixture
-async def executor_with_deps_allowed(tmp_path: Path):
+async def executor_with_deps_allowed(tmp_path: Path, tmp_path_factory: pytest.TempPathFactory):
     """Provide a SubprocessExecutor with runtime deps allowed."""
     storage = FileStorage(tmp_path)
 
     config = SubprocessConfig(
         python_version="3.12",
-        venv_path=tmp_path / "venv",
+        venv_path=worker_cached_subprocess_venv_path(tmp_path_factory, "rpc-errors-pycm"),
         base_deps=("ipykernel", "py-code-mode"),
         allow_runtime_deps=True,  # Allow runtime deps
     )

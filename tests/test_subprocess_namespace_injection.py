@@ -18,6 +18,7 @@ import pytest
 from py_code_mode.execution.subprocess import SubprocessExecutor
 from py_code_mode.execution.subprocess.config import SubprocessConfig
 from py_code_mode.storage import FileStorage
+from tests.subprocess_test_utils import worker_cached_subprocess_venv_path
 
 # =============================================================================
 # Fixtures
@@ -68,12 +69,18 @@ def empty_storage(tmp_path: Path) -> FileStorage:
 
 
 @pytest.fixture
-async def executor_with_storage(tmp_path: Path, storage_with_echo_tool: FileStorage):
+async def executor_with_storage(
+    tmp_path: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    storage_with_echo_tool: FileStorage,
+):
     """Provide a started SubprocessExecutor with storage access."""
     # Tools are owned by executor via config.tools_path (not storage)
     tools_path = storage_with_echo_tool._base_path / "tools"
     config = SubprocessConfig(
-        venv_path=tmp_path / "venv",
+        venv_path=worker_cached_subprocess_venv_path(
+            tmp_path_factory, "namespace-with-storage-pycm"
+        ),
         # Include py-code-mode as a base dep for full namespace functionality
         base_deps=("ipykernel", "py-code-mode"),
         tools_path=tools_path,  # Tools owned by executor
@@ -85,10 +92,16 @@ async def executor_with_storage(tmp_path: Path, storage_with_echo_tool: FileStor
 
 
 @pytest.fixture
-async def executor_empty_storage(tmp_path: Path, empty_storage: FileStorage):
+async def executor_empty_storage(
+    tmp_path: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    empty_storage: FileStorage,
+):
     """Provide a started SubprocessExecutor with empty storage."""
     config = SubprocessConfig(
-        venv_path=tmp_path / "venv",
+        venv_path=worker_cached_subprocess_venv_path(
+            tmp_path_factory, "namespace-empty-storage-pycm"
+        ),
         base_deps=("ipykernel", "py-code-mode"),
     )
     executor = SubprocessExecutor(config=config)
@@ -500,7 +513,12 @@ class TestStorageAccessIntegration:
     """Integration tests for FileStorageAccess with namespaces."""
 
     @pytest.mark.asyncio
-    async def test_namespaces_use_storage_paths(self, tmp_path: Path, echo_tool_yaml: str) -> None:
+    async def test_namespaces_use_storage_paths(
+        self,
+        tmp_path: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+        echo_tool_yaml: str,
+    ) -> None:
         """Namespaces use paths from FileStorage (tools via executor config).
 
         Breaks when: Paths not passed through, wrong directories used.
@@ -516,7 +534,9 @@ class TestStorageAccessIntegration:
 
         # Tools are owned by executor via config.tools_path (not storage)
         config = SubprocessConfig(
-            venv_path=tmp_path / "venv",
+            venv_path=worker_cached_subprocess_venv_path(
+                tmp_path_factory, "namespace-storage-paths-pycm"
+            ),
             base_deps=("ipykernel", "py-code-mode"),
             tools_path=tools_path,  # Tools owned by executor
         )
@@ -561,7 +581,9 @@ workflows.create(
         assert result.value is True
 
     @pytest.mark.asyncio
-    async def test_namespace_state_preserved_after_reset(self, tmp_path: Path) -> None:
+    async def test_namespace_state_preserved_after_reset(
+        self, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
         """reset() preserves namespace access and persisted data.
 
         Breaks when: reset() clears storage, namespaces not re-injected.
@@ -571,7 +593,7 @@ workflows.create(
         storage = FileStorage(base_path=base_path)
 
         config = SubprocessConfig(
-            venv_path=tmp_path / "venv",
+            venv_path=worker_cached_subprocess_venv_path(tmp_path_factory, "namespace-reset-pycm"),
             base_deps=("ipykernel", "py-code-mode"),
         )
 
@@ -616,14 +638,19 @@ class TestNamespaceInvariants:
 
     @pytest.mark.asyncio
     async def test_namespaces_available_immediately_after_start(
-        self, tmp_path: Path, empty_storage: FileStorage
+        self,
+        tmp_path: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+        empty_storage: FileStorage,
     ) -> None:
         """Namespaces are accessible immediately after start().
 
         Breaks when: start() doesn't inject namespaces, lazy initialization fails.
         """
         config = SubprocessConfig(
-            venv_path=tmp_path / "venv",
+            venv_path=worker_cached_subprocess_venv_path(
+                tmp_path_factory, "namespace-invariants-pycm"
+            ),
             base_deps=("ipykernel", "py-code-mode"),
         )
         executor = SubprocessExecutor(config=config)
@@ -1103,7 +1130,10 @@ class TestRedisStorageIntegration:
 
     @pytest.mark.asyncio
     async def test_redis_namespace_full_execution(
-        self, tmp_path: Path, redis_storage: "RedisStorage"
+        self,
+        tmp_path: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+        redis_storage: "RedisStorage",
     ) -> None:
         """Full E2E test: SubprocessExecutor with RedisStorage.
 
@@ -1114,7 +1144,7 @@ class TestRedisStorageIntegration:
         from py_code_mode.execution.subprocess.config import SubprocessConfig
 
         config = SubprocessConfig(
-            venv_path=tmp_path / "redis_venv",
+            venv_path=worker_cached_subprocess_venv_path(tmp_path_factory, "namespace-redis-pycm"),
             base_deps=("ipykernel", "py-code-mode", "redis"),
         )
         executor = SubprocessExecutor(config=config)
