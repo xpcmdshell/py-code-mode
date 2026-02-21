@@ -1,6 +1,7 @@
 import pytest
 
 
+@pytest.mark.deno
 def test_deno_sandbox_imports() -> None:
     from py_code_mode.execution import DENO_SANDBOX_AVAILABLE
 

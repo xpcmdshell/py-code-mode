@@ -119,9 +119,9 @@ jobs:
       - run: uv sync --all-extras
       - name: Run docker tests (shard A)
         run: |
-          # Run docker tests in-process parallelism with conservative worker count.
+          # Run docker tests with xdist auto-workers (one per available core).
           # Use loadscope to spread classes/modules while preserving local fixture grouping.
-          uv run pytest -n 2 --dist loadscope -v -m docker \
+          uv run pytest -n auto --dist loadscope -v -m docker \
             tests/test_backend_user_journey.py
 
   test-docker-shard-b:
@@ -136,8 +136,8 @@ jobs:
       - run: uv sync --all-extras
       - name: Run docker tests (shard B)
         run: |
-          # Run docker tests in-process parallelism with conservative worker count.
-          uv run pytest -n 2 --dist loadscope -v -m docker \
+          # Run docker tests with xdist auto-workers (one per available core).
+          uv run pytest -n auto --dist loadscope -v -m docker \
             tests/test_deps_config_gaps.py \
             tests/test_feature_matrix_comprehensive.py \
             tests/test_mcp_server_executor_selection.py \
@@ -155,8 +155,8 @@ jobs:
       - run: uv sync --all-extras
       - name: Run docker tests (shard C)
         run: |
-          # Run docker tests in-process parallelism with conservative worker count.
-          uv run pytest -n 2 --dist loadscope -v -m docker \
+          # Run docker tests with xdist auto-workers (one per available core).
+          uv run pytest -n auto --dist loadscope -v -m docker \
             tests/test_session.py \
             tests/test_redis_artifacts.py \
             tests/test_deps_store.py \
