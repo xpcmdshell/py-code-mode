@@ -19,7 +19,28 @@ claude mcp add py-code-mode -- uvx --from git+https://github.com/xpcmdshell/py-c
 py-code-mode-mcp [OPTIONS]
 ```
 
-### Options
+### Minimal Setup (Recommended)
+
+In normal usage, you only need storage. Everything else is optional.
+
+```bash
+# Easiest: one base directory (auto-uses base/tools if present)
+py-code-mode-mcp --base ~/.code-mode
+
+# Or explicit storage path
+py-code-mode-mcp --storage ./data
+
+# Optional: choose a non-default executor
+py-code-mode-mcp --base ~/.code-mode --executor deno-sandbox
+```
+
+### Required vs Optional
+
+- Required: one of `--base`, `--storage`, or `--redis`
+- Optional: all other flags
+- Default executor: `subprocess`
+
+### Common Options
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -28,23 +49,93 @@ py-code-mode-mcp [OPTIONS]
 | `--tools PATH` | Path to tools directory (YAML definitions) | - |
 | `--redis URL` | Redis URL for storage | - |
 | `--prefix PREFIX` | Redis key prefix | `py-code-mode` |
-| `--timeout SECONDS` | Code execution timeout | unlimited |
+| `--executor {subprocess,in-process,container,deno-sandbox}` | Execution backend | `subprocess` |
+| `--timeout SECONDS` | Code execution timeout | backend-specific |
 | `--no-runtime-deps` | Disable runtime dependency installation | false |
 | `--no-sync-deps` | Don't install pre-configured deps on startup | false |
+
+### Advanced Backend Overrides (Escape Hatches)
+
+These are optional tuning/debug flags. You do not need them for normal setup.
+Use backend-specific flags only with matching `--executor`.
+
+#### Subprocess (`--executor subprocess`)
+
+| Flag | Description |
+|------|-------------|
+| `--subprocess-python-version VERSION` | Python `major.minor` for kernel venv |
+| `--subprocess-venv-path PATH` | Explicit venv path |
+| `--subprocess-startup-timeout SECONDS` | Kernel startup timeout |
+| `--subprocess-ipc-timeout SECONDS` | RPC timeout for host/sandbox calls |
+| `--subprocess-no-cache-venv` | Disable venv cache |
+| `--subprocess-cleanup-venv-on-close` | Delete venv when session exits |
+
+#### In-Process (`--executor in-process`)
+
+| Flag | Description |
+|------|-------------|
+| `--inprocess-ipc-timeout SECONDS` | RPC timeout for host namespace calls |
+
+#### Container (`--executor container`)
+
+| Flag | Description |
+|------|-------------|
+| `--container-image IMAGE` | Docker image to run |
+| `--container-port PORT` | Host port for container API |
+| `--container-host HOST` | Host for container API connection |
+| `--container-startup-timeout SECONDS` | Container startup timeout |
+| `--container-ipc-timeout SECONDS` | Container RPC timeout |
+| `--container-remote-url URL` | Connect to an existing remote session server |
+| `--container-no-auto-build` | Disable auto-build when image is missing |
+| `--container-keep-container` | Keep container after MCP server exits |
+| `--container-auth-token TOKEN` | Bearer token for container API auth |
+| `--container-auth-disabled` | Disable container API auth (local dev only) |
+
+#### Deno Sandbox (`--executor deno-sandbox`)
+
+| Flag | Description |
+|------|-------------|
+| `--deno-executable PATH_OR_NAME` | Deno binary to execute |
+| `--deno-runner-path PATH` | Runner TypeScript entrypoint path |
+| `--deno-dir PATH` | Deno cache directory (`DENO_DIR`) |
+| `--deno-network-profile {none,deps-only,full}` | Network policy for sandbox process |
+| `--deno-ipc-timeout SECONDS` | Host/sandbox RPC timeout |
+| `--deno-deps-timeout SECONDS` | Dependency installation timeout |
+| `--deno-deps-net-allowlist HOST` | Allowed host for `deps-only` (repeat flag) |
 
 ### Examples
 
 ```bash
-# Base directory (auto-discovers tools/, workflows/, artifacts/)
+# Minimal default setup
 py-code-mode-mcp --base ~/.code-mode
 
-# Explicit storage + tools paths
+# Explicit storage + tools
 py-code-mode-mcp --storage ./data --tools ./project/tools
 
-# Redis storage with timeout
+# Redis storage
+py-code-mode-mcp --redis redis://localhost:6379 --prefix my-agent
+
+# Add a timeout (optional override)
 py-code-mode-mcp --redis redis://localhost:6379 --prefix my-agent --timeout 60
 
-# Production: locked down deps
+# Use Deno sandbox backend
+py-code-mode-mcp --base ~/.code-mode --executor deno-sandbox
+
+# Deno sandbox with deps-only network profile
+py-code-mode-mcp \
+  --base ~/.code-mode \
+  --executor deno-sandbox \
+  --deno-network-profile deps-only \
+  --deno-deps-net-allowlist pypi.org \
+  --deno-deps-net-allowlist files.pythonhosted.org
+
+# Use in-process backend (fastest, least isolated)
+py-code-mode-mcp --base ~/.code-mode --executor in-process
+
+# Container backend with explicit image
+py-code-mode-mcp --base ~/.code-mode --executor container --container-image py-code-mode-tools:latest
+
+# Production-style lock-down
 py-code-mode-mcp --base ~/.code-mode --no-runtime-deps
 ```
 
