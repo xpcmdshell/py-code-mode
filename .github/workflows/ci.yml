@@ -38,9 +38,9 @@ jobs:
           restore-keys: |
             huggingface-${{ runner.os }}-
       - run: uv sync --all-extras
-      # Skip container tests in CI for now (too slow - need Docker layer caching)
+      # Keep coverage job fast; container backend E2E runs in dedicated job below.
       - name: Run tests with coverage
-        run: uv run pytest tests/ -v --ignore=tests/test_container.py -k "not Container" --cov=src/py_code_mode --cov-report=xml --cov-report=term
+        run: uv run pytest tests/ -v --ignore=tests/test_container.py -m "not docker" -k "not Container" --cov=src/py_code_mode --cov-report=xml --cov-report=term
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
@@ -68,4 +68,22 @@ jobs:
         env:
           PY_CODE_MODE_TEST_DENO: "1"
           DENO_DIR: ~/.cache/deno
-        run: uv run pytest -n 0 tests/test_deno_sandbox_imports.py tests/test_deno_sandbox_executor.py -v
+        run: |
+          uv run pytest -n 0 \
+            tests/test_deno_sandbox_imports.py \
+            tests/test_deno_sandbox_executor.py \
+            tests/test_mcp_server_executor_selection.py::test_mcp_server_deno_backend_options_e2e \
+            -v
+
+  test-mcp-container-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space
+        run: |
+          # Remove large pre-installed packages we don't need
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-extras
+      - name: Run MCP container backend E2E test
+        run: uv run pytest -n 0 tests/test_mcp_server_executor_selection.py::test_mcp_server_container_backend_options_e2e -v

@@ -58,6 +58,7 @@ container = [
     "uvicorn>=0.20",
     "httpx>=0.25",
     "docker>=7.0",
+    "redis>=5.0",
 ]
 
 [build-system]

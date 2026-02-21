@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import functools
 import os
+import sys
 
 # Disable testcontainers Ryuk reaper by default in this test suite.
 # We run many dockerized processes (our own ContainerExecutor + testcontainers).
@@ -20,6 +21,11 @@ import pytest
 import redis
 
 from py_code_mode import JsonSchema, ToolDefinition
+from tests.docker_diagnostics import (
+    did_test_fail,
+    emit_executor_container_logs,
+    emit_testcontainer_logs,
+)
 
 # Disable accelerate to avoid meta tensor issues with safetensors in parallel tests
 os.environ["ACCELERATE_DISABLE"] = "1"
@@ -237,6 +243,47 @@ def pytest_collection_modifyitems(config, items):  # noqa: ARG001
                 item.add_marker(pytest.mark.subprocess)
             elif marker.args and marker.args[0] == "venv":
                 item.add_marker(pytest.mark.venv)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Attach phase reports to the test item for fixture/finalizer access."""
+    outcome = yield
+    report = outcome.get_result()
+    setattr(item, f"rep_{report.when}", report)
+
+
+@pytest.fixture(autouse=True)
+def capture_container_executor_logs_on_failure(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Capture ContainerExecutor logs before remove() when docker tests fail."""
+    if request.node.get_closest_marker("docker") is None:
+        yield
+        return
+
+    from py_code_mode.execution.container.executor import ContainerExecutor
+
+    original_stop = ContainerExecutor.stop
+    emitted_container_ids: set[str] = set()
+
+    async def stop_with_log_capture(self) -> None:  # type: ignore[no-untyped-def]
+        container = getattr(self, "_container", None)
+        active_exception = sys.exc_info()[0] is not None
+        should_capture = did_test_fail(request.node) or active_exception
+        if container is not None and should_capture:
+            container_id = getattr(container, "id", f"unknown-{id(container)}")
+            if container_id not in emitted_container_ids:
+                emitted_container_ids.add(container_id)
+                emit_executor_container_logs(
+                    container,
+                    source=f"ContainerExecutor ({request.node.nodeid})",
+                )
+        await original_stop(self)
+
+    monkeypatch.setattr(ContainerExecutor, "stop", stop_with_log_capture)
+    yield
 
 
 class MockAdapter:
@@ -792,7 +839,7 @@ def sample_artifact_data() -> dict[str, Any]:
 
 
 @pytest.fixture(scope="function")
-def redis_container():
+def redis_container(request: pytest.FixtureRequest):
     """Spin up a fresh Redis container per test using testcontainers.
 
     Each test gets an isolated Redis instance - no cross-test pollution.
@@ -807,8 +854,17 @@ def redis_container():
             )
         pytest.skip("Docker daemon not available for testcontainers Redis")
 
-    with RedisContainer(image="redis:7-alpine") as container:
+    container = RedisContainer(image="redis:7-alpine")
+    container.start()
+    try:
         yield container
+    finally:
+        if did_test_fail(request.node):
+            emit_testcontainer_logs(
+                container,
+                source=f"testcontainers.RedisContainer ({request.node.nodeid})",
+            )
+        container.stop()
 
 
 @pytest.fixture
