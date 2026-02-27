@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 
 import pytest
+from aiohttp import web
 from mcp.client.stdio import StdioServerParameters
 
 # =============================================================================
@@ -104,6 +105,91 @@ async def run(url: str) -> str:
 ''')
 
     return storage, tools_dir
+
+
+@pytest.fixture
+async def streamable_http_mcp_url(unused_tcp_port: int) -> str:
+    """Start a minimal local Streamable HTTP MCP server and return its URL."""
+
+    async def handle_mcp_post(request: web.Request) -> web.Response:
+        payload = await request.json()
+        method = payload.get("method")
+        request_id = payload.get("id")
+
+        if method == "initialize":
+            return web.json_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": {"tools": {}},
+                        "serverInfo": {"name": "test-streamable-http", "version": "0.1.0"},
+                    },
+                }
+            )
+
+        if method == "notifications/initialized":
+            return web.Response(status=202)
+
+        if method == "tools/list":
+            return web.json_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "tools": [
+                            {
+                                "name": "hello",
+                                "description": "Return a greeting",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {"name": {"type": "string"}},
+                                    "required": ["name"],
+                                },
+                            }
+                        ]
+                    },
+                }
+            )
+
+        if method == "tools/call":
+            arguments = (payload.get("params") or {}).get("arguments") or {}
+            name = arguments.get("name", "world")
+            return web.json_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "content": [{"type": "text", "text": f"hello {name}"}],
+                        "isError": False,
+                    },
+                }
+            )
+
+        if request_id is None:
+            return web.Response(status=202)
+
+        return web.json_response(
+            {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": -32601, "message": f"Unknown method: {method}"},
+            }
+        )
+
+    app = web.Application()
+    app.router.add_post("/mcp", handle_mcp_post)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", unused_tcp_port)
+    await site.start()
+
+    try:
+        yield f"http://127.0.0.1:{unused_tcp_port}/mcp"
+    finally:
+        await runner.cleanup()
 
 
 # =============================================================================
@@ -246,6 +332,53 @@ class TestMCPServerE2E:
                 # Should find double since it multiplies by 2
                 workflow_names = {s["name"] for s in workflows_data}
                 assert "double" in workflow_names
+
+    @pytest.mark.asyncio
+    async def test_mcp_server_loads_streamable_http_tool_e2e(
+        self,
+        tmp_path: Path,
+        streamable_http_mcp_url: str,
+    ) -> None:
+        """E2E: streamable_http MCP tools load and are callable from run_code."""
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        storage_path = tmp_path / "storage"
+        storage_path.mkdir()
+        (storage_path / "workflows").mkdir()
+        (storage_path / "artifacts").mkdir()
+
+        tools_path = tmp_path / "tools"
+        tools_path.mkdir()
+        (tools_path / "mythic.yaml").write_text(
+            f"""
+name: mythic
+type: mcp
+transport: streamable_http
+url: {streamable_http_mcp_url}
+timeout: 5
+""".strip()
+            + "\n"
+        )
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
+        )
+
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                list_result = await session.call_tool("list_tools", {})
+                tools_data = json.loads(list_result.content[0].text)
+                tool_names = {t["name"] for t in tools_data}
+                assert "mythic" in tool_names
+
+                run_result = await session.call_tool(
+                    "run_code", {"code": 'tools.mythic.hello(name="Noah")'}
+                )
+                assert "hello Noah" in run_result.content[0].text
 
     # -------------------------------------------------------------------------
     # Runtime Workflow Creation Tests

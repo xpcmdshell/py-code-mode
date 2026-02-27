@@ -58,7 +58,6 @@ async def _load_mcp_adapter(
                 url=mcp_config["url"],
                 headers=mcp_config.get("headers"),
                 timeout=float(mcp_config.get("timeout", 5.0)),
-                sse_read_timeout=float(mcp_config.get("sse_read_timeout", 300.0)),
                 namespace=tool_name,
             )
         else:

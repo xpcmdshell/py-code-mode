@@ -178,7 +178,6 @@ class MCPAdapter:
         url: str,
         headers: dict[str, str] | None = None,
         timeout: float = 5.0,
-        sse_read_timeout: float = 300.0,
         *,
         namespace: str,
     ) -> MCPAdapter:
@@ -191,7 +190,6 @@ class MCPAdapter:
             url: Streamable HTTP endpoint URL (e.g., "http://localhost:3333/mcp").
             headers: Optional HTTP headers (e.g., for authentication).
             timeout: Connection timeout in seconds.
-            sse_read_timeout: Read timeout for server-sent events in seconds.
             namespace: Name for the tool namespace (e.g., "c2", "web").
 
         Returns:
@@ -203,8 +201,10 @@ class MCPAdapter:
         try:
             from contextlib import AsyncExitStack
 
+            import httpx
             from mcp import ClientSession
             from mcp.client.streamable_http import streamable_http_client
+            from mcp.shared._httpx_utils import create_mcp_http_client
         except ImportError as e:
             raise ImportError(
                 "MCP package required for streamable HTTP connection. Install with: pip install mcp"
@@ -212,12 +212,15 @@ class MCPAdapter:
 
         exit_stack = AsyncExitStack()
 
+        http_timeout = httpx.Timeout(timeout)
+        http_client = await exit_stack.enter_async_context(
+            create_mcp_http_client(headers=headers, timeout=http_timeout)
+        )
+
         transport = await exit_stack.enter_async_context(
             streamable_http_client(
                 url,
-                headers=headers,
-                timeout=timeout,
-                sse_read_timeout=sse_read_timeout,
+                http_client=http_client,
                 terminate_on_close=True,
             )
         )
