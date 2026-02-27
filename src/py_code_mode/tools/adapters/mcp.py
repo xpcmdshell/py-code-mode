@@ -202,6 +202,7 @@ class MCPAdapter:
         """
         try:
             from contextlib import AsyncExitStack
+
             from mcp import ClientSession
             from mcp.client.streamable_http import streamable_http_client
         except ImportError as e:
