@@ -172,6 +172,62 @@ class MCPAdapter:
 
         return cls(session=session, namespace=namespace, exit_stack=exit_stack)
 
+    @classmethod
+    async def connect_streamable_http(
+        cls,
+        url: str,
+        headers: dict[str, str] | None = None,
+        timeout: float = 5.0,
+        sse_read_timeout: float = 300.0,
+        *,
+        namespace: str,
+    ) -> MCPAdapter:
+        """Connect to an MCP server via Streamable HTTP transport.
+
+        Streamable HTTP is the standard MCP-over-HTTP transport used by many
+        servers (often exposed at a `/mcp` path).
+
+        Args:
+            url: Streamable HTTP endpoint URL (e.g., "http://localhost:3333/mcp").
+            headers: Optional HTTP headers (e.g., for authentication).
+            timeout: Connection timeout in seconds.
+            sse_read_timeout: Read timeout for server-sent events in seconds.
+            namespace: Name for the tool namespace (e.g., "c2", "web").
+
+        Returns:
+            Connected MCPAdapter instance.
+
+        Raises:
+            ImportError: If mcp package is not installed.
+        """
+        try:
+            from contextlib import AsyncExitStack
+
+            from mcp import ClientSession
+            from mcp.client.streamable_http import streamable_http_client
+        except ImportError as e:
+            raise ImportError(
+                "MCP package required for streamable HTTP connection. Install with: pip install mcp"
+            ) from e
+
+        exit_stack = AsyncExitStack()
+
+        transport = await exit_stack.enter_async_context(
+            streamable_http_client(
+                url,
+                headers=headers,
+                timeout=timeout,
+                sse_read_timeout=sse_read_timeout,
+                terminate_on_close=True,
+            )
+        )
+        read_stream, write_stream, *_ = transport
+
+        session = await exit_stack.enter_async_context(ClientSession(read_stream, write_stream))
+        await session.initialize()
+
+        return cls(session=session, namespace=namespace, exit_stack=exit_stack)
+
     def list_tools(self) -> list[Tool]:
         """List all tools from the MCP server.
 

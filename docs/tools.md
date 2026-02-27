@@ -152,9 +152,29 @@ description: Fetch web pages with full content extraction
 
 **Configuration:**
 - `type: mcp` - Identifies this as an MCP adapter
-- `transport` - Currently only `stdio` supported
+- `transport` - One of: `stdio`, `sse`, `streamable_http`
 - `command` - Command to launch the MCP server
 - `args` - Arguments passed to the command
+
+### SSE Transport
+
+```yaml
+name: weather
+type: mcp
+transport: sse
+url: http://localhost:8080/sse
+```
+
+### Streamable HTTP Transport
+
+```yaml
+name: mythic
+type: mcp
+transport: streamable_http
+url: http://localhost:3333/mcp
+timeout: 10
+sse_read_timeout: 120
+```
 
 ### Agent Usage
 
