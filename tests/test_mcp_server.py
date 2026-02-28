@@ -11,12 +11,14 @@ Tests cover:
 - Negative tests (error handling)
 """
 
+import asyncio
 import json
 from pathlib import Path
 
 import pytest
-from aiohttp import web
+import uvicorn
 from mcp.client.stdio import StdioServerParameters
+from mcp.server.fastmcp import FastMCP
 
 # =============================================================================
 # Test Fixtures
@@ -109,87 +111,27 @@ async def run(url: str) -> str:
 
 @pytest.fixture
 async def streamable_http_mcp_url(unused_tcp_port: int) -> str:
-    """Start a minimal local Streamable HTTP MCP server and return its URL."""
+    """Start a real FastMCP server over streamable HTTP and return its URL."""
+    mcp = FastMCP("test-streamable-http")
 
-    async def handle_mcp_post(request: web.Request) -> web.Response:
-        payload = await request.json()
-        method = payload.get("method")
-        request_id = payload.get("id")
+    @mcp.tool()
+    def hello(name: str) -> str:
+        """Return a greeting."""
+        return f"hello {name}"
 
-        if method == "initialize":
-            return web.json_response(
-                {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {
-                        "protocolVersion": "2025-06-18",
-                        "capabilities": {"tools": {}},
-                        "serverInfo": {"name": "test-streamable-http", "version": "0.1.0"},
-                    },
-                }
-            )
+    app = mcp.streamable_http_app()
+    config = uvicorn.Config(app, host="127.0.0.1", port=unused_tcp_port, log_level="warning")
+    server = uvicorn.Server(config)
 
-        if method == "notifications/initialized":
-            return web.Response(status=202)
-
-        if method == "tools/list":
-            return web.json_response(
-                {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {
-                        "tools": [
-                            {
-                                "name": "hello",
-                                "description": "Return a greeting",
-                                "inputSchema": {
-                                    "type": "object",
-                                    "properties": {"name": {"type": "string"}},
-                                    "required": ["name"],
-                                },
-                            }
-                        ]
-                    },
-                }
-            )
-
-        if method == "tools/call":
-            arguments = (payload.get("params") or {}).get("arguments") or {}
-            name = arguments.get("name", "world")
-            return web.json_response(
-                {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": {
-                        "content": [{"type": "text", "text": f"hello {name}"}],
-                        "isError": False,
-                    },
-                }
-            )
-
-        if request_id is None:
-            return web.Response(status=202)
-
-        return web.json_response(
-            {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {"code": -32601, "message": f"Unknown method: {method}"},
-            }
-        )
-
-    app = web.Application()
-    app.router.add_post("/mcp", handle_mcp_post)
-
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "127.0.0.1", unused_tcp_port)
-    await site.start()
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.5)
 
     try:
         yield f"http://127.0.0.1:{unused_tcp_port}/mcp"
     finally:
-        await runner.cleanup()
+        server.should_exit = True
+        await task
 
 
 # =============================================================================
