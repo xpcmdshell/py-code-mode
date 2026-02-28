@@ -1,9 +1,12 @@
 """Tests for ToolRegistry with flat namespace."""
 
+import logging
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from py_code_mode.errors import ToolNotFoundError
-from py_code_mode.tools.registry import ToolRegistry
+from py_code_mode.tools.registry import ToolRegistry, _load_mcp_adapter
 from tests.conftest import ControllableEmbedder, MockAdapter
 
 
@@ -263,6 +266,45 @@ class TestToolRegistryCleanup:
         await registry.close()
 
         assert len(registry.list_tools()) == 0
+
+
+class TestLoadMCPAdapter:
+    """Tests for MCP adapter loading helper."""
+
+    @pytest.mark.asyncio
+    async def test_streamable_http_forwards_supported_kwargs_only(self) -> None:
+        """streamable_http transport forwards only supported kwargs."""
+        logger = logging.getLogger("test")
+
+        mock_adapter = AsyncMock()
+        mock_adapter._refresh_tools = AsyncMock()
+
+        with patch(
+            "py_code_mode.tools.adapters.mcp.MCPAdapter.connect_streamable_http",
+            autospec=True,
+        ) as connect:
+            connect.return_value = mock_adapter
+
+            await _load_mcp_adapter(
+                {
+                    "name": "mythic",
+                    "type": "mcp",
+                    "transport": "streamable_http",
+                    "url": "http://localhost:3333/mcp",
+                    "headers": {"Authorization": "Bearer token"},
+                    "timeout": 12,
+                    "unused_option": 999,
+                },
+                logger,
+            )
+
+            call_kwargs = connect.call_args.kwargs
+            assert call_kwargs == {
+                "url": "http://localhost:3333/mcp",
+                "headers": {"Authorization": "Bearer token"},
+                "timeout": 12.0,
+                "namespace": "mythic",
+            }
 
 
 # TestToolRegistryFromDir removed - use CLIAdapter(tools_path=...) for loading tools

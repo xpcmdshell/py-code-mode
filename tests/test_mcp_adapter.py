@@ -305,41 +305,16 @@ class TestMCPAdapterStreamableHTTPTransport:
     """Tests for Streamable HTTP transport connection."""
 
     @pytest.mark.asyncio
-    async def test_connect_streamable_http_uses_client(self) -> None:
-        """connect_streamable_http uses mcp.client.streamable_http.* client."""
-        from py_code_mode.tools.adapters.mcp import MCPAdapter
-
-        with (
-            patch("mcp.client.streamable_http.streamable_http_client") as mock_http_client,
-            patch("mcp.ClientSession") as mock_session_class,
-        ):
-            mock_read = AsyncMock()
-            mock_write = AsyncMock()
-            mock_http_cm = AsyncMock()
-            mock_http_cm.__aenter__.return_value = (mock_read, mock_write, AsyncMock())
-            mock_http_cm.__aexit__.return_value = None
-            mock_http_client.return_value = mock_http_cm
-
-            mock_session = AsyncMock()
-            mock_session.initialize = AsyncMock()
-            mock_session_cm = AsyncMock()
-            mock_session_cm.__aenter__.return_value = mock_session
-            mock_session_cm.__aexit__.return_value = None
-            mock_session_class.return_value = mock_session_cm
-
-            await MCPAdapter.connect_streamable_http("http://localhost:3333/mcp", namespace="test")
-
-            mock_http_client.assert_called_once()
-            assert mock_http_client.call_args[0][0] == "http://localhost:3333/mcp"
-
-    @pytest.mark.asyncio
     async def test_connect_streamable_http_passes_headers(self) -> None:
-        """connect_streamable_http forwards headers to the HTTP client."""
+        """connect_streamable_http forwards headers via http_client."""
         from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         with (
-            patch("mcp.client.streamable_http.streamable_http_client") as mock_http_client,
-            patch("mcp.ClientSession") as mock_session_class,
+            patch(
+                "mcp.client.streamable_http.streamable_http_client",
+                autospec=True,
+            ) as mock_http_client,
+            patch("mcp.ClientSession", autospec=True) as mock_session_class,
         ):
             mock_read = AsyncMock()
             mock_write = AsyncMock()
@@ -362,8 +337,46 @@ class TestMCPAdapterStreamableHTTPTransport:
                 namespace="test",
             )
 
+            assert mock_http_client.call_args[0][0] == "http://localhost:3333/mcp"
             call_kwargs = mock_http_client.call_args[1]
-            assert call_kwargs.get("headers") == headers
+            assert set(call_kwargs) == {"http_client", "terminate_on_close"}
+            assert call_kwargs["http_client"].headers.get("Authorization") == "Bearer token123"
+
+    @pytest.mark.asyncio
+    async def test_connect_streamable_http_maps_timeout_to_http_client(self) -> None:
+        """connect_streamable_http maps timeout to http_client."""
+        from py_code_mode.tools.adapters.mcp import MCPAdapter
+
+        with (
+            patch(
+                "mcp.client.streamable_http.streamable_http_client",
+                autospec=True,
+            ) as mock_http_client,
+            patch("mcp.ClientSession", autospec=True) as mock_session_class,
+        ):
+            mock_read = AsyncMock()
+            mock_write = AsyncMock()
+            mock_http_cm = AsyncMock()
+            mock_http_cm.__aenter__.return_value = (mock_read, mock_write, AsyncMock())
+            mock_http_cm.__aexit__.return_value = None
+            mock_http_client.return_value = mock_http_cm
+
+            mock_session = AsyncMock()
+            mock_session.initialize = AsyncMock()
+            mock_session_cm = AsyncMock()
+            mock_session_cm.__aenter__.return_value = mock_session
+            mock_session_cm.__aexit__.return_value = None
+            mock_session_class.return_value = mock_session_cm
+
+            await MCPAdapter.connect_streamable_http(
+                "http://localhost:3333/mcp",
+                timeout=7.0,
+                namespace="test",
+            )
+
+            http_client = mock_http_client.call_args[1]["http_client"]
+            assert http_client.timeout.connect == 7.0
+            assert http_client.timeout.read == 7.0
 
     @pytest.mark.asyncio
     async def test_connect_streamable_http_initializes_session(self) -> None:
@@ -371,8 +384,11 @@ class TestMCPAdapterStreamableHTTPTransport:
         from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         with (
-            patch("mcp.client.streamable_http.streamable_http_client") as mock_http_client,
-            patch("mcp.ClientSession") as mock_session_class,
+            patch(
+                "mcp.client.streamable_http.streamable_http_client",
+                autospec=True,
+            ) as mock_http_client,
+            patch("mcp.ClientSession", autospec=True) as mock_session_class,
         ):
             mock_read = AsyncMock()
             mock_write = AsyncMock()
@@ -524,7 +540,7 @@ class TestMCPAdapterNamespacing:
         from py_code_mode.tools.adapters.mcp import MCPAdapter
 
         sig = inspect.signature(MCPAdapter.connect_streamable_http)
-        assert "namespace" in sig.parameters
+        assert set(sig.parameters) == {"url", "headers", "timeout", "namespace"}
 
 
 class TestMCPAdapterWithRegistry:

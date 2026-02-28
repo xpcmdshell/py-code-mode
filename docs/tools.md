@@ -172,8 +172,7 @@ name: mythic
 type: mcp
 transport: streamable_http
 url: http://localhost:3333/mcp
-timeout: 10
-sse_read_timeout: 120
+timeout: 10 # optional, 30 seconds if not specified
 ```
 
 ### Agent Usage

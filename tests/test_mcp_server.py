@@ -11,11 +11,14 @@ Tests cover:
 - Negative tests (error handling)
 """
 
+import asyncio
 import json
 from pathlib import Path
 
 import pytest
+import uvicorn
 from mcp.client.stdio import StdioServerParameters
+from mcp.server.fastmcp import FastMCP
 
 # =============================================================================
 # Test Fixtures
@@ -104,6 +107,31 @@ async def run(url: str) -> str:
 ''')
 
     return storage, tools_dir
+
+
+@pytest.fixture
+async def streamable_http_mcp_url(unused_tcp_port: int) -> str:
+    """Start a real FastMCP server over streamable HTTP and return its URL."""
+    mcp = FastMCP("test-streamable-http")
+
+    @mcp.tool()
+    def hello(name: str) -> str:
+        """Return a greeting."""
+        return f"hello {name}"
+
+    app = mcp.streamable_http_app()
+    config = uvicorn.Config(app, host="127.0.0.1", port=unused_tcp_port, log_level="warning")
+    server = uvicorn.Server(config)
+
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.5)
+
+    try:
+        yield f"http://127.0.0.1:{unused_tcp_port}/mcp"
+    finally:
+        server.should_exit = True
+        await task
 
 
 # =============================================================================
@@ -246,6 +274,53 @@ class TestMCPServerE2E:
                 # Should find double since it multiplies by 2
                 workflow_names = {s["name"] for s in workflows_data}
                 assert "double" in workflow_names
+
+    @pytest.mark.asyncio
+    async def test_mcp_server_loads_streamable_http_tool_e2e(
+        self,
+        tmp_path: Path,
+        streamable_http_mcp_url: str,
+    ) -> None:
+        """E2E: streamable_http MCP tools load and are callable from run_code."""
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        storage_path = tmp_path / "storage"
+        storage_path.mkdir()
+        (storage_path / "workflows").mkdir()
+        (storage_path / "artifacts").mkdir()
+
+        tools_path = tmp_path / "tools"
+        tools_path.mkdir()
+        (tools_path / "mythic.yaml").write_text(
+            f"""
+name: mythic
+type: mcp
+transport: streamable_http
+url: {streamable_http_mcp_url}
+timeout: 5
+""".strip()
+            + "\n"
+        )
+
+        server_params = StdioServerParameters(
+            command="py-code-mode-mcp",
+            args=["--storage", str(storage_path), "--tools", str(tools_path)],
+        )
+
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                list_result = await session.call_tool("list_tools", {})
+                tools_data = json.loads(list_result.content[0].text)
+                tool_names = {t["name"] for t in tools_data}
+                assert "mythic" in tool_names
+
+                run_result = await session.call_tool(
+                    "run_code", {"code": 'tools.mythic.hello(name="Noah")'}
+                )
+                assert "hello Noah" in run_result.content[0].text
 
     # -------------------------------------------------------------------------
     # Runtime Workflow Creation Tests
