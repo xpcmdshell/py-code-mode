@@ -380,10 +380,6 @@ def _build_subprocess_executor(
         config_kwargs["python_version"] = args.subprocess_python_version
     if args.subprocess_venv_path:
         config_kwargs["venv_path"] = Path(args.subprocess_venv_path)
-    elif not no_runtime_deps:
-        # Runtime dep mutation and a shared cached venv are a bad combination for
-        # long-lived MCP usage because add/remove calls can poison future servers.
-        config_kwargs["cache_venv"] = False
     if args.subprocess_startup_timeout is not None:
         config_kwargs["startup_timeout"] = args.subprocess_startup_timeout
     if args.subprocess_ipc_timeout is not None:
