@@ -152,23 +152,25 @@ class WorkflowLibrary:
         Returns:
             True if workflow was removed, False if not found.
         """
+        removed_from_memory = name in self._workflows
+
         # Remove from store if configured
+        removed_from_store = False
         if self.store is not None:
-            self.store.delete(name)
+            removed_from_store = self.store.delete(name)
 
         # Remove from vector_store if configured
         if self.vector_store is not None:
             self.vector_store.remove(name)
 
         # Remove from local index
-        if name not in self._workflows:
-            return False
-        del self._workflows[name]
+        if name in self._workflows:
+            del self._workflows[name]
         if name in self._description_vectors:
             del self._description_vectors[name]
         if name in self._code_vectors:
             del self._code_vectors[name]
-        return True
+        return removed_from_store or removed_from_memory
 
     def search(
         self,

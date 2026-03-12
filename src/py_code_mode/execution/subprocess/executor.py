@@ -25,6 +25,7 @@ from py_code_mode.deps import (
     MemoryDepsStore,
     collect_configured_deps,
 )
+from py_code_mode.deps.store import _package_base_name
 from py_code_mode.execution.protocol import (
     Capability,
     StorageAccess,
@@ -350,10 +351,7 @@ class SubprocessExecutor:
         return result
 
     async def remove_dep(self, package: str) -> dict[str, Any]:
-        """Remove a package from configuration.
-
-        Delegates to the provider which handles deps store removal.
-        """
+        """Remove a package from configuration and uninstall it from the venv."""
         if self._provider is None:
             return {
                 "removed": [],
@@ -362,11 +360,30 @@ class SubprocessExecutor:
                 "removed_from_config": False,
             }
         removed = await self._provider.remove_dep(package)
+        if not removed:
+            package_name = _package_base_name(package)
+            return {
+                "removed": [],
+                "not_found": [package_name],
+                "failed": [],
+                "removed_from_config": False,
+            }
+
+        package_name = _package_base_name(package)
+        result = await self.uninstall_deps([package_name])
+
+        if result.get("removed") and self._host is not None:
+            await self._host.execute(
+                "import importlib; importlib.invalidate_caches()",
+                allow_stdin=False,
+                timeout=5.0,
+            )
+
         return {
-            "removed": [package] if removed else [],
-            "not_found": [] if removed else [package],
-            "failed": [],
-            "removed_from_config": removed,
+            "removed": list(result.get("removed", [])),
+            "not_found": list(result.get("not_found", [])),
+            "failed": list(result.get("failed", [])),
+            "removed_from_config": True,
         }
 
     async def list_deps(self) -> list[str]:

@@ -46,6 +46,21 @@ class RedisArtifactStore:
         """Build index hash key."""
         return f"{self._prefix}{self.INDEX_SUFFIX}"
 
+    def _decode_entry(self, entry_json: str | bytes) -> dict[str, Any]:
+        """Decode a stored index entry."""
+        if isinstance(entry_json, bytes):
+            entry_json = entry_json.decode()
+        return cast(dict[str, Any], json.loads(entry_json))
+
+    def _drop_index_entries(self, names: list[str]) -> None:
+        """Remove stale metadata entries from the Redis hash."""
+        if names:
+            self._redis.hdel(self._index_key(), *names)
+
+    def _payload_exists(self, name: str) -> bool:
+        """Check whether the tracked payload key still exists."""
+        return bool(self._redis.exists(self._data_key(name)))
+
     def save(
         self,
         name: str,
@@ -107,21 +122,20 @@ class RedisArtifactStore:
         Raises:
             ArtifactNotFoundError: If artifact doesn't exist.
         """
+        entry_json = cast(str | bytes | None, self._redis.hget(self._index_key(), name))
+        if entry_json is None:
+            raise ArtifactNotFoundError(name)
+
+        entry = self._decode_entry(entry_json)
         data_key = self._data_key(name)
         content = cast(str | bytes | None, self._redis.get(data_key))
 
         if content is None:
+            self._drop_index_entries([name])
             raise ArtifactNotFoundError(name)
 
         # Check metadata for data type
-        data_type = None
-        try:
-            entry_json = cast(str | bytes | None, self._redis.hget(self._index_key(), name))
-            if entry_json and isinstance(entry_json, str | bytes):
-                entry = json.loads(entry_json)
-                data_type = entry.get("metadata", {}).get("_data_type")
-        except (json.JSONDecodeError, TypeError):
-            pass  # Use fallback logic below
+        data_type = entry.get("metadata", {}).get("_data_type")
 
         # Load based on stored type
         if data_type == "bytes":
@@ -150,7 +164,11 @@ class RedisArtifactStore:
         if entry_json is None:
             return None
 
-        entry = json.loads(entry_json)
+        if not self._payload_exists(name):
+            self._drop_index_entries([name])
+            return None
+
+        entry = self._decode_entry(entry_json)
         return Artifact(
             name=name,
             path=self._data_key(name),
@@ -170,12 +188,14 @@ class RedisArtifactStore:
             return []
 
         artifacts = []
+        stale_names: list[str] = []
         for name, entry_json in index_data.items():
             if isinstance(name, bytes):
                 name = name.decode()
-            if isinstance(entry_json, bytes):
-                entry_json = entry_json.decode()
-            entry = json.loads(entry_json)
+            if not self._payload_exists(name):
+                stale_names.append(name)
+                continue
+            entry = self._decode_entry(entry_json)
             artifacts.append(
                 Artifact(
                     name=name,
@@ -185,6 +205,7 @@ class RedisArtifactStore:
                     created_at=datetime.fromisoformat(entry["created_at"]),
                 )
             )
+        self._drop_index_entries(stale_names)
         return artifacts
 
     def exists(self, name: str) -> bool:
@@ -194,9 +215,14 @@ class RedisArtifactStore:
             name: Artifact name.
 
         Returns:
-            True if artifact exists in index.
+            True if artifact is tracked in metadata and its payload still exists.
         """
-        return bool(self._redis.hexists(self._index_key(), name))
+        if not self._redis.hexists(self._index_key(), name):
+            return False
+        if not self._payload_exists(name):
+            self._drop_index_entries([name])
+            return False
+        return True
 
     def delete(self, name: str) -> None:
         """Delete artifact and its index entry.

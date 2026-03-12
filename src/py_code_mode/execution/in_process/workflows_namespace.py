@@ -56,17 +56,29 @@ class WorkflowsNamespace:
         """
         return self._library
 
+    def _refresh_persisted_library(self) -> None:
+        """Refresh persisted workflows so external changes are visible."""
+        if self._library.store is not None:
+            self._library.refresh()
+
+    def _get_workflow(self, name: str) -> Any:
+        """Get a workflow, refreshing persisted libraries first."""
+        self._refresh_persisted_library()
+        return self._library.get(name)
+
     def search(self, query: str, limit: int = 10) -> builtins.list[dict[str, Any]]:
         """Search for workflows matching query."""
+        self._refresh_persisted_library()
         workflows = self._library.search(query, limit)
         return [self._simplify(w) for w in workflows]
 
     def get(self, name: str) -> Any:
         """Get a workflow by name."""
-        return self._library.get(name)
+        return self._get_workflow(name)
 
     def list(self) -> builtins.list[dict[str, Any]]:
         """List all available workflows."""
+        self._refresh_persisted_library()
         workflows = self._library.list()
         return [self._simplify(w) for w in workflows]
 
@@ -130,7 +142,7 @@ class WorkflowsNamespace:
         """Allow workflows.workflow_name(...) syntax."""
         if name.startswith("_"):
             raise AttributeError(name)
-        workflow = self._library.get(name)
+        workflow = self._get_workflow(name)
         if workflow is None:
             raise AttributeError(f"Workflow not found: {name}")
         # Capture name in closure to avoid conflict with kwargs
@@ -142,7 +154,7 @@ class WorkflowsNamespace:
 
         Returns the result of the workflow execution.
         """
-        workflow = self._library.get(workflow_name)
+        workflow = self._get_workflow(workflow_name)
         if workflow is None:
             raise ValueError(f"Workflow not found: {workflow_name}")
 

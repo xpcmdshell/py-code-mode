@@ -108,6 +108,12 @@ def _normalize_package_name(package: str) -> str:
     return normalized_name + rest
 
 
+def _package_base_name(package: str) -> str:
+    """Return the normalized package name without extras or version specifiers."""
+    normalized = _normalize_package_name(package)
+    return re.split(r"[\[<>=!~]", normalized, maxsplit=1)[0]
+
+
 def _compute_hash(packages: list[str]) -> str:
     """Compute SHA256 hash of sorted package list.
 
@@ -187,12 +193,12 @@ class MemoryDepsStore:
         normalized = _normalize_package_name(package)
 
         # Check for duplicates with different formatting
-        base_name = re.split(r"[\[<>=!~]", normalized)[0]
+        base_name = _package_base_name(normalized)
 
         # Remove existing entries with same base name
         to_remove = []
         for existing in self._packages:
-            existing_base = re.split(r"[\[<>=!~]", existing)[0]
+            existing_base = _package_base_name(existing)
             if existing_base == base_name:
                 to_remove.append(existing)
 
@@ -210,13 +216,12 @@ class MemoryDepsStore:
         if not package or not package.strip():
             return False
 
-        normalized = _normalize_package_name(package)
-        base_name = re.split(r"[\[<>=!~]", normalized)[0]
+        base_name = _package_base_name(package)
 
         # Find and remove any package with matching base name
         to_remove = []
         for existing in self._packages:
-            existing_base = re.split(r"[\[<>=!~]", existing)[0]
+            existing_base = _package_base_name(existing)
             if existing_base == base_name:
                 to_remove.append(existing)
 
@@ -247,11 +252,10 @@ class MemoryDepsStore:
         if not package or not package.strip():
             return False
 
-        normalized = _normalize_package_name(package)
-        base_name = re.split(r"[\[<>=!~]", normalized)[0]
+        base_name = _package_base_name(package)
 
         for existing in self._packages:
-            existing_base = re.split(r"[\[<>=!~]", existing)[0]
+            existing_base = _package_base_name(existing)
             if existing_base == base_name:
                 return True
         return False
@@ -270,10 +274,11 @@ class FileDepsStore:
         self._deps_dir = self._base_path / "deps"
         self._requirements_file = self._deps_dir / "requirements.txt"
         self._packages: set[str] = set()
-        self._load()
+        self._refresh()
 
-    def _load(self) -> None:
-        """Load packages from requirements.txt if it exists."""
+    def _refresh(self) -> None:
+        """Reload packages from requirements.txt so external edits stay visible."""
+        self._packages = set()
         if not self._requirements_file.exists():
             return
 
@@ -294,21 +299,23 @@ class FileDepsStore:
 
     def list(self) -> list[str]:
         """Return list of all packages."""
+        self._refresh()
         return list(self._packages)
 
     def add(self, package: str) -> None:
         """Add a package to the store."""
+        self._refresh()
         _validate_package_name(package)
         normalized = _normalize_package_name(package)
 
         # Check for duplicates with different formatting (e.g., my_package vs my-package)
         # Extract base name without version specifiers for comparison
-        base_name = re.split(r"[\[<>=!~]", normalized)[0]
+        base_name = _package_base_name(normalized)
 
         # Remove existing entries with same base name
         to_remove = []
         for existing in self._packages:
-            existing_base = re.split(r"[\[<>=!~]", existing)[0]
+            existing_base = _package_base_name(existing)
             if existing_base == base_name:
                 to_remove.append(existing)
 
@@ -324,16 +331,16 @@ class FileDepsStore:
         Matches by base package name, so remove("requests") will remove
         "requests>=2.0" if present.
         """
+        self._refresh()
         if not package or not package.strip():
             return False
 
-        normalized = _normalize_package_name(package)
-        base_name = re.split(r"[\[<>=!~]", normalized)[0]
+        base_name = _package_base_name(package)
 
         # Find and remove any package with matching base name
         to_remove = []
         for existing in self._packages:
-            existing_base = re.split(r"[\[<>=!~]", existing)[0]
+            existing_base = _package_base_name(existing)
             if existing_base == base_name:
                 to_remove.append(existing)
 
@@ -347,11 +354,13 @@ class FileDepsStore:
 
     def clear(self) -> None:
         """Remove all packages from the store."""
+        self._refresh()
         self._packages.clear()
         self._save()
 
     def hash(self) -> str:
         """Compute hash of current package list."""
+        self._refresh()
         return _compute_hash(list(self._packages))
 
     def exists(self, package: str) -> bool:
@@ -363,14 +372,14 @@ class FileDepsStore:
         Returns:
             True if package (by base name) exists, False otherwise.
         """
+        self._refresh()
         if not package or not package.strip():
             return False
 
-        normalized = _normalize_package_name(package)
-        base_name = re.split(r"[\[<>=!~]", normalized)[0]
+        base_name = _package_base_name(package)
 
         for existing in self._packages:
-            existing_base = re.split(r"[\[<>=!~]", existing)[0]
+            existing_base = _package_base_name(existing)
             if existing_base == base_name:
                 return True
         return False
@@ -410,12 +419,12 @@ class RedisDepsStore:
         normalized = _normalize_package_name(package)
 
         # Check for duplicates with different formatting
-        base_name = re.split(r"[\[<>=!~]", normalized)[0]
+        base_name = _package_base_name(normalized)
 
         # Get all members and check for conflicts
         existing = self.list()
         for pkg in existing:
-            existing_base = re.split(r"[\[<>=!~]", pkg)[0]
+            existing_base = _package_base_name(pkg)
             if existing_base == base_name:
                 self._redis.srem(self._key, pkg)
 
@@ -430,14 +439,13 @@ class RedisDepsStore:
         if not package or not package.strip():
             return False
 
-        normalized = _normalize_package_name(package)
-        base_name = re.split(r"[\[<>=!~]", normalized)[0]
+        base_name = _package_base_name(package)
 
         # Find and remove any package with matching base name
         existing = self.list()
         removed = False
         for pkg in existing:
-            existing_base = re.split(r"[\[<>=!~]", pkg)[0]
+            existing_base = _package_base_name(pkg)
             if existing_base == base_name:
                 self._redis.srem(self._key, pkg)
                 removed = True
