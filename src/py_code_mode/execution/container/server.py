@@ -58,6 +58,7 @@ from py_code_mode.deps import (  # noqa: E402
     PackageInstaller,
     RedisDepsStore,
 )
+from py_code_mode.errors import ArtifactNotFoundError  # noqa: E402
 from py_code_mode.execution.container.config import SessionConfig  # noqa: E402
 from py_code_mode.execution.in_process import (  # noqa: E402
     InProcessExecutor as CodeExecutor,
@@ -898,10 +899,10 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         if _state.artifact_store is None:
             raise HTTPException(status_code=503, detail="Artifact store not initialized")
 
-        if not _state.artifact_store.exists(name):
+        try:
+            return _state.artifact_store.load(name)
+        except ArtifactNotFoundError:
             raise HTTPException(status_code=404, detail=f"Artifact '{name}' not found")
-
-        return _state.artifact_store.load(name)
 
     @app.post("/api/artifacts", dependencies=[Depends(require_auth)])
     async def api_save_artifact(body: SaveArtifactRequest) -> dict[str, Any]:

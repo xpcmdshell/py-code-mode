@@ -361,6 +361,51 @@ class TestArtifactsAPI:
         response = client.get("/api/artifacts/nonexistent")
         assert response.status_code == 401
 
+    def test_list_artifacts_omits_externally_deleted_artifact(self, auth_client, tmp_path) -> None:
+        """GET /api/artifacts prunes stale metadata after external file deletion."""
+        client, token = auth_client
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = client.post(
+            "/api/artifacts",
+            json={
+                "name": "stale.json",
+                "data": {"key": "value"},
+                "description": "Stale artifact",
+            },
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+        (tmp_path / "artifacts" / "stale.json").unlink()
+
+        response = client.get("/api/artifacts", headers=headers)
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_load_artifact_returns_404_after_external_file_delete(
+        self, auth_client, tmp_path
+    ) -> None:
+        """GET /api/artifacts/{name} returns 404 when a tracked file is deleted externally."""
+        client, token = auth_client
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = client.post(
+            "/api/artifacts",
+            json={
+                "name": "stale.json",
+                "data": {"key": "value"},
+                "description": "Stale artifact",
+            },
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+        (tmp_path / "artifacts" / "stale.json").unlink()
+
+        response = client.get("/api/artifacts/stale.json", headers=headers)
+        assert response.status_code == 404
+
     def test_save_artifact_success(self, auth_client) -> None:
         """POST /api/artifacts saves an artifact."""
         client, token = auth_client
