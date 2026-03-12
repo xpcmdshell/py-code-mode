@@ -14,6 +14,7 @@ Tests cover:
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import uvicorn
@@ -23,6 +24,33 @@ from mcp.server.fastmcp import FastMCP
 # =============================================================================
 # Test Fixtures
 # =============================================================================
+
+
+class TestMCPServerExecutorConfig:
+    """Tests for executor configuration defaults in the MCP server."""
+
+    def test_subprocess_runtime_deps_disable_shared_cache_by_default(self) -> None:
+        """Runtime deps should use an isolated subprocess venv unless explicitly pinned."""
+        from py_code_mode.cli.mcp_server import _build_subprocess_executor
+
+        args = SimpleNamespace(
+            subprocess_python_version=None,
+            subprocess_venv_path=None,
+            subprocess_startup_timeout=None,
+            subprocess_ipc_timeout=None,
+            subprocess_no_cache_venv=False,
+            subprocess_cleanup_venv_on_close=False,
+        )
+
+        executor = _build_subprocess_executor(
+            args=args,
+            no_runtime_deps=False,
+            timeout=None,
+            tools_path=None,
+        )
+
+        assert executor._config.cache_venv is False
+        assert executor._config.venv_path is None
 
 
 @pytest.fixture

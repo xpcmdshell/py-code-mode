@@ -3,6 +3,7 @@
 import shutil
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -234,6 +235,42 @@ class TestVenvManagerInit:
         manager = VenvManager(config)
         # Access internal config to verify it's stored
         assert manager._config is config
+
+
+class TestVenvManagerValidityChecks:
+    """Tests for cached venv reuse validation."""
+
+    def test_cached_venv_invalid_when_ipykernel_import_fails(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Broken kernel runtimes should force cached venv recreation."""
+        venv_path = tmp_path / "broken-venv"
+        python_path = venv_path / "bin" / "python"
+        python_path.parent.mkdir(parents=True)
+        python_path.write_text("")
+
+        config = SubprocessConfig(
+            python_version="3.12",
+            venv_path=venv_path,
+            base_deps=("ipykernel",),
+        )
+        manager = VenvManager(config)
+
+        calls: list[list[str]] = []
+
+        def fake_run(args, **kwargs):  # type: ignore[no-untyped-def]
+            calls.append(args)
+            if args[-1] == "--version":
+                return MagicMock(returncode=0)
+            if args[-1] == "import ipykernel":
+                return MagicMock(returncode=1)
+            return MagicMock(returncode=0)
+
+        monkeypatch.setattr("py_code_mode.execution.subprocess.venv.subprocess.run", fake_run)
+
+        assert manager._is_venv_valid(venv_path) is False
+        assert any(args[-1] == "--version" for args in calls)
+        assert any(args[-1] == "import ipykernel" for args in calls)
 
 
 # =============================================================================
