@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from py_code_mode.artifacts import FileArtifactStore
+from py_code_mode.errors import ArtifactNotFoundError
 
 
 class TestArtifactDataclass:
@@ -184,6 +185,36 @@ class TestArtifactStore:
 
         artifact = store.get("results.json")
         assert artifact.metadata["tool"] == "nmap"
+
+    def test_list_prunes_stale_index_entry_after_external_delete(self, store) -> None:
+        """list() removes tracked artifacts whose files were deleted externally."""
+        store.save("stale.json", {"x": 1}, description="Stale")
+
+        (store.path_obj / "stale.json").unlink()
+
+        assert store.list() == []
+
+        index = json.loads((store.path_obj / ".artifacts.json").read_text())
+        assert "stale.json" not in index
+
+    def test_load_requires_tracked_metadata(self, store) -> None:
+        """load() ignores raw files that have not been registered."""
+        (store.path_obj / "external.json").write_text('{"x": 1}')
+
+        with pytest.raises(ArtifactNotFoundError):
+            store.load("external.json")
+
+    def test_missing_metadata_untracks_existing_file(self, store) -> None:
+        """Deleting the metadata index makes previously tracked files invisible."""
+        store.save("tracked.json", {"x": 1}, description="Tracked")
+
+        (store.path_obj / ".artifacts.json").unlink()
+
+        assert store.list() == []
+        assert store.get("tracked.json") is None
+        assert store.exists("tracked.json") is False
+        with pytest.raises(ArtifactNotFoundError):
+            store.load("tracked.json")
 
 
 class TestArtifactStoreFileAccess:
