@@ -289,14 +289,9 @@ class TestSessionFacadeDepsMethodsContract:
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        # NOTE: In new architecture, deps are executor-owned. We add a dep first
-        # via the session so there's something to remove.
 
         async with Session(storage=storage) as session:
-            # First add a package via session
-            await session.add_dep("six")
-            # Now remove it
-            result = await session.remove_dep("six")
+            result = await session.remove_dep("nonexistent-pkg-xyz")
             assert isinstance(result, dict)
             assert "removed" in result
             assert "not_found" in result
@@ -358,24 +353,37 @@ class TestSessionFacadeDepsPersistence:
         Verification: Package no longer in deps.list().
         Breaks when: Package not removed from executor's deps namespace.
         """
+        from py_code_mode.execution.subprocess import SubprocessConfig, SubprocessExecutor
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
+        executor = SubprocessExecutor(
+            config=SubprocessConfig(
+                python_version="3.12",
+                venv_path=tmp_path / "venv",
+                base_deps=("ipykernel", "py-code-mode"),
+            )
+        )
 
-        async with Session(storage=storage) as session:
+        async with Session(storage=storage, executor=executor) as session:
             # Add a dep first
-            await session.add_dep("six")
+            await session.add_dep("colorama")
             deps = await session.list_deps()
-            assert "six" in deps
+            assert "colorama" in deps
 
             # Now remove it
-            result = await session.remove_dep("six")
+            result = await session.remove_dep("colorama")
             assert result["removed_from_config"] is True
 
             # Verify it's gone
             deps = await session.list_deps()
-            assert "six" not in deps
+            assert "colorama" not in deps
+
+            await executor.reset()
+            run_result = await executor.run("import colorama")
+            assert not run_result.is_ok
+            assert "ModuleNotFoundError" in run_result.error
 
 
 class TestSessionFacadeDepsErrorHandling:
@@ -419,7 +427,7 @@ class TestSessionFacadeDepsErrorHandling:
         # Don't call start() - should auto-start
 
         try:
-            result = await session.remove_dep("six")
+            result = await session.remove_dep("nonexistent-pkg-xyz")
             assert isinstance(result, dict)
         finally:
             await session.close()
@@ -878,22 +886,30 @@ class TestSessionExecutorDepsIntegration:
         Verification: Package no longer in deps.list().
         Breaks when: Session doesn't delegate properly to executor.
         """
-        from py_code_mode.execution.in_process import InProcessExecutor
+        from py_code_mode.execution.subprocess import SubprocessConfig, SubprocessExecutor
         from py_code_mode.session import Session
         from py_code_mode.storage import FileStorage
 
         storage = FileStorage(tmp_path)
-        executor = InProcessExecutor()
+        executor = SubprocessExecutor(
+            config=SubprocessConfig(
+                python_version="3.12",
+                venv_path=tmp_path / "venv",
+                base_deps=("ipykernel", "py-code-mode"),
+            )
+        )
 
         async with Session(storage=storage, executor=executor) as session:
             # Add first
-            await session.add_dep("six")
+            await session.add_dep("colorama")
             # Now remove
-            result = await session.remove_dep("six")
+            result = await session.remove_dep("colorama")
             assert isinstance(result, dict)
+            assert result["removed_from_config"] is True
+            assert "colorama" in result["removed"]
             # Verify it's gone
             deps = await session.list_deps()
-            assert "six" not in deps
+            assert "colorama" not in deps
 
     @pytest.mark.asyncio
     async def test_session_sync_deps_with_preconfigured_deps(self, tmp_path: Path) -> None:

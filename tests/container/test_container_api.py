@@ -12,6 +12,8 @@ Feature areas covered:
 5. Auth enforcement on all /api/* endpoints
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 
 # =============================================================================
@@ -204,6 +206,82 @@ class TestWorkflowsAPI:
         assert data["name"] == "test_workflow"
         assert data["description"] == "Doubles a number"
         assert "source" in data
+
+    def test_list_workflows_refreshes_after_external_create(self, auth_client, tmp_path) -> None:
+        """GET /api/workflows sees workflows created after app startup."""
+        from py_code_mode.workflows import FileWorkflowStore, PythonWorkflow
+
+        client, token = auth_client
+        store = FileWorkflowStore(tmp_path / "workflows")
+        store.save(
+            PythonWorkflow.from_source(
+                name="late_added",
+                source='"""Added later."""\n\nasync def run() -> str:\n    return "ok"\n',
+                description="Added later",
+            )
+        )
+
+        response = client.get(
+            "/api/workflows",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        assert any(workflow["name"] == "late_added" for workflow in response.json())
+
+    def test_get_workflow_refreshes_after_external_edit(self, auth_client, tmp_path) -> None:
+        """GET /api/workflows/{name} reflects external edits after startup."""
+        from py_code_mode.workflows import FileWorkflowStore, PythonWorkflow
+
+        client, token = auth_client
+        store = FileWorkflowStore(tmp_path / "workflows")
+        store.save(
+            PythonWorkflow.from_source(
+                name="editable",
+                source='"""First version."""\n\nasync def run() -> int:\n    return 1\n',
+                description="First version",
+            )
+        )
+
+        store.save(
+            PythonWorkflow.from_source(
+                name="editable",
+                source='"""Second version."""\n\nasync def run() -> int:\n    return 2\n',
+                description="Second version",
+            )
+        )
+
+        response = client.get(
+            "/api/workflows/editable",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        assert "return 2" in response.json()["source"]
+
+    def test_info_refreshes_after_external_workflow_create(self, auth_client, tmp_path) -> None:
+        """GET /info includes workflows created after server initialization."""
+        from py_code_mode.workflows import FileWorkflowStore, PythonWorkflow
+
+        client, token = auth_client
+        store = FileWorkflowStore(tmp_path / "workflows")
+        store.save(
+            PythonWorkflow.from_source(
+                name="visible_in_info",
+                source='"""Info workflow."""\n\nasync def run() -> str:\n    return "info"\n',
+                description="Info workflow",
+            )
+        )
+
+        response = client.get(
+            "/info",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        assert any(
+            workflow["name"] == "visible_in_info" for workflow in response.json()["workflows"]
+        )
 
     def test_create_workflow_requires_auth(self, auth_client) -> None:
         """POST /api/workflows requires authentication."""
@@ -588,6 +666,33 @@ class TestDepsAPI:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 403
+
+    def test_remove_dep_returns_uninstall_result(self, auth_client, monkeypatch, tmp_path) -> None:
+        """POST /api/deps/remove removes from config and uninstalls from the environment."""
+        client, token = auth_client
+        deps_dir = tmp_path / "deps"
+        deps_dir.mkdir(parents=True, exist_ok=True)
+        (deps_dir / "requirements.txt").write_text("colorama\n")
+
+        monkeypatch.setattr(
+            "py_code_mode.execution.container.server.subprocess.run",
+            lambda *args, **kwargs: MagicMock(returncode=0, stdout="", stderr=""),
+        )
+
+        response = client.post(
+            "/api/deps/remove",
+            json={"package": "colorama"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "removed": ["colorama"],
+            "not_found": [],
+            "failed": [],
+            "removed_from_config": True,
+        }
+        assert (deps_dir / "requirements.txt").read_text() == ""
 
     def test_sync_deps_requires_auth(self, auth_client) -> None:
         """POST /api/deps/sync requires authentication."""

@@ -1,5 +1,6 @@
 """Tests for semantic search - written first to define interface."""
 
+from pathlib import Path
 from textwrap import dedent
 
 import pytest
@@ -379,6 +380,26 @@ class TestWorkflowLibraryWithStore:
         library = WorkflowLibrary(embedder=embedder, store=store)
 
         # Remove through library
+        result = library.remove("fetch_url")
+
+        assert result is True
+        assert store.load("fetch_url") is None
+
+    def test_remove_returns_true_for_stale_file_backed_workflow(self, tmp_path: Path) -> None:
+        """remove() should report success when the store deleted a stale-on-disk workflow."""
+        from py_code_mode.workflows import FileWorkflowStore, MockEmbedder, WorkflowLibrary
+
+        store = FileWorkflowStore(tmp_path / "workflows")
+        library = WorkflowLibrary(embedder=MockEmbedder(dimension=384), store=store)
+
+        store.save(
+            _make_workflow(
+                name="fetch_url",
+                description="Fetch content from a URL",
+                code="return requests.get(url).text",
+            )
+        )
+
         result = library.remove("fetch_url")
 
         assert result is True

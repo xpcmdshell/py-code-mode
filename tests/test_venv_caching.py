@@ -162,32 +162,20 @@ def test_explicit_cleanup_overrides_auto():
 # ==============================================================================
 
 
-def test_is_venv_valid_returns_true_for_valid_venv(tmp_path):
-    """Verify _is_venv_valid recognizes a valid venv.
+@pytest.mark.asyncio
+async def test_is_venv_valid_returns_true_for_reusable_subprocess_venv(tmp_path):
+    """Verify _is_venv_valid recognizes a reusable subprocess venv.
 
-    A valid venv has:
+    A reusable cached subprocess venv has:
     - Directory exists
     - bin/python (or Scripts/python.exe on Windows) executable exists
     - Python executable runs successfully
+    - the kernel runtime imports successfully
     """
-    # Create a fake valid venv structure
     venv_path = tmp_path / "valid-venv"
-    venv_path.mkdir()
+    manager = VenvManager(venv_path=venv_path, python_version=_get_current_python_version())
+    await manager.create()
 
-    # Create bin directory with python executable
-    bin_dir = venv_path / ("Scripts" if os.name == "nt" else "bin")
-    bin_dir.mkdir()
-    python_exe = bin_dir / ("python.exe" if os.name == "nt" else "python")
-
-    # Create actual Python symlink to make it runnable
-    # Note: symlink is required on macOS with uv-managed Python because
-    # copying the binary alone doesn't include the dynamic library it references
-    import sys
-
-    os.symlink(sys.executable, python_exe)
-
-    # Validate
-    manager = VenvManager(venv_path=venv_path, python_version="3.11")
     assert manager._is_venv_valid(venv_path) is True
 
 

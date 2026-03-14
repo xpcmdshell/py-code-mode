@@ -120,6 +120,29 @@ class TestPackageInstallerUserJourney:
             assert "pandas" in result.already_present
             assert "numpy" in result.installed
 
+    @pytest.mark.asyncio
+    async def test_sync_uses_externally_updated_requirements_file(self, tmp_path: Path) -> None:
+        """sync() should follow requirements.txt edits made outside the store instance."""
+        from py_code_mode.deps import FileDepsStore, PackageInstaller
+
+        store = FileDepsStore(tmp_path)
+        store.add("pandas")
+
+        installer = PackageInstaller()
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+            installer.sync(store)
+
+            requirements_path = tmp_path / "deps" / "requirements.txt"
+            requirements_path.write_text("numpy\n")
+
+            result = installer.sync(store)
+
+            assert result.installed == {"numpy"}
+            assert "pandas" not in result.installed
+
 
 # =============================================================================
 # PackageInstaller Contract Tests
