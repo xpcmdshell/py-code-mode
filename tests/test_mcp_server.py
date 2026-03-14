@@ -1451,7 +1451,7 @@ class TestMCPServerDepsTools:
                 await session.initialize()
 
                 # Add a real package (will attempt pip install)
-                result = await session.call_tool("add_dep", {"package": "six"})
+                result = await session.call_tool("add_dep", {"package": "colorama"})
                 result_data = json.loads(result.content[0].text)
 
                 # Should be a dict with sync result info
@@ -1490,14 +1490,14 @@ class TestMCPServerDepsTools:
                 await session.initialize()
 
                 # Add a package
-                await session.call_tool("add_dep", {"package": "six"})
+                await session.call_tool("add_dep", {"package": "colorama"})
 
                 # List deps
                 result = await session.call_tool("list_deps", {})
                 deps_data = json.loads(result.content[0].text)
 
                 # Package should be in the list
-                assert "six" in deps_data
+                assert "colorama" in deps_data
 
     @pytest.mark.asyncio
     async def test_add_then_remove_dep_workflow(
@@ -1522,22 +1522,22 @@ class TestMCPServerDepsTools:
                 await session.initialize()
 
                 # 1. Add a package
-                await session.call_tool("add_dep", {"package": "six"})
+                await session.call_tool("add_dep", {"package": "colorama"})
 
                 # 2. Verify it's in the list
                 list_result = await session.call_tool("list_deps", {})
                 deps_before = json.loads(list_result.content[0].text)
-                assert "six" in deps_before
+                assert "colorama" in deps_before
 
                 # 3. Remove the package
-                remove_result = await session.call_tool("remove_dep", {"package": "six"})
+                remove_result = await session.call_tool("remove_dep", {"package": "colorama"})
                 result_data = json.loads(remove_result.content[0].text)
                 assert result_data["removed_from_config"] is True
 
                 # 4. Verify it's gone
                 list_result2 = await session.call_tool("list_deps", {})
                 deps_after = json.loads(list_result2.content[0].text)
-                assert "six" not in deps_after
+                assert "colorama" not in deps_after
 
     @pytest.mark.asyncio
     async def test_add_dep_with_version_specifier(
@@ -1561,7 +1561,7 @@ class TestMCPServerDepsTools:
                 await session.initialize()
 
                 # Add package with version specifier
-                result = await session.call_tool("add_dep", {"package": "six>=1.0"})
+                result = await session.call_tool("add_dep", {"package": "colorama>=0.4"})
                 result_data = json.loads(result.content[0].text)
 
                 # Should succeed (dict result, not error)
@@ -1570,7 +1570,7 @@ class TestMCPServerDepsTools:
                 # Verify it's in the list
                 list_result = await session.call_tool("list_deps", {})
                 deps_data = json.loads(list_result.content[0].text)
-                assert "six>=1.0" in deps_data
+                assert "colorama>=0.4" in deps_data
 
     # -------------------------------------------------------------------------
     # Invariant Tests
