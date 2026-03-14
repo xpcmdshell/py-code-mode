@@ -25,7 +25,7 @@ from py_code_mode.deps import (
     PackageInstaller,
     collect_configured_deps,
 )
-from py_code_mode.deps.store import DepsStore, MemoryDepsStore
+from py_code_mode.deps.store import DepsStore, MemoryDepsStore, _package_base_name
 from py_code_mode.execution.in_process.config import InProcessConfig
 from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
 from py_code_mode.execution.protocol import Capability, validate_storage_not_access
@@ -471,14 +471,13 @@ class InProcessExecutor:
                     text=True,
                     timeout=60,
                 )
-                if result.returncode == 0:
+                output = f"{result.stdout}\n{result.stderr}".lower()
+                if "not installed" in output or "skipping" in output:
+                    not_found.append(pkg)
+                elif result.returncode == 0:
                     removed.append(pkg)
                 else:
-                    # pip returns non-zero if package not found
-                    if "not installed" in result.stderr.lower():
-                        not_found.append(pkg)
-                    else:
-                        failed.append(pkg)
+                    failed.append(pkg)
             except subprocess.TimeoutExpired:
                 failed.append(pkg)
             except Exception:
@@ -563,12 +562,21 @@ class InProcessExecutor:
                 "Dependencies must be pre-configured before session start."
             )
 
-        removed = self._deps_namespace.remove(package)
+        removed_from_config = self._deps_namespace.remove(package)
+        if not removed_from_config:
+            return {
+                "removed": [],
+                "not_found": [_package_base_name(package)],
+                "failed": [],
+                "removed_from_config": False,
+            }
+
+        result = await self.uninstall_deps([_package_base_name(package)])
         return {
-            "removed": [package] if removed else [],
-            "not_found": [] if removed else [package],
-            "failed": [],
-            "removed_from_config": removed,
+            "removed": list(result.get("removed", [])),
+            "not_found": list(result.get("not_found", [])),
+            "failed": list(result.get("failed", [])),
+            "removed_from_config": True,
         }
 
     async def list_deps(self) -> list[str]:

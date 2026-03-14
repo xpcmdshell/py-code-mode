@@ -6,6 +6,7 @@ This enables use in contexts where there's no executor (subprocess, container).
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -13,6 +14,7 @@ import pytest
 
 from py_code_mode.execution.in_process.workflows_namespace import WorkflowsNamespace
 from py_code_mode.workflows import (
+    FileWorkflowStore,
     MemoryWorkflowStore,
     MockEmbedder,
     PythonWorkflow,
@@ -217,6 +219,73 @@ class TestNamespaceIsolation:
 
         # Original tools should still be in namespace
         assert namespace["tools"] is original_tools
+
+
+class TestPersistedWorkflowRefresh:
+    """Persisted workflow libraries refresh on read operations."""
+
+    def _build_namespace(self, tmp_path: Path) -> tuple[FileWorkflowStore, WorkflowsNamespace]:
+        store = FileWorkflowStore(tmp_path / "workflows")
+        initial = PythonWorkflow.from_source(
+            name="double",
+            source='"""Double a number."""\n\nasync def run(n: int) -> int:\n    return n * 2\n',
+            description="Double a number",
+        )
+        store.save(initial)
+        library = WorkflowLibrary(embedder=MockEmbedder(), store=store)
+        namespace = {
+            "tools": None,
+            "workflows": None,
+            "artifacts": None,
+            "deps": None,
+        }
+        return store, WorkflowsNamespace(library, namespace)
+
+    def test_list_refreshes_after_external_create(self, tmp_path: Path) -> None:
+        """list() should pick up workflows added after namespace construction."""
+        store, workflows_ns = self._build_namespace(tmp_path)
+
+        store.save(
+            PythonWorkflow.from_source(
+                name="triple",
+                source=(
+                    '"""Triple a number."""\n\nasync def run(n: int) -> int:\n    return n * 3\n'
+                ),
+                description="Triple a number",
+            )
+        )
+
+        workflows = workflows_ns.list()
+        assert {workflow["name"] for workflow in workflows} == {"double", "triple"}
+
+    def test_get_and_invoke_refresh_after_external_edit(self, tmp_path: Path) -> None:
+        """get() and invoke() should reflect workflow source edits from disk."""
+        store, workflows_ns = self._build_namespace(tmp_path)
+
+        store.save(
+            PythonWorkflow.from_source(
+                name="double",
+                source='"""Triple now."""\n\nasync def run(n: int) -> int:\n    return n * 3\n',
+                description="Triple now",
+            )
+        )
+
+        workflow = workflows_ns.get("double")
+        assert workflow is not None
+        assert "return n * 3" in workflow.source
+        assert workflows_ns.invoke("double", n=2) == 6
+
+    def test_search_and_invoke_refresh_after_external_delete(self, tmp_path: Path) -> None:
+        """search() and invoke() should stop surfacing deleted workflows."""
+        store, workflows_ns = self._build_namespace(tmp_path)
+
+        assert workflows_ns.search("double number")
+        store.delete("double")
+
+        assert workflows_ns.search("double number") == []
+        assert workflows_ns.get("double") is None
+        with pytest.raises(ValueError, match="Workflow not found"):
+            workflows_ns.invoke("double", n=2)
 
 
 class TestIntegrationWithExecutor:

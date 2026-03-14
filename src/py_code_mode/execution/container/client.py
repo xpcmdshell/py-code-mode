@@ -487,13 +487,13 @@ class SessionClient:
         return response.json()
 
     async def api_remove_dep(self, package: str) -> dict[str, Any]:
-        """Remove a package from configuration.
+        """Remove a package from configuration and uninstall it.
 
         Args:
             package: Package specification to remove.
 
         Returns:
-            Dict with removal status.
+            Dict with keys: removed, not_found, failed, removed_from_config.
 
         Raises:
             RuntimeError: If removal is disabled.

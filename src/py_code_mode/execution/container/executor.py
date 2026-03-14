@@ -754,7 +754,7 @@ class ContainerExecutor:
         return await self._client.api_add_dep(package)
 
     async def remove_dep(self, package: str) -> dict[str, Any]:
-        """Remove a package from configuration.
+        """Remove a package from configuration and uninstall it.
 
         This respects allow_runtime_deps configuration on the server.
 
@@ -762,7 +762,7 @@ class ContainerExecutor:
             package: Package specification to remove.
 
         Returns:
-            Dict with removal status.
+            Dict with keys: removed, not_found, failed, removed_from_config.
 
         Raises:
             RuntimeError: If container is not started or runtime deps are disabled.

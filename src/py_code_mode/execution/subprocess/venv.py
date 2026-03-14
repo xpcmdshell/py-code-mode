@@ -139,7 +139,20 @@ class VenvManager:
                 capture_output=True,
                 timeout=10,
             )
-            return result.returncode == 0
+            if result.returncode != 0:
+                return False
+
+            # Ensure the kernel runtime still imports cleanly before reusing a cached venv.
+            if "ipykernel" in self._config.base_deps:
+                result = subprocess.run(
+                    [str(python_path), "-c", "import ipykernel"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                if result.returncode != 0:
+                    return False
+
+            return True
 
         except (OSError, subprocess.SubprocessError):
             return False

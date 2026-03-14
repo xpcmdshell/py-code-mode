@@ -128,6 +128,13 @@ class TestRedisArtifactStoreLoad:
 
     def test_load_returns_data(self, store) -> None:
         """load() retrieves stored data."""
+        store._redis.hget.return_value = json.dumps(
+            {
+                "description": "Stored JSON",
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {"_data_type": "json"},
+            }
+        )
         store._redis.get.return_value = '{"key": "value"}'
 
         data = store.load("data.json")
@@ -136,6 +143,13 @@ class TestRedisArtifactStoreLoad:
 
     def test_load_text_file(self, store) -> None:
         """load() returns text for non-json files."""
+        store._redis.hget.return_value = json.dumps(
+            {
+                "description": "Notes",
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {"_data_type": "text"},
+            }
+        )
         store._redis.get.return_value = "some notes"
 
         data = store.load("notes.txt")
@@ -144,6 +158,7 @@ class TestRedisArtifactStoreLoad:
 
     def test_load_not_found(self, store) -> None:
         """load() raises for missing artifact."""
+        store._redis.hget.return_value = None
         store._redis.get.return_value = None
 
         with pytest.raises(ArtifactNotFoundError):
@@ -151,6 +166,13 @@ class TestRedisArtifactStoreLoad:
 
     def test_load_uses_correct_key(self, store) -> None:
         """load() uses prefixed key."""
+        store._redis.hget.return_value = json.dumps(
+            {
+                "description": "Stored JSON",
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {"_data_type": "json"},
+            }
+        )
         store._redis.get.return_value = "{}"
 
         store.load("data.json")
@@ -170,6 +192,7 @@ class TestRedisArtifactStoreList:
 
     def test_list_returns_artifacts(self, store) -> None:
         """list() returns Artifact objects."""
+        store._redis.exists.return_value = 1
         # Mock index with two entries
         store._redis.hgetall.return_value = {
             "a.json": json.dumps(
@@ -196,6 +219,7 @@ class TestRedisArtifactStoreList:
 
     def test_list_includes_descriptions(self, store) -> None:
         """list() includes descriptions from index."""
+        store._redis.exists.return_value = 1
         store._redis.hgetall.return_value = {
             "scan.json": json.dumps(
                 {
@@ -229,6 +253,7 @@ class TestRedisArtifactStoreGet:
 
     def test_get_returns_artifact(self, store) -> None:
         """get() returns single Artifact by name."""
+        store._redis.exists.return_value = 1
         store._redis.hget.return_value = json.dumps(
             {
                 "description": "Target info",
@@ -263,12 +288,14 @@ class TestRedisArtifactStoreExists:
     def test_exists_true(self, store) -> None:
         """exists() returns True when present."""
         store._redis.hexists.return_value = True
+        store._redis.exists.return_value = 1
 
         assert store.exists("present.json") is True
 
     def test_exists_false(self, store) -> None:
         """exists() returns False when missing."""
         store._redis.hexists.return_value = False
+        store._redis.exists.return_value = 0
 
         assert store.exists("missing.json") is False
 
@@ -312,6 +339,13 @@ class TestRedisArtifactStoreSubpaths:
 
     def test_load_with_subpath(self, store) -> None:
         """load() works with subdirectory-like paths."""
+        store._redis.hget.return_value = json.dumps(
+            {
+                "description": "Nested JSON",
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {"_data_type": "json"},
+            }
+        )
         store._redis.get.return_value = '{"nested": true}'
 
         data = store.load("deep/path/data.json")
@@ -370,3 +404,34 @@ class TestRedisArtifactStoreIntegration:
 
         store.delete("temp.json")
         assert not store.exists("temp.json")
+
+
+class TestRedisArtifactStoreReconciliation:
+    """Redis artifact metadata is reconciled against payload keys on read."""
+
+    def test_list_prunes_stale_metadata_after_payload_delete(self, mock_redis) -> None:
+        """list() drops tracked artifacts whose payload keys were removed externally."""
+        from py_code_mode.artifacts import RedisArtifactStore
+
+        store = RedisArtifactStore(mock_redis, prefix="test")
+        store.save("stale.json", {"ok": True}, description="stale")
+
+        mock_redis.delete("test:stale.json")
+
+        assert store.list() == []
+        assert store.get("stale.json") is None
+        assert store.exists("stale.json") is False
+
+    def test_load_prunes_stale_metadata_after_payload_delete(self, mock_redis) -> None:
+        """load() removes stale metadata before raising not found."""
+        from py_code_mode.artifacts import RedisArtifactStore
+
+        store = RedisArtifactStore(mock_redis, prefix="test")
+        store.save("stale.json", {"ok": True}, description="stale")
+
+        mock_redis.delete("test:stale.json")
+
+        with pytest.raises(ArtifactNotFoundError):
+            store.load("stale.json")
+
+        assert store.get("stale.json") is None

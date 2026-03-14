@@ -326,6 +326,34 @@ class TestFileDepsStore:
         assert "pandas>=2.0" in deps
         assert "numpy" in deps
 
+    def test_list_reflects_external_requirements_edit(self, tmp_path: Path) -> None:
+        """list() should reload requirements.txt after external edits."""
+        from py_code_mode.deps import FileDepsStore
+
+        store = FileDepsStore(tmp_path)
+        store.add("pandas")
+
+        requirements_path = tmp_path / "deps" / "requirements.txt"
+        requirements_path.write_text("numpy\n")
+
+        assert store.list() == ["numpy"]
+        assert store.exists("numpy") is True
+        assert store.exists("pandas") is False
+
+    def test_missing_requirements_file_reconciles_to_empty_store(self, tmp_path: Path) -> None:
+        """Read operations should treat a deleted requirements.txt as an empty config."""
+        from py_code_mode.deps import FileDepsStore
+
+        store = FileDepsStore(tmp_path)
+        store.add("pandas")
+
+        requirements_path = tmp_path / "deps" / "requirements.txt"
+        requirements_path.unlink()
+
+        assert store.list() == []
+        assert store.exists("pandas") is False
+        assert store.hash() == FileDepsStore(tmp_path).hash()
+
     def test_store_handles_comments_in_requirements(self, tmp_path: Path) -> None:
         """FileDepsStore ignores comments in requirements.txt.
 

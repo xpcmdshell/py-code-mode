@@ -58,6 +58,7 @@ from py_code_mode.deps import (  # noqa: E402
     PackageInstaller,
     RedisDepsStore,
 )
+from py_code_mode.deps.store import _package_base_name  # noqa: E402
 from py_code_mode.errors import ArtifactNotFoundError  # noqa: E402
 from py_code_mode.execution.container.config import SessionConfig  # noqa: E402
 from py_code_mode.execution.in_process import (  # noqa: E402
@@ -194,6 +195,14 @@ if FASTAPI_AVAILABLE:
         """Request to remove a dependency."""
 
         package: str
+
+    class RemoveDepResponseModel(BaseModel):  # type: ignore
+        """Response from removing a configured dependency."""
+
+        removed: list[str] = []
+        not_found: list[str] = []
+        failed: list[str] = []
+        removed_from_config: bool = False
 
     class DepsSyncResult(BaseModel):  # type: ignore
         """Response from deps sync operation."""
@@ -640,7 +649,8 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
                 tools.append({"name": tool.name, "description": tool.description})
 
         workflows = []
-        if _state.workflow_library:
+        if _state.workflow_library is not None:
+            _state.workflow_library.refresh()
             for workflow in _state.workflow_library.list():
                 workflows.append({"name": workflow.name, "description": workflow.description})
 
@@ -730,6 +740,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail="Server not initialized")
 
         removed: list[str] = []
+        not_found: list[str] = []
         failed: list[str] = []
 
         for pkg in body.packages:
@@ -746,7 +757,10 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
                     text=True,
                     timeout=60,
                 )
-                if result.returncode == 0:
+                output = f"{result.stdout}\n{result.stderr}".lower()
+                if "not installed" in output or "skipping" in output:
+                    not_found.append(pkg)
+                elif result.returncode == 0:
                     removed.append(pkg)
                 else:
                     logger.warning("Failed to uninstall %s: %s", pkg, result.stderr)
@@ -755,7 +769,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
                 logger.warning("Failed to uninstall %s: %s", pkg, e)
                 failed.append(pkg)
 
-        return DepsResponseModel(removed=removed, failed=failed)
+        return DepsResponseModel(removed=removed, not_found=not_found, failed=failed)
 
     # ==========================================================================
     # Tools API Endpoints
@@ -796,6 +810,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         if _state.workflow_library is None:
             raise HTTPException(status_code=503, detail="Workflow library not initialized")
 
+        _state.workflow_library.refresh()
         workflows = _state.workflow_library.list()
         return [
             {
@@ -812,6 +827,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         if _state.workflow_library is None:
             raise HTTPException(status_code=503, detail="Workflow library not initialized")
 
+        _state.workflow_library.refresh()
         workflows = _state.workflow_library.search(query, limit=limit)
         return [
             {
@@ -828,6 +844,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         if _state.workflow_library is None:
             raise HTTPException(status_code=503, detail="Workflow library not initialized")
 
+        _state.workflow_library.refresh()
         workflow = _state.workflow_library.get(name)
         if workflow is None:
             return None
@@ -976,9 +993,13 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-    @app.post("/api/deps/remove", dependencies=[Depends(require_auth)])
-    async def api_remove_dep(body: RemoveDepRequest) -> dict[str, Any]:
-        """Remove a package from configuration.
+    @app.post(
+        "/api/deps/remove",
+        response_model=RemoveDepResponseModel,
+        dependencies=[Depends(require_auth)],
+    )
+    async def api_remove_dep(body: RemoveDepRequest) -> RemoveDepResponseModel:
+        """Remove a package from configuration and uninstall it from the container.
 
         This endpoint respects allow_runtime_deps configuration.
         """
@@ -994,8 +1015,23 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
                 detail="Runtime dependency modification is disabled",
             )
 
-        removed = _state.deps_store.remove(body.package)
-        return {"removed": removed}
+        package_name = _package_base_name(body.package)
+        removed_from_config = _state.deps_store.remove(body.package)
+        if not removed_from_config:
+            return RemoveDepResponseModel(
+                removed=[],
+                not_found=[package_name],
+                failed=[],
+                removed_from_config=False,
+            )
+
+        uninstall_result = await uninstall_deps(DepsRequestModel(packages=[package_name]))
+        return RemoveDepResponseModel(
+            removed=list(uninstall_result.removed),
+            not_found=list(uninstall_result.not_found),
+            failed=list(uninstall_result.failed),
+            removed_from_config=True,
+        )
 
     @app.post("/api/deps/sync", dependencies=[Depends(require_auth)])
     async def api_sync_deps() -> dict[str, Any]:
