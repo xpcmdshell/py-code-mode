@@ -17,6 +17,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
       - run: uv sync
+      - run: uv run python scripts/check_ci_required.py
       - run: uv run ruff check src/ tests/
       - run: uv run ruff format --check src/ tests/
 
@@ -164,3 +165,39 @@ jobs:
             tests/test_deps_store.py \
             tests/test_redis_tools.py \
             tests/test_subprocess_namespace_injection.py
+
+  ci-required:
+    name: ci-required
+    if: ${{ always() }}
+    needs:
+      - lint
+      - test-core
+      - test-subprocess-venv
+      - test-deno-sandbox
+      - test-docker-backend-user-journeys
+      - test-docker-storage-and-mcp
+      - test-docker-session-and-redis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required CI job failed
+        if: |
+          needs.lint.result != 'success' ||
+          needs.test-core.result != 'success' ||
+          needs.test-subprocess-venv.result != 'success' ||
+          needs.test-deno-sandbox.result != 'success' ||
+          needs.test-docker-backend-user-journeys.result != 'success' ||
+          needs.test-docker-storage-and-mcp.result != 'success' ||
+          needs.test-docker-session-and-redis.result != 'success'
+        run: |
+          echo "At least one required CI job did not succeed."
+          echo "lint=${{ needs.lint.result }}"
+          echo "test-core=${{ needs.test-core.result }}"
+          echo "test-subprocess-venv=${{ needs.test-subprocess-venv.result }}"
+          echo "test-deno-sandbox=${{ needs.test-deno-sandbox.result }}"
+          echo "test-docker-backend-user-journeys=${{ needs.test-docker-backend-user-journeys.result }}"
+          echo "test-docker-storage-and-mcp=${{ needs.test-docker-storage-and-mcp.result }}"
+          echo "test-docker-session-and-redis=${{ needs.test-docker-session-and-redis.result }}"
+          exit 1
+
+      - name: Confirm all required CI jobs passed
+        run: echo "All required CI jobs passed."
