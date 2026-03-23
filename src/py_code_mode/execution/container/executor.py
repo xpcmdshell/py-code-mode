@@ -196,6 +196,27 @@ class ContainerExecutor:
         """Stop container and cleanup."""
         await self.close()
 
+    def _translate_client_http_error(self, error: Exception) -> RuntimeError:
+        """Translate low-level client HTTP errors into executor-style RuntimeErrors."""
+        if HTTPX_AVAILABLE and isinstance(error, httpx.HTTPStatusError):
+            detail: str | None = None
+            try:
+                data = error.response.json()
+            except ValueError:
+                data = None
+
+            if isinstance(data, dict):
+                value = data.get("detail") or data.get("error")
+                if isinstance(value, str) and value:
+                    detail = value
+
+            if detail is None:
+                detail = f"HTTP {error.response.status_code}: {error.response.text}"
+
+            return RuntimeError(detail)
+
+        return RuntimeError(str(error))
+
     def _create_docker_client(self) -> Any:
         """Create Docker client, trying multiple socket locations if needed."""
         logger = logging.getLogger(__name__)
@@ -541,7 +562,10 @@ class ContainerExecutor:
         if self._client is None:
             raise RuntimeError("Container not started")
 
-        return await self._client.install_deps(packages)
+        try:
+            return await self._client.install_deps(packages)
+        except Exception as e:
+            raise self._translate_client_http_error(e) from e
 
     async def uninstall_deps(self, packages: list[str]) -> dict[str, Any]:
         """Uninstall packages from the container environment.
@@ -568,7 +592,10 @@ class ContainerExecutor:
         if self._client is None:
             raise RuntimeError("Container not started")
 
-        return await self._client.uninstall_deps(packages)
+        try:
+            return await self._client.uninstall_deps(packages)
+        except Exception as e:
+            raise self._translate_client_http_error(e) from e
 
     # ==========================================================================
     # Tools API Methods
@@ -751,7 +778,10 @@ class ContainerExecutor:
         if self._client is None:
             raise RuntimeError("Container not started")
 
-        return await self._client.api_add_dep(package)
+        try:
+            return await self._client.api_add_dep(package)
+        except Exception as e:
+            raise self._translate_client_http_error(e) from e
 
     async def remove_dep(self, package: str) -> dict[str, Any]:
         """Remove a package from configuration and uninstall it.
@@ -770,7 +800,10 @@ class ContainerExecutor:
         if self._client is None:
             raise RuntimeError("Container not started")
 
-        return await self._client.api_remove_dep(package)
+        try:
+            return await self._client.api_remove_dep(package)
+        except Exception as e:
+            raise self._translate_client_http_error(e) from e
 
     async def sync_deps(self) -> dict[str, Any]:
         """Install all configured packages.

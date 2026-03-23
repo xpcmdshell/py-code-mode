@@ -97,6 +97,7 @@ class TestSessionServer:
         data = response.json()
         assert data["value"] == 2
         assert data["error"] is None
+        assert data["session_id"]
 
     def test_execute_with_stdout(self, client) -> None:
         """Captures stdout from print statements."""
@@ -118,11 +119,9 @@ class TestSessionServer:
 
     def test_execute_state_persists(self, client) -> None:
         """Variables persist across executions within same session."""
-        session_id = "test-persist-session"
+        create_response = client.post("/execute", json={"code": "x = 42"})
+        session_id = create_response.json()["session_id"]
         headers = {"X-Session-ID": session_id}
-
-        # Set variable
-        client.post("/execute", json={"code": "x = 42"}, headers=headers)
 
         # Access variable (same session)
         response = client.post("/execute", json={"code": "x * 2"}, headers=headers)
@@ -134,21 +133,38 @@ class TestSessionServer:
 
     def test_reset_clears_state(self, client) -> None:
         """Reset clears session state."""
-        session_id = "test-reset-session"
+        create_response = client.post("/execute", json={"code": "x = 42"})
+        session_id = create_response.json()["session_id"]
         headers = {"X-Session-ID": session_id}
-
-        # Set variable
-        client.post("/execute", json={"code": "x = 42"}, headers=headers)
 
         # Reset this session
         response = client.post("/reset", headers=headers)
         assert response.status_code == 200
 
-        # Variable should be gone (new session created with same ID)
+        # Reusing a reset session ID is invalid.
         response = client.post("/execute", json={"code": "x"}, headers=headers)
-        data = response.json()
-        assert data["error"] is not None
-        assert "NameError" in data["error"]
+        assert response.status_code == 400
+
+    def test_execute_with_unknown_session_id_returns_400(self, client) -> None:
+        """Unknown session IDs are rejected instead of creating sessions."""
+        response = client.post(
+            "/execute",
+            json={"code": "1 + 1"},
+            headers={"X-Session-ID": "missing-session"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid session ID"
+
+    def test_reset_requires_known_session_id(self, client) -> None:
+        """Reset rejects missing or unknown session IDs."""
+        missing_response = client.post("/reset")
+        assert missing_response.status_code == 400
+        assert missing_response.json()["detail"] == "Invalid session ID"
+
+        unknown_response = client.post("/reset", headers={"X-Session-ID": "missing-session"})
+        assert unknown_response.status_code == 400
+        assert unknown_response.json()["detail"] == "Invalid session ID"
 
     def test_execute_returns_execution_time(self, client) -> None:
         """Execute response includes execution time."""
