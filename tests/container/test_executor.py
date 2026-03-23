@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from py_code_mode.execution.container.config import ContainerConfig
@@ -190,6 +191,48 @@ class TestContainerExecutor:
 
                     assert not result.is_ok
                     assert "NameError" in result.error
+
+    @pytest.mark.asyncio
+    async def test_install_deps_translates_http_errors_to_runtime_error(self, config) -> None:
+        """install_deps preserves the executor RuntimeError contract."""
+        executor = ContainerExecutor(config)
+
+        mock_container = self._make_mock_container()
+        mock_docker = MagicMock()
+        mock_docker.containers.run.return_value = mock_container
+
+        request = httpx.Request("POST", "http://localhost:8080/install_deps")
+        response = httpx.Response(401, request=request, json={"detail": "Invalid token"})
+        error = httpx.HTTPStatusError("401 Unauthorized", request=request, response=response)
+
+        with patch("docker.from_env", return_value=mock_docker):
+            with patch.object(executor, "_wait_for_healthy", new_callable=AsyncMock):
+                async with executor:
+                    executor._client.install_deps = AsyncMock(side_effect=error)
+
+                    with pytest.raises(RuntimeError, match="Invalid token"):
+                        await executor.install_deps(["requests"])
+
+    @pytest.mark.asyncio
+    async def test_add_dep_translates_http_errors_to_runtime_error(self, config) -> None:
+        """add_dep preserves the executor RuntimeError contract."""
+        executor = ContainerExecutor(config)
+
+        mock_container = self._make_mock_container()
+        mock_docker = MagicMock()
+        mock_docker.containers.run.return_value = mock_container
+
+        request = httpx.Request("POST", "http://localhost:8080/api/deps/add")
+        response = httpx.Response(401, request=request, json={"detail": "Invalid token"})
+        error = httpx.HTTPStatusError("401 Unauthorized", request=request, response=response)
+
+        with patch("docker.from_env", return_value=mock_docker):
+            with patch.object(executor, "_wait_for_healthy", new_callable=AsyncMock):
+                async with executor:
+                    executor._client.api_add_dep = AsyncMock(side_effect=error)
+
+                    with pytest.raises(RuntimeError, match="Invalid token"):
+                        await executor.add_dep("requests")
 
 
 def _make_mock_container() -> MagicMock:

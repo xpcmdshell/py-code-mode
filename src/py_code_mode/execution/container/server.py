@@ -313,21 +313,19 @@ def create_session(session_id: str) -> Session:
     )
 
 
-def get_or_create_session(session_id: str | None) -> Session:
-    """Get existing session or create a new one."""
-    # Generate session_id if not provided
-    if session_id is None:
-        session_id = str(uuid.uuid4())
-
-    # Return existing session
-    if session_id in _state.sessions:
-        session = _state.sessions[session_id]
-        session.last_used = time.time()
-        return session
-
-    # Create new session
+def create_new_session() -> Session:
+    """Create a new isolated session with a server-issued ID."""
+    session_id = str(uuid.uuid4())
     session = create_session(session_id)
     _state.sessions[session_id] = session
+    return session
+
+
+def get_existing_session(session_id: str) -> Session | None:
+    """Get an existing session if present."""
+    session = _state.sessions.get(session_id)
+    if session is not None:
+        session.last_used = time.time()
     return session
 
 
@@ -603,8 +601,12 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         # Cleanup expired sessions periodically
         cleanup_expired_sessions()
 
-        # Get or create session
-        session = get_or_create_session(x_session_id)
+        if x_session_id is None:
+            session = create_new_session()
+        else:
+            session = get_existing_session(x_session_id)
+            if session is None:
+                raise HTTPException(status_code=400, detail="Invalid session ID")
 
         start = time.time()
         timeout = body.timeout or _state.config.default_timeout
@@ -667,12 +669,14 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         x_session_id: str | None = Header(None, alias="X-Session-ID"),
     ) -> ResetResponseModel:
         """Reset a session (clears namespace, keeps artifacts)."""
-        if x_session_id and x_session_id in _state.sessions:
-            del _state.sessions[x_session_id]
+        if x_session_id is None or x_session_id not in _state.sessions:
+            raise HTTPException(status_code=400, detail="Invalid session ID")
+
+        del _state.sessions[x_session_id]
 
         return ResetResponseModel(
             status="reset",
-            session_id=x_session_id or "",
+            session_id=x_session_id,
         )
 
     # NOTE: /sessions endpoint removed - session enumeration is an information disclosure risk

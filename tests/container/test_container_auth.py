@@ -250,6 +250,16 @@ class TestAuthAcceptance:
         """Protected endpoints succeed with valid token."""
         headers = {"Authorization": f"Bearer {auth_token}"}
 
+        if endpoint == "/reset":
+            create_response = auth_enabled_client.post(
+                "/execute",
+                json={"code": "x = 42"},
+                headers=headers,
+            )
+            assert create_response.status_code == 200
+            session_id = create_response.json()["session_id"]
+            headers["X-Session-ID"] = session_id
+
         if method == "post":
             response = auth_enabled_client.post(endpoint, json=body, headers=headers)
         else:
@@ -649,6 +659,7 @@ class TestAuthIntegration:
         headers = call_args[1].get("headers", {})
         assert "Authorization" in headers
         assert headers["Authorization"] == "Bearer client-auth-token"
+        assert "X-Session-ID" not in headers
 
         await client.close()
 

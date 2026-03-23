@@ -3,6 +3,7 @@
 This client connects to a running session server and provides
 a Python API for code execution. Each client maintains its own
 isolated session with separate Python namespace and artifacts.
+The server allocates the session on the first execute call.
 
 Usage:
     async with SessionClient("http://localhost:8080") as client:
@@ -13,7 +14,6 @@ Usage:
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -64,7 +64,7 @@ class ResetResult:
     """Reset result."""
 
     status: str
-    session_id: str
+    session_id: str | None
 
 
 class SessionClient:
@@ -74,15 +74,15 @@ class SessionClient:
     - Separate Python namespace (variables don't leak between sessions)
     - Separate artifact directory
 
-    Use the same client instance across requests to maintain state,
-    or create a new client for a fresh isolated session.
+    Use the same client instance across requests to maintain state.
+    The server issues the session ID on first execution and the client
+    reuses it for later session-scoped requests.
     """
 
     def __init__(
         self,
         base_url: str = "http://localhost:8080",
         timeout: float = 30.0,
-        session_id: str | None = None,
         auth_token: str | None = None,
     ) -> None:
         """Initialize session client.
@@ -90,8 +90,6 @@ class SessionClient:
         Args:
             base_url: Base URL of session server.
             timeout: Default timeout for HTTP requests.
-            session_id: Optional session ID. If not provided, a new
-                       unique session is created on first request.
             auth_token: Optional Bearer token for API authentication.
                        If provided, sent as Authorization header.
         """
@@ -101,7 +99,7 @@ class SessionClient:
         # Strip trailing slash
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self.session_id = session_id or str(uuid.uuid4())
+        self.session_id: str | None = None
         self.auth_token = auth_token
         self._client: httpx.AsyncClient | None = None
 
@@ -113,7 +111,9 @@ class SessionClient:
 
     def _headers(self) -> dict[str, str]:
         """Get headers with session ID and optional auth token."""
-        headers = {"X-Session-ID": self.session_id}
+        headers: dict[str, str] = {}
+        if self.session_id is not None:
+            headers["X-Session-ID"] = self.session_id
         if self.auth_token:
             headers["Authorization"] = f"Bearer {self.auth_token}"
         return headers
@@ -145,16 +145,15 @@ class SessionClient:
         response.raise_for_status()
         data = response.json()
 
-        # Update session_id if server assigned one
-        if "session_id" in data:
-            self.session_id = data["session_id"]
+        session_id = data["session_id"]
+        self.session_id = session_id
 
         return ExecuteResult(
             value=data["value"],
             stdout=data["stdout"],
             error=data["error"],
             execution_time_ms=data["execution_time_ms"],
-            session_id=data.get("session_id", self.session_id),
+            session_id=session_id,
         )
 
     async def health(self) -> HealthResult:
@@ -198,6 +197,9 @@ class SessionClient:
         Returns:
             ResetResult confirming reset.
         """
+        if self.session_id is None:
+            return ResetResult(status="reset", session_id=None)
+
         client = await self._get_client()
         response = await client.post(
             f"{self.base_url}/reset",
@@ -205,10 +207,11 @@ class SessionClient:
         )
         response.raise_for_status()
         data = response.json()
+        self.session_id = None
 
         return ResetResult(
             status=data["status"],
-            session_id=data.get("session_id", self.session_id),
+            session_id=data.get("session_id"),
         )
 
     async def install_deps(self, packages: list[str]) -> dict[str, Any]:
@@ -230,10 +233,8 @@ class SessionClient:
             headers=self._headers(),
             timeout=300.0,  # Long timeout for package installation
         )
-        data = response.json()
-        if response.status_code != 200:
-            raise RuntimeError(data.get("error", "Install failed"))
-        return data
+        response.raise_for_status()
+        return response.json()
 
     async def uninstall_deps(self, packages: list[str]) -> dict[str, Any]:
         """Uninstall packages from the container.
@@ -254,10 +255,8 @@ class SessionClient:
             headers=self._headers(),
             timeout=120.0,  # Reasonable timeout for uninstall
         )
-        data = response.json()
-        if response.status_code != 200:
-            raise RuntimeError(data.get("error", "Uninstall failed"))
-        return data
+        response.raise_for_status()
+        return response.json()
 
     # ==========================================================================
     # Tools API Methods
@@ -481,9 +480,7 @@ class SessionClient:
             headers=self._headers(),
             timeout=300.0,  # Long timeout for package installation
         )
-        if response.status_code != 200:
-            data = response.json()
-            raise RuntimeError(data.get("detail", "Add dep failed"))
+        response.raise_for_status()
         return response.json()
 
     async def api_remove_dep(self, package: str) -> dict[str, Any]:
@@ -504,9 +501,7 @@ class SessionClient:
             json={"package": package},
             headers=self._headers(),
         )
-        if response.status_code != 200:
-            data = response.json()
-            raise RuntimeError(data.get("detail", "Remove dep failed"))
+        response.raise_for_status()
         return response.json()
 
     async def api_sync_deps(self) -> dict[str, Any]:

@@ -34,7 +34,6 @@ def create_run_code_tool(
     executor: InProcessExecutor | None = None,
     session_url: str | None = None,
     timeout: float = 30.0,
-    session_id: str | None = None,
 ) -> Callable[[str], Any]:
     """Create a run_code tool for AutoGen agents.
 
@@ -45,9 +44,6 @@ def create_run_code_tool(
         executor: CodeExecutor instance for in-process execution
         session_url: URL of py-code-mode session server for remote execution
         timeout: Execution timeout in seconds
-        session_id: Optional session ID for remote execution. If not provided,
-                   a unique session is created. Use this to isolate different
-                   agents using the same session server.
 
     Returns:
         A function that can be registered as an AutoGen tool
@@ -63,7 +59,7 @@ def create_run_code_tool(
     if executor is not None:
         return _create_local_tool(executor, timeout)
     else:
-        return _create_remote_tool(session_url, timeout, session_id)  # type: ignore
+        return _create_remote_tool(session_url, timeout)  # type: ignore
 
 
 def _create_local_tool(
@@ -109,17 +105,14 @@ def _create_local_tool(
 def _create_remote_tool(
     session_url: str,
     timeout: float,
-    session_id: str | None = None,
 ) -> Callable[[str], Any]:
     """Create tool using remote session server."""
 
     # Lazy import to avoid requiring httpx for local-only usage
-    import uuid
-
     import httpx
 
-    # Each tool instance gets its own session
-    _session_id = session_id or str(uuid.uuid4())
+    # Session is created lazily by the server on first execute.
+    _session_id: str | None = None
 
     def run_code(code: str) -> str:
         """Execute Python code with access to tools.*, workflows.*, and artifacts.*.
@@ -137,15 +130,21 @@ def _create_remote_tool(
         Returns:
             String representation of the result or error message
         """
+        nonlocal _session_id
         try:
+            headers = {}
+            if _session_id is not None:
+                headers["X-Session-ID"] = _session_id
+
             with httpx.Client(timeout=timeout + 5) as client:
                 response = client.post(
                     f"{session_url.rstrip('/')}/execute",
                     json={"code": code, "timeout": timeout},
-                    headers={"X-Session-ID": _session_id},
+                    headers=headers,
                 )
                 response.raise_for_status()
                 result = response.json()
+                _session_id = result["session_id"]
 
             if result.get("error"):
                 return f"Error: {result['error']}"
