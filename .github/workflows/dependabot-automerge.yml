@@ -8,6 +8,10 @@ on:
       - opened
       - reopened
       - synchronize
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,22 +21,150 @@ jobs:
   enable-automerge:
     name: Enable auto-merge for safe Dependabot bumps
     if: |
+      github.event_name == 'pull_request' &&
       github.event.pull_request.user.login == 'dependabot[bot]' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@ffa630c65fa7e0ecfa0625b5ceda64399aea1b36
+        uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Enable auto-merge for patch updates
-        if: |
-          contains(fromJSON('["pip","uv","github-actions"]'), steps.metadata.outputs.package-ecosystem) &&
-          steps.metadata.outputs.update-type == 'version-update:semver-patch' &&
-          steps.metadata.outputs.maintainer-changes != 'true'
+      - name: Classify update eligibility
+        id: classify
+        env:
+          MAINTAINER_CHANGES: ${{ steps.metadata.outputs.maintainer-changes }}
+          PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+
+
+          def parse_release(version: str) -> tuple[int, int, int] | None:
+              match = re.match(r"^v?(?P<num>\d+(?:\.\d+){0,2})", version.strip())
+              if not match:
+                  return None
+              parts = [int(part) for part in match.group("num").split(".")]
+              while len(parts) < 3:
+                  parts.append(0)
+              return tuple(parts[:3])
+
+
+          def classify_from_title(title: str) -> str:
+              match = re.search(r" from (?P<old>\S+) to (?P<new>\S+)", title)
+              if not match:
+                  return "unknown"
+              old = parse_release(match.group("old"))
+              new = parse_release(match.group("new"))
+              if old is None or new is None or new <= old:
+                  return "unknown"
+              if new[0] != old[0]:
+                  return "major"
+              if new[1] != old[1]:
+                  return "minor"
+              if new[2] != old[2]:
+                  return "patch"
+              return "unknown"
+
+
+          update_level = {
+              "version-update:semver-patch": "patch",
+              "version-update:semver-minor": "minor",
+              "version-update:semver-major": "major",
+          }.get(os.getenv("UPDATE_TYPE", ""), classify_from_title(os.getenv("PR_TITLE", "")))
+
+          should_enable = (
+              os.getenv("PACKAGE_ECOSYSTEM", "") in {"pip", "uv", "github-actions"}
+              and os.getenv("MAINTAINER_CHANGES", "") != "true"
+              and update_level in {"patch", "minor"}
+          )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              print(f"should_enable={'true' if should_enable else 'false'}", file=output)
+              print(f"update_level={update_level}", file=output)
+          PY
+
+      - name: Enable auto-merge for patch and minor updates
+        if: steps.classify.outputs.should_enable == 'true'
         run: gh pr merge --auto --merge "$PR_URL"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+
+  refresh-behind-dependabot-prs:
+    name: Refresh behind Dependabot PRs
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update behind safe Dependabot PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          prs_json="$(gh pr list \
+            --repo "$REPOSITORY" \
+            --author 'app/dependabot' \
+            --state open \
+            --json number,title,mergeStateStatus)"
+
+          export PRS_JSON="$prs_json"
+          prs="$(python - <<'PY'
+          import json
+          import os
+          import re
+
+
+          def parse_release(version: str) -> tuple[int, int, int] | None:
+              match = re.match(r"^v?(?P<num>\d+(?:\.\d+){0,2})", version.strip())
+              if not match:
+                  return None
+              parts = [int(part) for part in match.group("num").split(".")]
+              while len(parts) < 3:
+                  parts.append(0)
+              return tuple(parts[:3])
+
+
+          def classify_from_title(title: str) -> str:
+              match = re.search(r" from (?P<old>\S+) to (?P<new>\S+)", title)
+              if not match:
+                  return "unknown"
+              old = parse_release(match.group("old"))
+              new = parse_release(match.group("new"))
+              if old is None or new is None or new <= old:
+                  return "unknown"
+              if new[0] != old[0]:
+                  return "major"
+              if new[1] != old[1]:
+                  return "minor"
+              if new[2] != old[2]:
+                  return "patch"
+              return "unknown"
+
+
+          for pr in json.loads(os.environ["PRS_JSON"]):
+              if pr["mergeStateStatus"] != "BEHIND":
+                  continue
+              if classify_from_title(pr["title"]) not in {"patch", "minor"}:
+                  continue
+              print(pr["number"])
+          PY
+          )"
+
+          if [ -z "$prs" ]; then
+            echo "No behind patch or minor Dependabot PRs."
+            exit 0
+          fi
+
+          while IFS= read -r pr; do
+            [ -n "$pr" ] || continue
+            echo "Updating branch for PR #$pr"
+            gh api \
+              --method PUT \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$REPOSITORY/pulls/$pr/update-branch"
+          done <<< "$prs"
