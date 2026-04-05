@@ -99,6 +99,10 @@ jobs:
   refresh-behind-dependabot-prs:
     name: Refresh behind Dependabot PRs
     if: github.event_name != 'pull_request'
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Update behind safe Dependabot PRs
