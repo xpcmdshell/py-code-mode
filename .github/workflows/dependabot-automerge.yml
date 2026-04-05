@@ -110,7 +110,7 @@ jobs:
             --repo "$REPOSITORY" \
             --author 'app/dependabot' \
             --state open \
-            --json number,title,mergeStateStatus)"
+            --json number,title,headRefName,mergeStateStatus,autoMergeRequest)"
 
           export PRS_JSON="$prs_json"
           prs="$(python - <<'PY'
@@ -151,7 +151,10 @@ jobs:
                   continue
               if classify_from_title(pr["title"]) not in {"patch", "minor"}:
                   continue
-              print(pr["number"])
+              print(
+                  f"{pr['number']}\t{pr['headRefName']}\t"
+                  f"{'true' if pr['autoMergeRequest'] is not None else 'false'}"
+              )
           PY
           )"
 
@@ -160,11 +163,20 @@ jobs:
             exit 0
           fi
 
-          while IFS= read -r pr; do
+          while IFS=$'\t' read -r pr branch auto_merge_enabled; do
             [ -n "$pr" ] || continue
             echo "Updating branch for PR #$pr"
             gh api \
               --method PUT \
               -H "Accept: application/vnd.github+json" \
               "repos/$REPOSITORY/pulls/$pr/update-branch"
+
+            # update-branch runs under GITHUB_TOKEN, so CI must be dispatched explicitly.
+            echo "Dispatching CI for $branch"
+            gh workflow run ci.yml --repo "$REPOSITORY" --ref "$branch"
+
+            if [ "$auto_merge_enabled" != "true" ]; then
+              echo "Enabling auto-merge for PR #$pr"
+              gh pr merge --repo "$REPOSITORY" --auto --merge "$pr"
+            fi
           done <<< "$prs"
