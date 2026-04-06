@@ -23,6 +23,14 @@ import pytest
 
 from py_code_mode.execution.container.config import ContainerConfig, SessionConfig
 
+
+def create_bound_session(client, headers: dict[str, str] | None = None) -> str:
+    """Create a bound session for session-aware endpoint tests."""
+    response = client.post("/sessions", json={}, headers=headers or {})
+    assert response.status_code == 200
+    return response.json()["session_id"]
+
+
 # =============================================================================
 # SECTION 1: AUTH REJECTION (Critical Security)
 # =============================================================================
@@ -250,14 +258,8 @@ class TestAuthAcceptance:
         """Protected endpoints succeed with valid token."""
         headers = {"Authorization": f"Bearer {auth_token}"}
 
-        if endpoint == "/reset":
-            create_response = auth_enabled_client.post(
-                "/execute",
-                json={"code": "x = 42"},
-                headers=headers,
-            )
-            assert create_response.status_code == 200
-            session_id = create_response.json()["session_id"]
+        if endpoint in {"/execute", "/reset", "/info"}:
+            session_id = create_bound_session(auth_enabled_client, headers=headers)
             headers["X-Session-ID"] = session_id
 
         if method == "post":
@@ -285,6 +287,8 @@ class TestAuthAcceptance:
         app = create_app(config)
         with TestClient(app) as client:
             headers = {"Authorization": f"Bearer {special_token}"}
+            session_id = create_bound_session(client, headers=headers)
+            headers["X-Session-ID"] = session_id
             response = client.post("/execute", json={"code": "1 + 1"}, headers=headers)
 
             assert response.status_code == 200
@@ -320,13 +324,20 @@ class TestAuthDisabledMode:
 
     def test_requests_without_token_succeed_when_auth_disabled(self, auth_disabled_client) -> None:
         """Requests without token succeed when auth is explicitly disabled."""
-        response = auth_disabled_client.post("/execute", json={"code": "1 + 1"})
+        session_id = create_bound_session(auth_disabled_client)
+        response = auth_disabled_client.post(
+            "/execute",
+            json={"code": "1 + 1"},
+            headers={"X-Session-ID": session_id},
+        )
         assert response.status_code == 200
 
     def test_token_sent_to_disabled_server_is_ignored(self, auth_disabled_client) -> None:
         """Token sent to auth-disabled server is ignored (not validated)."""
         # Even an invalid token should be accepted (ignored)
         headers = {"Authorization": "Bearer some-random-token"}
+        session_id = create_bound_session(auth_disabled_client, headers=headers)
+        headers["X-Session-ID"] = session_id
         response = auth_disabled_client.post("/execute", json={"code": "1 + 1"}, headers=headers)
         assert response.status_code == 200
 
@@ -515,7 +526,7 @@ class TestHealthEndpointAuth:
 
 
 class TestSessionsEndpointRemoved:
-    """Tests verifying sessions endpoint is removed (information leakage)."""
+    """Tests verifying session enumeration remains unavailable."""
 
     @pytest.fixture
     def client(self, tmp_path):
@@ -534,16 +545,16 @@ class TestSessionsEndpointRemoved:
         with TestClient(app) as client:
             yield client
 
-    def test_sessions_endpoint_returns_404(self, client) -> None:
-        """GET /sessions returns 404 (endpoint removed)."""
+    def test_sessions_endpoint_get_returns_405(self, client) -> None:
+        """GET /sessions is not allowed; only POST session creation is supported."""
         response = client.get("/sessions")
-        assert response.status_code == 404
+        assert response.status_code == 405
 
-    def test_sessions_endpoint_with_valid_auth_still_returns_404(self, client) -> None:
-        """GET /sessions with valid auth still returns 404 (endpoint removed)."""
+    def test_sessions_endpoint_get_with_valid_auth_still_returns_405(self, client) -> None:
+        """GET /sessions stays unavailable even with valid auth."""
         headers = {"Authorization": "Bearer secret-token"}
         response = client.get("/sessions", headers=headers)
-        assert response.status_code == 404
+        assert response.status_code == 405
 
 
 # =============================================================================
@@ -637,29 +648,37 @@ class TestAuthIntegration:
             auth_token="client-auth-token",
         )
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        session_response = MagicMock()
+        session_response.status_code = 200
+        session_response.json.return_value = {"session_id": "test"}
+        session_response.raise_for_status = MagicMock()
+
+        execute_response = MagicMock()
+        execute_response.status_code = 200
+        execute_response.json.return_value = {
             "value": 42,
             "stdout": "",
             "error": None,
             "execution_time_ms": 1.0,
             "session_id": "test",
         }
-        mock_response.raise_for_status = MagicMock()
+        execute_response.raise_for_status = MagicMock()
 
         mock_http_client = AsyncMock()
-        mock_http_client.post = AsyncMock(return_value=mock_response)
+        mock_http_client.post = AsyncMock(side_effect=[session_response, execute_response])
         client._client = mock_http_client
 
         await client.execute("1 + 1")
 
-        # Verify Authorization header was sent
-        call_args = mock_http_client.post.call_args
-        headers = call_args[1].get("headers", {})
-        assert "Authorization" in headers
-        assert headers["Authorization"] == "Bearer client-auth-token"
-        assert "X-Session-ID" not in headers
+        session_call = mock_http_client.post.call_args_list[0]
+        session_headers = session_call[1].get("headers", {})
+        assert session_headers["Authorization"] == "Bearer client-auth-token"
+        assert "X-Session-ID" not in session_headers
+
+        execute_call = mock_http_client.post.call_args_list[1]
+        execute_headers = execute_call[1].get("headers", {})
+        assert execute_headers["Authorization"] == "Bearer client-auth-token"
+        assert execute_headers["X-Session-ID"] == "test"
 
         await client.close()
 

@@ -8,6 +8,19 @@ import pytest
 from py_code_mode.execution.container.config import SessionConfig
 
 
+def create_bound_session(client, workspace_id: str | None = None) -> str:
+    """Create a session and return its bound session ID."""
+    payload = {} if workspace_id is None else {"workspace_id": workspace_id}
+    response = client.post("/sessions", json=payload)
+    assert response.status_code == 200
+    return response.json()["session_id"]
+
+
+def session_headers(session_id: str) -> dict[str, str]:
+    """Build headers for a bound session request."""
+    return {"X-Session-ID": session_id}
+
+
 class TestSessionConfig:
     """Tests for SessionConfig loading."""
 
@@ -84,7 +97,8 @@ class TestSessionServer:
 
     def test_info_endpoint(self, client) -> None:
         """Info endpoint returns tools and workflows."""
-        response = client.get("/info")
+        session_id = create_bound_session(client)
+        response = client.get("/info", headers=session_headers(session_id))
 
         assert response.status_code == 200
         data = response.json()
@@ -94,7 +108,12 @@ class TestSessionServer:
 
     def test_execute_simple_expression(self, client) -> None:
         """Can execute simple expression."""
-        response = client.post("/execute", json={"code": "1 + 1"})
+        session_id = create_bound_session(client)
+        response = client.post(
+            "/execute",
+            json={"code": "1 + 1"},
+            headers=session_headers(session_id),
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -104,7 +123,12 @@ class TestSessionServer:
 
     def test_execute_with_stdout(self, client) -> None:
         """Captures stdout from print statements."""
-        response = client.post("/execute", json={"code": "print('hello')"})
+        session_id = create_bound_session(client)
+        response = client.post(
+            "/execute",
+            json={"code": "print('hello')"},
+            headers=session_headers(session_id),
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -113,7 +137,12 @@ class TestSessionServer:
 
     def test_execute_with_error(self, client) -> None:
         """Returns error for invalid code."""
-        response = client.post("/execute", json={"code": "1/0"})
+        session_id = create_bound_session(client)
+        response = client.post(
+            "/execute",
+            json={"code": "1/0"},
+            headers=session_headers(session_id),
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -122,9 +151,11 @@ class TestSessionServer:
 
     def test_execute_state_persists(self, client) -> None:
         """Variables persist across executions within same session."""
-        create_response = client.post("/execute", json={"code": "x = 42"})
-        session_id = create_response.json()["session_id"]
-        headers = {"X-Session-ID": session_id}
+        session_id = create_bound_session(client)
+        headers = session_headers(session_id)
+
+        create_response = client.post("/execute", json={"code": "x = 42"}, headers=headers)
+        assert create_response.status_code == 200
 
         # Access variable (same session)
         response = client.post("/execute", json={"code": "x * 2"}, headers=headers)
@@ -136,9 +167,11 @@ class TestSessionServer:
 
     def test_reset_clears_state(self, client) -> None:
         """Reset clears session state."""
-        create_response = client.post("/execute", json={"code": "x = 42"})
-        session_id = create_response.json()["session_id"]
-        headers = {"X-Session-ID": session_id}
+        session_id = create_bound_session(client)
+        headers = session_headers(session_id)
+
+        create_response = client.post("/execute", json={"code": "x = 42"}, headers=headers)
+        assert create_response.status_code == 200
 
         # Reset this session
         response = client.post("/reset", headers=headers)
@@ -159,6 +192,24 @@ class TestSessionServer:
         assert response.status_code == 400
         assert response.json()["detail"] == "Invalid session ID"
 
+    def test_session_aware_endpoints_require_bound_session_id(self, client) -> None:
+        """Remote session-aware endpoints should fail closed without X-Session-ID."""
+        execute_response = client.post("/execute", json={"code": "1 + 1"})
+        assert execute_response.status_code == 400
+        assert execute_response.json()["detail"] == "Invalid session ID"
+
+        info_response = client.get("/info")
+        assert info_response.status_code == 400
+        assert info_response.json()["detail"] == "Invalid session ID"
+
+        workflows_response = client.get("/api/workflows")
+        assert workflows_response.status_code == 400
+        assert workflows_response.json()["detail"] == "Invalid session ID"
+
+        artifacts_response = client.get("/api/artifacts")
+        assert artifacts_response.status_code == 400
+        assert artifacts_response.json()["detail"] == "Invalid session ID"
+
     def test_reset_requires_known_session_id(self, client) -> None:
         """Reset rejects missing or unknown session IDs."""
         missing_response = client.post("/reset")
@@ -171,7 +222,12 @@ class TestSessionServer:
 
     def test_execute_returns_execution_time(self, client) -> None:
         """Execute response includes execution time."""
-        response = client.post("/execute", json={"code": "1 + 1"})
+        session_id = create_bound_session(client)
+        response = client.post(
+            "/execute",
+            json={"code": "1 + 1"},
+            headers=session_headers(session_id),
+        )
 
         data = response.json()
         assert "execution_time_ms" in data
@@ -229,7 +285,8 @@ recipes:
 
     def test_info_endpoint_includes_tools(self, client_with_tools) -> None:
         """Info endpoint lists tools loaded from TOOLS_PATH."""
-        response = client_with_tools.get("/info")
+        session_id = create_bound_session(client_with_tools)
+        response = client_with_tools.get("/info", headers=session_headers(session_id))
 
         assert response.status_code == 200
         data = response.json()

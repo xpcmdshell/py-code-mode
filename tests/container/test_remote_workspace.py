@@ -225,26 +225,13 @@ class TestRemoteWorkspaceSessions:
         assert response.status_code == 400
         assert response.json()["detail"] == "Invalid session ID"
 
-    def test_requests_without_session_header_use_legacy_default_namespace(
-        self, auth_client
-    ) -> None:
-        """Requests without X-Session-ID should still use the legacy shared namespace."""
+    def test_requests_without_session_header_are_rejected(self, auth_client) -> None:
+        """Session-aware remote storage APIs should fail closed without X-Session-ID."""
         client, token = auth_client
 
-        response = client.post(
-            "/api/workflows",
-            json={
-                "name": "legacy_workflow",
-                "source": 'async def run() -> str:\n    return "ok"\n',
-                "description": "Legacy workflow",
-            },
-            headers=auth_headers(token),
-        )
-        assert response.status_code == 200
-
         response = client.get("/api/workflows", headers=auth_headers(token))
-        assert response.status_code == 200
-        assert any(workflow["name"] == "legacy_workflow" for workflow in response.json())
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid session ID"
 
 
 @pytest.fixture
@@ -258,6 +245,34 @@ async def live_session_server_url(tmp_path, unused_tcp_port: int) -> str:
         auth_disabled=True,
     )
     app = create_app(config)
+    server_config = uvicorn.Config(app, host="127.0.0.1", port=unused_tcp_port, log_level="warning")
+    server = uvicorn.Server(server_config)
+
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.1)
+
+    try:
+        yield f"http://127.0.0.1:{unused_tcp_port}"
+    finally:
+        server.should_exit = True
+        await task
+
+
+@pytest.fixture
+async def live_expiring_session_server_url(
+    tmp_path, unused_tcp_port: int, monkeypatch: pytest.MonkeyPatch
+) -> str:
+    """Start a real session server whose bound sessions expire quickly."""
+    from py_code_mode.execution.container import server as server_module
+
+    monkeypatch.setattr(server_module, "SESSION_EXPIRY", 0.1)
+    config = SessionConfig(
+        artifacts_path=tmp_path / "server-artifacts",
+        workflows_path=tmp_path / "server-workflows",
+        auth_disabled=True,
+    )
+    app = server_module.create_app(config)
     server_config = uvicorn.Config(app, host="127.0.0.1", port=unused_tcp_port, log_level="warning")
     server = uvicorn.Server(server_config)
 
@@ -539,6 +554,83 @@ class TestRemoteWorkspaceSessionE2E:
             result = await session_b.run("workflows.search('summarize')")
             assert result.error is None
             assert result.value == []
+
+    @pytest.mark.asyncio
+    async def test_expired_remote_session_rebinds_to_same_workspace(
+        self, tmp_path, live_expiring_session_server_url: str
+    ) -> None:
+        """A remote Session() should transparently recover from server-side expiry."""
+        session = Session(
+            storage=FileStorage(tmp_path / "client-storage-a", workspace_id="client_a"),
+            executor=ContainerExecutor(
+                ContainerConfig(
+                    remote_url=live_expiring_session_server_url,
+                    timeout=30.0,
+                    auth_disabled=True,
+                )
+            ),
+        )
+
+        async with session:
+            result = await session.run(
+                "\n".join(
+                    [
+                        "workflows.create(",
+                        "    'survives_rebind',",
+                        "    'async def run() -> str:\\n    return \"ok\"\\n',",
+                        "    'Persisted in workspace storage',",
+                        ")",
+                    ]
+                )
+            )
+            assert result.error is None
+            original_session_id = session._executor._client.session_id
+            assert original_session_id is not None
+
+            await asyncio.sleep(0.2)
+
+            result = await session.run("workflows.get('survives_rebind') is not None")
+            assert result.error is None
+            assert result.value is True
+            assert session._executor._client.session_id is not None
+            assert session._executor._client.session_id != original_session_id
+
+
+@pytest.mark.xdist_group("remote-redis")
+class TestRemoteWorkspaceRedisConfig:
+    """Tests for remote Redis workspace configuration edge cases."""
+
+    def test_workspace_session_creation_rejects_scoped_redis_fallback(
+        self,
+        remote_workspace_redis_url: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Workspace-scoped sessions should fail closed without an unscoped Redis root."""
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            pytest.skip("FastAPI not installed")
+
+        from py_code_mode.execution.container.server import create_app
+
+        monkeypatch.setenv("REDIS_WORKFLOWS_PREFIX", "app:ws:client_a:workflows")
+        monkeypatch.setenv("REDIS_ARTIFACTS_PREFIX", "app:ws:client_a:artifacts")
+        monkeypatch.delenv("REDIS_TOOLS_PREFIX", raising=False)
+        monkeypatch.delenv("REDIS_DEPS_PREFIX", raising=False)
+        monkeypatch.delenv("STORAGE_PREFIX", raising=False)
+
+        app = create_app(
+            SessionConfig(
+                redis_url=remote_workspace_redis_url,
+                auth_disabled=True,
+            )
+        )
+
+        with TestClient(app) as client:
+            response = client.post("/sessions", json={"workspace_id": "client_b"})
+
+        assert response.status_code == 503
+        assert "storage_prefix" in response.json()["detail"]
 
 
 @pytest.mark.xdist_group("remote-redis")

@@ -347,11 +347,14 @@ def _derive_redis_root_prefix(
     artifacts_root = artifacts_prefix[: -len(":artifacts")]
     if workflows_root != artifacts_root:
         return None
+    if ":ws:" in workflows_root:
+        return None
     return workflows_root
 
 
 def build_workspace_bundle(workspace_id: str) -> WorkspaceBundle:
     """Build a cached workflow/artifact bundle for one workspace."""
+    workspace_id = _validate_workspace_id(workspace_id)
     config = _state.config
     if config is None:
         raise RuntimeError("Server not initialized")
@@ -365,7 +368,7 @@ def build_workspace_bundle(workspace_id: str) -> WorkspaceBundle:
             _state.redis_artifacts_prefix,
         )
         if storage_prefix is None:
-            raise RuntimeError("Workspace-scoped Redis storage is not configured")
+            raise RuntimeError("Workspace-scoped Redis storage requires an explicit storage_prefix")
 
         workflow_prefix = f"{storage_prefix}:ws:{workspace_id}:workflows"
         artifact_prefix = f"{storage_prefix}:ws:{workspace_id}:artifacts"
@@ -485,6 +488,7 @@ def cleanup_expired_sessions() -> int:
 
 def get_bound_session(session_id: str | None) -> Session:
     """Resolve a request's bound session or raise 400."""
+    cleanup_expired_sessions()
     if session_id is None:
         raise HTTPException(status_code=400, detail="Invalid session ID")
 
@@ -496,9 +500,6 @@ def get_bound_session(session_id: str | None) -> Session:
 
 def get_request_bundle(session_id: str | None) -> WorkspaceBundle:
     """Resolve the effective workflow/artifact bundle for a request."""
-    if session_id is None:
-        return get_default_bundle()
-
     session = get_bound_session(session_id)
     return WorkspaceBundle(
         workspace_id=session.workspace_id,
@@ -786,19 +787,12 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
     ) -> ExecuteResponseModel:
         """Execute code in an isolated session.
 
-        Pass X-Session-ID header to use a specific session.
-        Omit to create a new session (ID returned in response).
+        Pass X-Session-ID header to use a specific bound session.
         """
         if _state.config is None:
             raise HTTPException(status_code=503, detail="Server not initialized")
 
-        # Cleanup expired sessions periodically
-        cleanup_expired_sessions()
-
-        if x_session_id is None:
-            session = create_new_session()
-        else:
-            session = get_bound_session(x_session_id)
+        session = get_bound_session(x_session_id)
 
         start = time.time()
         timeout = body.timeout or _state.config.default_timeout
@@ -891,7 +885,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
             session_id=x_session_id,
         )
 
-    # NOTE: /sessions endpoint removed - session enumeration is an information disclosure risk
+    # Only POST /sessions is exposed. Enumeration/listing endpoints remain unavailable.
 
     @app.post(
         "/install_deps",
