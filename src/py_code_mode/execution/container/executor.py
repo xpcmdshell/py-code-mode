@@ -404,8 +404,9 @@ class ContainerExecutor:
                 workflows_path = access.workflows_path
                 artifacts_path = access.artifacts_path
                 deps_path = None
-                if artifacts_path is not None:
-                    deps_path = artifacts_path.parent / "deps"
+                deps_root = access.root_path or artifacts_path.parent
+                if deps_root is not None:
+                    deps_path = deps_root / "deps"
                 # Create directories on host before mounting
                 # Workflows need to exist for volume mount
                 if workflows_path:
@@ -425,7 +426,7 @@ class ContainerExecutor:
                 tools_prefix = None  # Tools owned by executor
                 workflows_prefix = access.workflows_prefix
                 artifacts_prefix = access.artifacts_prefix
-                deps_prefix = None  # Deps owned by executor
+                deps_prefix = access.root_prefix or access.workflows_prefix.rsplit(":", 1)[0]
             else:
                 raise TypeError(
                     f"Unexpected storage access type: {type(access).__name__}. "

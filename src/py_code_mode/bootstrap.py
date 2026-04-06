@@ -52,8 +52,10 @@ async def bootstrap_namespaces(config: dict[str, Any]) -> NamespaceBundle:
 
     Args:
         config: Dict with "type" key ("file" or "redis") and type-specific fields.
-                - For "file": {"type": "file", "base_path": str, "tools_path": str|None}
+                - For "file": {"type": "file", "base_path": str, "workspace_id": str|None,
+                  "tools_path": str|None}
                 - For "redis": {"type": "redis", "url": str, "prefix": str,
+                  "workspace_id": str|None,
                   "tools_path": str|None}
                 - tools_path is optional; if provided, tools load from that directory
 
@@ -128,7 +130,8 @@ async def _bootstrap_file_storage(config: dict[str, Any]) -> NamespaceBundle:
     from py_code_mode.storage import FileStorage
 
     base_path = Path(config["base_path"])
-    storage = FileStorage(base_path)
+    workspace_id = config.get("workspace_id")
+    storage = FileStorage(base_path, workspace_id=workspace_id)
 
     tools_ns = await _load_tools_namespace(config.get("tools_path"))
     artifact_store = storage.get_artifact_store()
@@ -159,15 +162,16 @@ async def _bootstrap_redis_storage(config: dict[str, Any]) -> NamespaceBundle:
 
     url = config["url"]
     prefix = config["prefix"]
+    workspace_id = config.get("workspace_id")
 
     # Connect to Redis
-    storage = RedisStorage(url=url, prefix=prefix)
+    storage = RedisStorage(url=url, prefix=prefix, workspace_id=workspace_id)
 
     tools_ns = await _load_tools_namespace(config.get("tools_path"))
     artifact_store = storage.get_artifact_store()
 
     # Create deps namespace
-    deps_store = RedisDepsStore(storage.client, prefix=f"{prefix}:deps")
+    deps_store = RedisDepsStore(storage.client, prefix=prefix)
     installer = PackageInstaller()
     deps_ns = DepsNamespace(deps_store, installer)
 

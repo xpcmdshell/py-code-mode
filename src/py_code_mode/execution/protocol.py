@@ -33,6 +33,7 @@ class FileStorageAccess:
     workflows_path: Path | None
     artifacts_path: Path
     vectors_path: Path | None = None
+    root_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class RedisStorageAccess:
     workflows_prefix: str
     artifacts_prefix: str
     vectors_prefix: str | None = None
+    root_prefix: str | None = None
 
 
 StorageAccess = FileStorageAccess | RedisStorageAccess
