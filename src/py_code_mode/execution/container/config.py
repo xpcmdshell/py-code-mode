@@ -44,6 +44,8 @@ class SessionConfig:
     artifacts_path: Path = field(default_factory=lambda: Path("/workspace/artifacts"))
     artifact_backend: str = "file"  # "file" or "redis"
     redis_url: str | None = None
+    storage_base_path: Path | None = None
+    storage_prefix: str | None = None
 
     # Execution
     default_timeout: float = 30.0
@@ -83,12 +85,16 @@ class SessionConfig:
             config.workflows_path = Path(workflows_path)
         if artifacts_path := os.environ.get("ARTIFACTS_PATH"):
             config.artifacts_path = Path(artifacts_path)
+        if storage_base_path := os.environ.get("STORAGE_BASE_PATH"):
+            config.storage_base_path = Path(storage_base_path)
 
         # Artifact backend
         if backend := os.environ.get("ARTIFACT_BACKEND"):
             config.artifact_backend = backend
         if redis_url := os.environ.get("REDIS_URL"):
             config.redis_url = redis_url
+        if storage_prefix := os.environ.get("STORAGE_PREFIX"):
+            config.storage_prefix = storage_prefix
 
         # Timeouts
         if timeout := os.environ.get("DEFAULT_TIMEOUT"):
@@ -147,6 +153,12 @@ class SessionConfig:
             artifacts_path=Path(data.get("artifacts_path", "/workspace/artifacts")),
             artifact_backend=data.get("artifact_backend", "file"),
             redis_url=data.get("redis_url"),
+            storage_base_path=(
+                Path(data["storage_base_path"])
+                if data.get("storage_base_path") is not None
+                else None
+            ),
+            storage_prefix=data.get("storage_prefix"),
             default_timeout=data.get("default_timeout", 30.0),
             max_execution_time=data.get("max_execution_time", 300.0),
             host=data.get("host", "0.0.0.0"),

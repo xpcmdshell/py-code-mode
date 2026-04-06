@@ -92,6 +92,11 @@ class StorageBackend(Protocol):
         """
         ...
 
+    @property
+    def workspace_id(self) -> str | None:
+        """Return the configured workspace scope, if any."""
+        ...
+
 
 class FileStorage:
     """File-based storage using directories for workflows and artifacts.

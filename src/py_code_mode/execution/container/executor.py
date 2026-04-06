@@ -375,6 +375,8 @@ class ContainerExecutor:
                 timeout=self.config.timeout,
                 auth_token=self.config.auth_token,
             )
+            workspace_id = storage.workspace_id if storage is not None else None
+            await self._client.init_session(workspace_id=workspace_id)
             return
 
         # Initialize Docker client with fallback socket detection

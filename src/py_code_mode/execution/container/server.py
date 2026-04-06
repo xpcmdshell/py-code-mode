@@ -64,6 +64,7 @@ from py_code_mode.execution.container.config import SessionConfig  # noqa: E402
 from py_code_mode.execution.in_process import (  # noqa: E402
     InProcessExecutor as CodeExecutor,
 )
+from py_code_mode.storage.backends import _validate_workspace_id  # noqa: E402
 from py_code_mode.tools import ToolRegistry  # noqa: E402
 from py_code_mode.workflows import (  # noqa: E402
     FileWorkflowStore,
@@ -131,6 +132,16 @@ if FASTAPI_AVAILABLE:
         """Reset response."""
 
         status: str
+        session_id: str
+
+    class CreateSessionRequestModel(BaseModel):  # type: ignore
+        """Request to create a bound remote session."""
+
+        workspace_id: str | None = None
+
+    class SessionResponseModel(BaseModel):  # type: ignore
+        """Response containing a created session ID."""
+
         session_id: str
 
     # NOTE: SessionInfoModel removed - /sessions endpoint was removed for security
@@ -213,12 +224,25 @@ if FASTAPI_AVAILABLE:
 
 
 @dataclass
+class WorkspaceBundle:
+    """Shared workflow/artifact state for one workspace scope."""
+
+    workspace_id: str | None
+    workflow_library: WorkflowLibrary | None
+    artifact_store: ArtifactStoreProtocol
+    artifacts_path: str
+
+
+@dataclass
 class Session:
-    """Individual session state."""
+    """Individual session state with isolated Python state and bound storage."""
 
     session_id: str
     executor: CodeExecutor
+    workflow_library: WorkflowLibrary | None
     artifact_store: ArtifactStoreProtocol
+    workspace_id: str | None = None
+    artifacts_path: str = ""
     created_at: float = field(default_factory=time.time)
     last_used: float = field(default_factory=time.time)
     execution_count: int = 0
@@ -237,6 +261,11 @@ class ServerState:
     sessions: dict[str, Session] = field(default_factory=dict)
     start_time: float = 0.0
     redis_mode: bool = False
+    default_bundle: WorkspaceBundle | None = None
+    workspace_bundles: dict[str, WorkspaceBundle] = field(default_factory=dict)
+    redis_client: Any | None = None
+    redis_workflows_prefix: str | None = None
+    redis_artifacts_prefix: str | None = None
 
 
 # Global state
@@ -277,22 +306,133 @@ def build_workflow_library(config: SessionConfig) -> WorkflowLibrary | None:
     return create_workflow_library(store=store)
 
 
-def create_session(session_id: str) -> Session:
-    """Create a new isolated session."""
-    if _state.config is None:
+def build_workflow_library_for_path(workflows_path: Path) -> WorkflowLibrary | None:
+    """Build a file-backed workflow library for the given path."""
+    try:
+        workflows_path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.warning("Cannot create workflows directory at %s: %s", workflows_path, e)
+        return None
+
+    store = FileWorkflowStore(workflows_path)
+    return create_workflow_library(store=store)
+
+
+def build_workflow_library_for_redis(redis_client: Any, prefix: str) -> WorkflowLibrary:
+    """Build a Redis-backed workflow library for the given prefix."""
+    from py_code_mode.workflows import RedisWorkflowStore
+
+    store = RedisWorkflowStore(redis_client, prefix=prefix)
+    return create_workflow_library(store=store)
+
+
+def get_default_bundle() -> WorkspaceBundle:
+    """Return the legacy unscoped bundle."""
+    if _state.default_bundle is None:
+        raise RuntimeError("Default workspace bundle not initialized")
+    return _state.default_bundle
+
+
+def _derive_redis_root_prefix(
+    workflows_prefix: str | None,
+    artifacts_prefix: str | None,
+) -> str | None:
+    """Derive a shared Redis root prefix from legacy workflow/artifact prefixes."""
+    if workflows_prefix is None or artifacts_prefix is None:
+        return None
+    if not workflows_prefix.endswith(":workflows") or not artifacts_prefix.endswith(":artifacts"):
+        return None
+
+    workflows_root = workflows_prefix[: -len(":workflows")]
+    artifacts_root = artifacts_prefix[: -len(":artifacts")]
+    if workflows_root != artifacts_root:
+        return None
+    return workflows_root
+
+
+def build_workspace_bundle(workspace_id: str) -> WorkspaceBundle:
+    """Build a cached workflow/artifact bundle for one workspace."""
+    config = _state.config
+    if config is None:
         raise RuntimeError("Server not initialized")
 
-    # Use shared artifact store (already initialized at startup for both modes)
-    if _state.artifact_store is None:
-        raise RuntimeError("Artifact store not initialized")
-    artifact_store = _state.artifact_store
+    if _state.redis_mode:
+        if _state.redis_client is None:
+            raise RuntimeError("Redis client not initialized")
+
+        storage_prefix = config.storage_prefix or _derive_redis_root_prefix(
+            _state.redis_workflows_prefix,
+            _state.redis_artifacts_prefix,
+        )
+        if storage_prefix is None:
+            raise RuntimeError("Workspace-scoped Redis storage is not configured")
+
+        workflow_prefix = f"{storage_prefix}:ws:{workspace_id}:workflows"
+        artifact_prefix = f"{storage_prefix}:ws:{workspace_id}:artifacts"
+        workflow_library = build_workflow_library_for_redis(_state.redis_client, workflow_prefix)
+
+        from py_code_mode.artifacts import RedisArtifactStore
+
+        artifact_store = RedisArtifactStore(_state.redis_client, prefix=artifact_prefix)
+        return WorkspaceBundle(
+            workspace_id=workspace_id,
+            workflow_library=workflow_library,
+            artifact_store=artifact_store,
+            artifacts_path=artifact_prefix,
+        )
+
+    storage_base_path = config.storage_base_path
+    if storage_base_path is not None:
+        workspace_root = storage_base_path / "workspaces" / workspace_id
+        workflows_path = workspace_root / "workflows"
+        artifacts_path = workspace_root / "artifacts"
+    else:
+        workflows_path = (
+            config.workflows_path.parent / "workspaces" / workspace_id / config.workflows_path.name
+        )
+        artifacts_path = (
+            config.artifacts_path.parent / "workspaces" / workspace_id / config.artifacts_path.name
+        )
+
+    workflow_library = build_workflow_library_for_path(workflows_path)
+    artifacts_path.mkdir(parents=True, exist_ok=True)
+    artifact_store = FileArtifactStore(artifacts_path)
+    return WorkspaceBundle(
+        workspace_id=workspace_id,
+        workflow_library=workflow_library,
+        artifact_store=artifact_store,
+        artifacts_path=str(artifacts_path),
+    )
+
+
+def get_workspace_bundle(workspace_id: str | None) -> WorkspaceBundle:
+    """Return the default or scoped bundle for a request/session."""
+    if workspace_id is None:
+        return get_default_bundle()
+
+    bundle = _state.workspace_bundles.get(workspace_id)
+    if bundle is not None:
+        return bundle
+
+    bundle = build_workspace_bundle(workspace_id)
+    _state.workspace_bundles[workspace_id] = bundle
+    return bundle
+
+
+def create_session(session_id: str, workspace_id: str | None = None) -> Session:
+    """Create a new isolated Python session bound to a storage bundle."""
+    config = _state.config
+    if config is None:
+        raise RuntimeError("Server not initialized")
+
+    bundle = get_workspace_bundle(workspace_id)
 
     # Create deps namespace if deps_store is available
     deps_namespace = None
     if _state.deps_store is not None and _state.deps_installer is not None:
         base_deps = DepsNamespace(_state.deps_store, _state.deps_installer)
         # Wrap if runtime deps disabled
-        if not _state.config.allow_runtime_deps:
+        if not config.allow_runtime_deps:
             deps_namespace = ControlledDepsNamespace(base_deps, allow_runtime=False)
         else:
             deps_namespace = base_deps
@@ -300,23 +440,26 @@ def create_session(session_id: str) -> Session:
     # Create executor with shared registries but isolated namespace/artifacts
     executor = CodeExecutor(
         registry=_state.registry,
-        workflow_library=_state.workflow_library,
-        artifact_store=artifact_store,
+        workflow_library=bundle.workflow_library,
+        artifact_store=bundle.artifact_store,
         deps_namespace=deps_namespace,
-        default_timeout=_state.config.default_timeout,
+        default_timeout=config.default_timeout,
     )
 
     return Session(
         session_id=session_id,
         executor=executor,
-        artifact_store=artifact_store,
+        workflow_library=bundle.workflow_library,
+        artifact_store=bundle.artifact_store,
+        workspace_id=workspace_id,
+        artifacts_path=bundle.artifacts_path,
     )
 
 
-def create_new_session() -> Session:
+def create_new_session(workspace_id: str | None = None) -> Session:
     """Create a new isolated session with a server-issued ID."""
     session_id = str(uuid.uuid4())
-    session = create_session(session_id)
+    session = create_session(session_id, workspace_id=workspace_id)
     _state.sessions[session_id] = session
     return session
 
@@ -338,6 +481,31 @@ def cleanup_expired_sessions() -> int:
     for sid in expired:
         del _state.sessions[sid]
     return len(expired)
+
+
+def get_bound_session(session_id: str | None) -> Session:
+    """Resolve a request's bound session or raise 400."""
+    if session_id is None:
+        raise HTTPException(status_code=400, detail="Invalid session ID")
+
+    session = get_existing_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=400, detail="Invalid session ID")
+    return session
+
+
+def get_request_bundle(session_id: str | None) -> WorkspaceBundle:
+    """Resolve the effective workflow/artifact bundle for a request."""
+    if session_id is None:
+        return get_default_bundle()
+
+    session = get_bound_session(session_id)
+    return WorkspaceBundle(
+        workspace_id=session.workspace_id,
+        workflow_library=session.workflow_library,
+        artifact_store=session.artifact_store,
+        artifacts_path=session.artifacts_path,
+    )
 
 
 def install_python_deps(deps: list[str]) -> None:
@@ -375,7 +543,7 @@ async def initialize_server(config: SessionConfig) -> None:
     if config.python_deps:
         install_python_deps(config.python_deps)
 
-    redis_url = os.environ.get("REDIS_URL")
+    redis_url = config.redis_url or os.environ.get("REDIS_URL")
 
     if redis_url:
         # Redis mode: load everything from Redis with semantic search
@@ -390,8 +558,14 @@ async def initialize_server(config: SessionConfig) -> None:
 
         # Get prefixes from environment (set by ContainerExecutor), with defaults
         tools_prefix = os.environ.get("REDIS_TOOLS_PREFIX", "tools")
-        workflows_prefix = os.environ.get("REDIS_WORKFLOWS_PREFIX", "workflows")
-        artifacts_prefix = os.environ.get("REDIS_ARTIFACTS_PREFIX", "artifacts")
+        workflows_prefix = os.environ.get(
+            "REDIS_WORKFLOWS_PREFIX",
+            f"{config.storage_prefix}:workflows" if config.storage_prefix else "workflows",
+        )
+        artifacts_prefix = os.environ.get(
+            "REDIS_ARTIFACTS_PREFIX",
+            f"{config.storage_prefix}:artifacts" if config.storage_prefix else "artifacts",
+        )
 
         # Tools from Redis
         tool_store = RedisToolStore(r, prefix=tools_prefix)
@@ -423,6 +597,13 @@ async def initialize_server(config: SessionConfig) -> None:
                     deps_store.add(dep)
             logger.info("  Pre-configured deps: %s", container_deps)
 
+        default_bundle = WorkspaceBundle(
+            workspace_id=None,
+            workflow_library=workflow_library,
+            artifact_store=artifact_store,
+            artifacts_path=artifacts_prefix,
+        )
+
         _state = ServerState(
             config=config,
             registry=registry,
@@ -433,6 +614,11 @@ async def initialize_server(config: SessionConfig) -> None:
             sessions={},
             start_time=time.time(),
             redis_mode=True,
+            default_bundle=default_bundle,
+            workspace_bundles={},
+            redis_client=r,
+            redis_workflows_prefix=workflows_prefix,
+            redis_artifacts_prefix=artifacts_prefix,
         )
     else:
         # File mode: load from config paths
@@ -483,6 +669,13 @@ async def initialize_server(config: SessionConfig) -> None:
                     deps_store.add(dep)
             logger.info("  Pre-configured deps: %s", container_deps)
 
+        default_bundle = WorkspaceBundle(
+            workspace_id=None,
+            workflow_library=workflow_library,
+            artifact_store=artifact_store,
+            artifacts_path=str(config.artifacts_path),
+        )
+
         _state = ServerState(
             config=config,
             registry=registry,
@@ -493,6 +686,8 @@ async def initialize_server(config: SessionConfig) -> None:
             sessions={},
             start_time=time.time(),
             redis_mode=False,
+            default_bundle=default_bundle,
+            workspace_bundles={},
         )
 
     # Log authentication status (important for security awareness)
@@ -603,9 +798,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         if x_session_id is None:
             session = create_new_session()
         else:
-            session = get_existing_session(x_session_id)
-            if session is None:
-                raise HTTPException(status_code=400, detail="Invalid session ID")
+            session = get_bound_session(x_session_id)
 
         start = time.time()
         timeout = body.timeout or _state.config.default_timeout
@@ -627,6 +820,25 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
             session_id=session.session_id,
         )
 
+    @app.post(
+        "/sessions",
+        response_model=SessionResponseModel,
+        dependencies=[Depends(require_auth)],
+    )
+    async def create_bound_session(body: CreateSessionRequestModel) -> SessionResponseModel:
+        """Create a new session optionally bound to a workspace-scoped bundle."""
+        try:
+            workspace_id = (
+                _validate_workspace_id(body.workspace_id) if body.workspace_id is not None else None
+            )
+            session = create_new_session(workspace_id=workspace_id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+
+        return SessionResponseModel(session_id=session.session_id)
+
     @app.get("/health", response_model=HealthResponseModel)
     async def health() -> HealthResponseModel:
         """Health check endpoint.
@@ -642,25 +854,26 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         )
 
     @app.get("/info", response_model=InfoResponseModel, dependencies=[Depends(require_auth)])
-    async def info() -> InfoResponseModel:
+    async def info(
+        x_session_id: str | None = Header(None, alias="X-Session-ID"),
+    ) -> InfoResponseModel:
         """Get information about available tools and workflows."""
+        bundle = get_request_bundle(x_session_id)
         tools = []
         if _state.registry:
             for tool in _state.registry.list_tools():
                 tools.append({"name": tool.name, "description": tool.description})
 
         workflows = []
-        if _state.workflow_library is not None:
-            _state.workflow_library.refresh()
-            for workflow in _state.workflow_library.list():
+        if bundle.workflow_library is not None:
+            bundle.workflow_library.refresh()
+            for workflow in bundle.workflow_library.list():
                 workflows.append({"name": workflow.name, "description": workflow.description})
-
-        artifacts_path = str(_state.config.artifacts_path) if _state.config else ""
 
         return InfoResponseModel(
             tools=tools,
             workflows=workflows,
-            artifacts_path=artifacts_path,
+            artifacts_path=bundle.artifacts_path,
         )
 
     @app.post("/reset", response_model=ResetResponseModel, dependencies=[Depends(require_auth)])
@@ -808,13 +1021,16 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
     # ==========================================================================
 
     @app.get("/api/workflows", dependencies=[Depends(require_auth)])
-    async def api_list_workflows() -> list[dict[str, Any]]:
+    async def api_list_workflows(
+        x_session_id: str | None = Header(None, alias="X-Session-ID"),
+    ) -> list[dict[str, Any]]:
         """Return all workflows."""
-        if _state.workflow_library is None:
+        bundle = get_request_bundle(x_session_id)
+        if bundle.workflow_library is None:
             raise HTTPException(status_code=503, detail="Workflow library not initialized")
 
-        _state.workflow_library.refresh()
-        workflows = _state.workflow_library.list()
+        bundle.workflow_library.refresh()
+        workflows = bundle.workflow_library.list()
         return [
             {
                 "name": workflow.name,
@@ -825,13 +1041,18 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         ]
 
     @app.get("/api/workflows/search", dependencies=[Depends(require_auth)])
-    async def api_search_workflows(query: str, limit: int = 5) -> list[dict[str, Any]]:
+    async def api_search_workflows(
+        query: str,
+        limit: int = 5,
+        x_session_id: str | None = Header(None, alias="X-Session-ID"),
+    ) -> list[dict[str, Any]]:
         """Search workflows."""
-        if _state.workflow_library is None:
+        bundle = get_request_bundle(x_session_id)
+        if bundle.workflow_library is None:
             raise HTTPException(status_code=503, detail="Workflow library not initialized")
 
-        _state.workflow_library.refresh()
-        workflows = _state.workflow_library.search(query, limit=limit)
+        bundle.workflow_library.refresh()
+        workflows = bundle.workflow_library.search(query, limit=limit)
         return [
             {
                 "name": workflow.name,
@@ -842,13 +1063,17 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         ]
 
     @app.get("/api/workflows/{name}", dependencies=[Depends(require_auth)])
-    async def api_get_workflow(name: str) -> dict[str, Any] | None:
+    async def api_get_workflow(
+        name: str,
+        x_session_id: str | None = Header(None, alias="X-Session-ID"),
+    ) -> dict[str, Any] | None:
         """Get workflow by name with full source."""
-        if _state.workflow_library is None:
+        bundle = get_request_bundle(x_session_id)
+        if bundle.workflow_library is None:
             raise HTTPException(status_code=503, detail="Workflow library not initialized")
 
-        _state.workflow_library.refresh()
-        workflow = _state.workflow_library.get(name)
+        bundle.workflow_library.refresh()
+        workflow = bundle.workflow_library.get(name)
         if workflow is None:
             return None
 
@@ -860,9 +1085,13 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         }
 
     @app.post("/api/workflows", dependencies=[Depends(require_auth)])
-    async def api_create_workflow(body: CreateWorkflowRequest) -> dict[str, Any]:
+    async def api_create_workflow(
+        body: CreateWorkflowRequest,
+        x_session_id: str | None = Header(None, alias="X-Session-ID"),
+    ) -> dict[str, Any]:
         """Create a new workflow."""
-        if _state.workflow_library is None:
+        bundle = get_request_bundle(x_session_id)
+        if bundle.workflow_library is None:
             raise HTTPException(status_code=503, detail="Workflow library not initialized")
 
         from py_code_mode.workflows import PythonWorkflow
@@ -873,7 +1102,7 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
                 source=body.source,
                 description=body.description,
             )
-            _state.workflow_library.add(workflow)
+            bundle.workflow_library.add(workflow)
             return {
                 "name": workflow.name,
                 "description": workflow.description,
@@ -884,24 +1113,28 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(e))
 
     @app.delete("/api/workflows/{name}", dependencies=[Depends(require_auth)])
-    async def api_delete_workflow(name: str) -> bool:
+    async def api_delete_workflow(
+        name: str,
+        x_session_id: str | None = Header(None, alias="X-Session-ID"),
+    ) -> bool:
         """Delete a workflow."""
-        if _state.workflow_library is None:
+        bundle = get_request_bundle(x_session_id)
+        if bundle.workflow_library is None:
             return False
 
-        return _state.workflow_library.remove(name)
+        return bundle.workflow_library.remove(name)
 
     # ==========================================================================
     # Artifacts API Endpoints
     # ==========================================================================
 
     @app.get("/api/artifacts", dependencies=[Depends(require_auth)])
-    async def api_list_artifacts() -> list[dict[str, Any]]:
+    async def api_list_artifacts(
+        x_session_id: str | None = Header(None, alias="X-Session-ID"),
+    ) -> list[dict[str, Any]]:
         """List all artifacts with metadata."""
-        if _state.artifact_store is None:
-            return []
-
-        artifacts = _state.artifact_store.list()
+        bundle = get_request_bundle(x_session_id)
+        artifacts = bundle.artifact_store.list()
         return [
             {
                 "name": artifact.name,
@@ -914,23 +1147,27 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         ]
 
     @app.get("/api/artifacts/{name}", dependencies=[Depends(require_auth)])
-    async def api_load_artifact(name: str) -> Any:
+    async def api_load_artifact(
+        name: str,
+        x_session_id: str | None = Header(None, alias="X-Session-ID"),
+    ) -> Any:
         """Load artifact data."""
-        if _state.artifact_store is None:
-            raise HTTPException(status_code=503, detail="Artifact store not initialized")
+        bundle = get_request_bundle(x_session_id)
 
         try:
-            return _state.artifact_store.load(name)
+            return bundle.artifact_store.load(name)
         except ArtifactNotFoundError:
             raise HTTPException(status_code=404, detail=f"Artifact '{name}' not found")
 
     @app.post("/api/artifacts", dependencies=[Depends(require_auth)])
-    async def api_save_artifact(body: SaveArtifactRequest) -> dict[str, Any]:
+    async def api_save_artifact(
+        body: SaveArtifactRequest,
+        x_session_id: str | None = Header(None, alias="X-Session-ID"),
+    ) -> dict[str, Any]:
         """Save artifact."""
-        if _state.artifact_store is None:
-            raise HTTPException(status_code=503, detail="Artifact store not initialized")
+        bundle = get_request_bundle(x_session_id)
 
-        artifact = _state.artifact_store.save(
+        artifact = bundle.artifact_store.save(
             name=body.name,
             data=body.data,
             description=body.description,
@@ -945,15 +1182,17 @@ def create_app(config: SessionConfig | None = None) -> FastAPI:
         }
 
     @app.delete("/api/artifacts/{name}", dependencies=[Depends(require_auth)])
-    async def api_delete_artifact(name: str) -> None:
+    async def api_delete_artifact(
+        name: str,
+        x_session_id: str | None = Header(None, alias="X-Session-ID"),
+    ) -> None:
         """Delete artifact."""
-        if _state.artifact_store is None:
-            raise HTTPException(status_code=503, detail="Artifact store not initialized")
+        bundle = get_request_bundle(x_session_id)
 
-        if not _state.artifact_store.exists(name):
+        if not bundle.artifact_store.exists(name):
             raise HTTPException(status_code=404, detail=f"Artifact '{name}' not found")
 
-        _state.artifact_store.delete(name)
+        bundle.artifact_store.delete(name)
 
     # ==========================================================================
     # Deps API Endpoints
