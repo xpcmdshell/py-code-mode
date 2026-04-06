@@ -329,8 +329,10 @@ class TestSessionClientExecute:
                 session_payloads.append(kwargs["json"])
                 workspace_id = kwargs["json"].get("workspace_id")
                 if workspace_id == "workspace-a":
+                    await asyncio.sleep(0)
                     return make_mock_response({"session_id": "rebound-session-a"})
                 if workspace_id == "workspace-b":
+                    await asyncio.sleep(0)
                     return make_mock_response({"session_id": "session-b"})
             raise AssertionError(f"Unexpected call {url} {kwargs}")
 
