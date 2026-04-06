@@ -94,15 +94,20 @@ else:
 
 ### 5. Isolate Storage by Tenant
 
-Use separate Redis prefixes for multi-tenant deployments:
+Use a stable environment prefix plus `workspace_id` for multi-tenant deployments:
 
 ```python
 def get_storage(tenant_id: str, redis_url: str) -> RedisStorage:
     return RedisStorage(
         url=redis_url,
-        prefix=f"tenant-{tenant_id}"
+        prefix="production",
+        workspace_id=tenant_id,
     )
 ```
+
+If `workspace_id` is omitted, the system uses the legacy default namespace. That is one
+shared unscoped namespace, so multi-tenant deployments should set `workspace_id`
+explicitly.
 
 ---
 
@@ -139,6 +144,23 @@ async def handle_request(agent_code: str, tenant_id: str):
 ```
 
 Load balancer distributes requests across instances.
+
+### Remote Session Servers
+
+For remote `ContainerExecutor(remote_url=...)` deployments:
+
+- the client provides `workspace_id` through the storage backend
+- the session server creates an execution `session_id`
+- workflow/artifact isolation is enforced by the server's workspace-scoped storage bundle
+
+Configure the session server with server-owned storage roots:
+
+- `storage_base_path` for file-backed storage
+- `storage_prefix` for Redis-backed storage
+
+The host storage configuration and the remote session server must refer to the same
+logical backing store. In practice, Redis-backed storage is the recommended production
+topology for remote deployments because both sides can share one namespace directly.
 
 ---
 

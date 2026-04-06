@@ -193,6 +193,58 @@ config = ContainerConfig(
 - **Resource limits** - CPU, memory, disk quotas
 - **Clean state** - Each execution in fresh container
 
+### Remote Session Server Mode
+
+`ContainerExecutor` can also connect to an existing session server instead of starting a
+local container itself:
+
+```python
+from py_code_mode import RedisStorage, Session
+from py_code_mode.execution import ContainerExecutor
+
+storage = RedisStorage(
+    url="redis://localhost:6379",
+    prefix="production",
+    workspace_id="workspace-123",
+)
+
+executor = ContainerExecutor(remote_url="http://session-server:8000")
+
+async with Session(storage=storage, executor=executor) as session:
+    result = await session.run(agent_code)
+```
+
+In remote mode:
+
+- the host storage backend supplies `workspace_id`
+- the server issues the execution `session_id`
+- workflows, artifacts, and workflow search are scoped to that workspace
+
+The executor binds the session by calling `POST /sessions` and then sends the returned
+session ID on subsequent execution, workflow, artifact, and info requests via
+`X-Session-ID`.
+
+Multiple sessions using the same `workspace_id` share storage state. Different
+`workspace_id` values are isolated from each other.
+
+If `workspace_id` is omitted, the remote server uses the legacy default namespace for
+backward compatibility. This is one shared unscoped namespace, not access to all
+workspaces.
+
+### Remote Storage Requirements
+
+Remote mode only sends workspace identity. The session server must be configured with
+server-owned storage roots so it can rebuild workspace-scoped storage internally.
+
+Relevant server config fields:
+
+- `storage_base_path`: base directory for file-backed workspace storage
+- `storage_prefix`: Redis prefix for Redis-backed workspace storage
+
+The host storage and the remote server must refer to the same logical backing store.
+For true remote deployments, Redis-backed storage is recommended because both sides can
+share the same namespace cleanly.
+
 ### Configuration Options
 
 ```python
