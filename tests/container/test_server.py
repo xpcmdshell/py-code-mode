@@ -1,5 +1,8 @@
 """Tests for session server."""
 
+import asyncio
+from unittest.mock import MagicMock
+
 import pytest
 
 from py_code_mode.execution.container.config import SessionConfig
@@ -252,3 +255,83 @@ recipes:
         # Session has a file artifact store pointing to artifacts_path
         assert isinstance(session.artifact_store, FileArtifactStore)
         assert "artifacts" in str(session.artifact_store._path)
+
+
+class TestRedisDepsFallback:
+    """Tests for Redis deps initialization in the container server."""
+
+    def test_redis_deps_fallback_stays_unscoped_when_workflows_are_scoped(
+        self, monkeypatch, mock_redis
+    ) -> None:
+        """Deps fallback should use the root prefix, not the workspace-scoped workflows prefix."""
+        from py_code_mode.execution.container import server as server_module
+        from py_code_mode.tools import ToolRegistry
+
+        async def fake_registry_from_redis(_tool_store):
+            return ToolRegistry()
+
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("REDIS_TOOLS_PREFIX", "app:tools")
+        monkeypatch.setenv("REDIS_WORKFLOWS_PREFIX", "app:ws:client_a:workflows")
+        monkeypatch.setenv("REDIS_ARTIFACTS_PREFIX", "app:ws:client_a:artifacts")
+        monkeypatch.delenv("REDIS_DEPS_PREFIX", raising=False)
+
+        config = SessionConfig(auth_disabled=True)
+
+        monkeypatch.setattr("redis.from_url", lambda _url: mock_redis)
+        monkeypatch.setattr(
+            "py_code_mode.storage.registry_from_redis",
+            fake_registry_from_redis,
+        )
+        monkeypatch.setattr(
+            server_module,
+            "create_workflow_library",
+            lambda *, store: MagicMock(
+                refresh=lambda: None, list=lambda: [], search=lambda *_a, **_k: []
+            ),
+        )
+
+        asyncio.run(server_module.initialize_server(config))
+
+        assert server_module._state.deps_store is not None
+        server_module._state.deps_store.add("requests")
+
+        assert "requests" in mock_redis.smembers("app:deps")
+        assert mock_redis.smembers("app:ws:client_a:deps") == set()
+
+    def test_explicit_redis_deps_prefix_takes_precedence(self, monkeypatch, mock_redis) -> None:
+        """Explicit REDIS_DEPS_PREFIX should override any fallback derivation."""
+        from py_code_mode.execution.container import server as server_module
+        from py_code_mode.tools import ToolRegistry
+
+        async def fake_registry_from_redis(_tool_store):
+            return ToolRegistry()
+
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("REDIS_TOOLS_PREFIX", "app:tools")
+        monkeypatch.setenv("REDIS_WORKFLOWS_PREFIX", "app:ws:client_a:workflows")
+        monkeypatch.setenv("REDIS_ARTIFACTS_PREFIX", "app:ws:client_a:artifacts")
+        monkeypatch.setenv("REDIS_DEPS_PREFIX", "custom-root")
+
+        config = SessionConfig(auth_disabled=True)
+
+        monkeypatch.setattr("redis.from_url", lambda _url: mock_redis)
+        monkeypatch.setattr(
+            "py_code_mode.storage.registry_from_redis",
+            fake_registry_from_redis,
+        )
+        monkeypatch.setattr(
+            server_module,
+            "create_workflow_library",
+            lambda *, store: MagicMock(
+                refresh=lambda: None, list=lambda: [], search=lambda *_a, **_k: []
+            ),
+        )
+
+        asyncio.run(server_module.initialize_server(config))
+
+        assert server_module._state.deps_store is not None
+        server_module._state.deps_store.add("requests")
+
+        assert "requests" in mock_redis.smembers("custom-root:deps")
+        assert mock_redis.smembers("app:deps") == set()

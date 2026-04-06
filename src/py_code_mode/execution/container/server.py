@@ -408,9 +408,8 @@ async def initialize_server(config: SessionConfig) -> None:
         artifact_store = RedisArtifactStore(r, prefix=artifacts_prefix)
 
         # Deps from Redis
-        # Derive deps prefix from tools prefix namespace (e.g., "myapp:tools" -> "myapp:deps")
-        # If tools_prefix has no namespace separator, uses tools_prefix directly as base
-        deps_prefix = os.environ.get("REDIS_DEPS_PREFIX", f"{tools_prefix.rsplit(':', 1)[0]}:deps")
+        # Deps use the root Redis prefix. RedisDepsStore appends ":deps" internally.
+        deps_prefix = os.environ.get("REDIS_DEPS_PREFIX", tools_prefix.rsplit(":", 1)[0])
         deps_store = RedisDepsStore(r, prefix=deps_prefix)
         deps_installer = PackageInstaller()
         logger.info("  Deps in Redis (%s): initialized", deps_prefix)
