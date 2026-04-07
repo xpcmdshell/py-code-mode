@@ -2681,7 +2681,7 @@ wheels = [
 
 [[package]]
 name = "py-code-mode"
-version = "0.17.0"
+version = "0.18.0"
 source = { editable = "." }
 dependencies = [
     { name = "claude-agent-sdk" },
