@@ -81,6 +81,29 @@ RedisStorage(
 )
 ```
 
+### Workspace Scoping
+
+Both storage backends accept an optional `workspace_id`:
+
+```python
+from pathlib import Path
+
+from py_code_mode import FileStorage, RedisStorage
+
+file_storage = FileStorage(base_path=Path("./data"), workspace_id="client-a")
+redis_storage = RedisStorage(
+    url="redis://localhost:6379",
+    prefix="production",
+    workspace_id="client-a",
+)
+```
+
+When `workspace_id` is set, workflows, artifacts, and vector caches are scoped to that
+workspace and shared by other sessions using the same ID.
+
+When `workspace_id` is omitted, storage uses the legacy unscoped namespace. This is one
+shared default namespace, **not** access to all workspaces.
+
 ---
 
 ## One Agent Learns, All Agents Benefit
@@ -123,6 +146,17 @@ prod_storage = RedisStorage(url="redis://prod-redis:6379", prefix="prod")
 # Multi-tenant isolation
 tenant_a_storage = RedisStorage(url="redis://localhost:6379", prefix="tenant-a")
 tenant_b_storage = RedisStorage(url="redis://localhost:6379", prefix="tenant-b")
+```
+
+For multi-tenant systems inside one environment, prefer a stable app-level prefix plus
+per-session `workspace_id` values:
+
+```python
+storage = RedisStorage(
+    url="redis://localhost:6379",
+    prefix="production",
+    workspace_id="client-a",
+)
 ```
 
 ---
@@ -199,9 +233,23 @@ python -m py_code_mode.store diff \
 
 ### Multi-Tenant
 
-- Use separate prefix per tenant
+- Use a stable environment prefix (for example `prod`) plus `workspace_id` per tenant or campaign
 - Consider separate Redis instances for hard isolation
 - Monitor Redis memory usage
+
+### Remote Session Servers
+
+When using `ContainerExecutor(remote_url=...)`, the host storage object and the remote
+session server must point at the same logical backing store:
+
+- file-backed remote mode: host `FileStorage(...)` should correspond to the server's
+  `storage_base_path`
+- Redis-backed remote mode: host `RedisStorage(prefix=..., workspace_id=...)` should
+  correspond to the server's `storage_prefix`
+
+For true remote deployments, `RedisStorage` is usually the simplest and safest option
+because both the host process and the remote session server can share the same Redis
+namespace directly.
 
 ### Workflow Lifecycle
 

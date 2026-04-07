@@ -3,7 +3,7 @@
 This client connects to a running session server and provides
 a Python API for code execution. Each client maintains its own
 isolated session with separate Python namespace and artifacts.
-The server allocates the session on the first execute call.
+The client lazily binds a server session on first session-scoped use.
 
 Usage:
     async with SessionClient("http://localhost:8080") as client:
@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -75,8 +76,8 @@ class SessionClient:
     - Separate artifact directory
 
     Use the same client instance across requests to maintain state.
-    The server issues the session ID on first execution and the client
-    reuses it for later session-scoped requests.
+    The client lazily creates a bound remote session via POST /sessions and
+    reuses that session ID for later session-scoped requests.
     """
 
     def __init__(
@@ -102,6 +103,9 @@ class SessionClient:
         self.session_id: str | None = None
         self.auth_token = auth_token
         self._client: httpx.AsyncClient | None = None
+        self._workspace_id: str | None = None
+        self._auto_init_session = True
+        self._session_lock = asyncio.Lock()
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
@@ -109,14 +113,100 @@ class SessionClient:
             self._client = httpx.AsyncClient(timeout=self.timeout)
         return self._client
 
-    def _headers(self) -> dict[str, str]:
-        """Get headers with session ID and optional auth token."""
+    def _auth_headers(self) -> dict[str, str]:
+        """Get headers with optional auth token only."""
         headers: dict[str, str] = {}
-        if self.session_id is not None:
-            headers["X-Session-ID"] = self.session_id
         if self.auth_token:
             headers["Authorization"] = f"Bearer {self.auth_token}"
         return headers
+
+    def _headers(self) -> dict[str, str]:
+        """Get headers with session ID and optional auth token."""
+        headers = self._auth_headers()
+        if self.session_id is not None:
+            headers["X-Session-ID"] = self.session_id
+        return headers
+
+    async def _ensure_session_bound(self) -> None:
+        """Ensure a previously initialized session is rebound after reset/expiry."""
+        if self.session_id is None and self._auto_init_session:
+            await self._create_session(self._workspace_id)
+
+    def _is_invalid_session_response(self, response: httpx.Response) -> bool:
+        """Check whether a response indicates a stale or missing bound session."""
+        if response.status_code != 400:
+            return False
+
+        try:
+            data = response.json()
+        except ValueError:
+            return False
+        return data.get("detail") == "Invalid session ID"
+
+    async def _create_session(self, workspace_id: str | None = None) -> str:
+        """Create and bind a remote session without taking the session lock."""
+        client = await self._get_client()
+        payload: dict[str, str] = {}
+        if workspace_id is not None:
+            payload["workspace_id"] = workspace_id
+
+        response = await client.post(
+            f"{self.base_url}/sessions",
+            json=payload,
+            headers=self._auth_headers(),
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        self.session_id = data["session_id"]
+        return self.session_id
+
+    async def _rebind_if_current(self, failed_session_id: str) -> bool:
+        """Rebind if the current client session still matches the failed session."""
+        if not self._auto_init_session:
+            return False
+        if self.session_id is not None and self.session_id != failed_session_id:
+            return False
+
+        self.session_id = None
+        await self._create_session(self._workspace_id)
+        return True
+
+    async def _send_session_request(
+        self,
+        method: str,
+        path: str,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """Send a session-scoped request, rebinding once if the server expired the session."""
+        async with self._session_lock:
+            await self._ensure_session_bound()
+            client = await self._get_client()
+            request_method = getattr(client, method.lower())
+            request_session_id = self.session_id
+            response = await request_method(
+                f"{self.base_url}{path}",
+                headers=self._headers(),
+                **kwargs,
+            )
+
+            if request_session_id is not None and self._is_invalid_session_response(response):
+                rebound = await self._rebind_if_current(request_session_id)
+                if rebound:
+                    response = await request_method(
+                        f"{self.base_url}{path}",
+                        headers=self._headers(),
+                        **kwargs,
+                    )
+
+            return response
+
+    async def init_session(self, workspace_id: str | None = None) -> str:
+        """Create and bind an explicit remote session."""
+        async with self._session_lock:
+            self._workspace_id = workspace_id
+            self._auto_init_session = True
+            return await self._create_session(workspace_id)
 
     async def execute(
         self,
@@ -132,28 +222,24 @@ class SessionClient:
         Returns:
             ExecuteResult with value, stdout, error.
         """
-        client = await self._get_client()
         payload = {"code": code}
         if timeout is not None:
             payload["timeout"] = timeout  # type: ignore
 
-        response = await client.post(
-            f"{self.base_url}/execute",
+        response = await self._send_session_request(
+            "POST",
+            "/execute",
             json=payload,
-            headers=self._headers(),
         )
         response.raise_for_status()
         data = response.json()
-
-        session_id = data["session_id"]
-        self.session_id = session_id
 
         return ExecuteResult(
             value=data["value"],
             stdout=data["stdout"],
             error=data["error"],
             execution_time_ms=data["execution_time_ms"],
-            session_id=session_id,
+            session_id=data["session_id"],
         )
 
     async def health(self) -> HealthResult:
@@ -178,8 +264,7 @@ class SessionClient:
         Returns:
             InfoResult with available tools and workflows.
         """
-        client = await self._get_client()
-        response = await client.get(f"{self.base_url}/info", headers=self._headers())
+        response = await self._send_session_request("GET", "/info")
         response.raise_for_status()
         data = response.json()
 
@@ -197,22 +282,23 @@ class SessionClient:
         Returns:
             ResetResult confirming reset.
         """
-        if self.session_id is None:
-            return ResetResult(status="reset", session_id=None)
+        async with self._session_lock:
+            if self.session_id is None:
+                return ResetResult(status="reset", session_id=None)
 
-        client = await self._get_client()
-        response = await client.post(
-            f"{self.base_url}/reset",
-            headers=self._headers(),
-        )
-        response.raise_for_status()
-        data = response.json()
-        self.session_id = None
+            client = await self._get_client()
+            response = await client.post(
+                f"{self.base_url}/reset",
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+            data = response.json()
+            self.session_id = None
 
-        return ResetResult(
-            status=data["status"],
-            session_id=data.get("session_id"),
-        )
+            return ResetResult(
+                status=data["status"],
+                session_id=data.get("session_id"),
+            )
 
     async def install_deps(self, packages: list[str]) -> dict[str, Any]:
         """Install packages in the container.
@@ -301,42 +387,32 @@ class SessionClient:
 
     async def list_workflows(self) -> list[dict[str, Any]]:
         """List all workflows."""
-        client = await self._get_client()
-        response = await client.get(
-            f"{self.base_url}/api/workflows",
-            headers=self._headers(),
-        )
+        response = await self._send_session_request("GET", "/api/workflows")
         response.raise_for_status()
         return response.json()
 
     async def search_workflows(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
         """Search workflows."""
-        client = await self._get_client()
-        response = await client.get(
-            f"{self.base_url}/api/workflows/search",
+        response = await self._send_session_request(
+            "GET",
+            "/api/workflows/search",
             params={"query": query, "limit": limit},
-            headers=self._headers(),
         )
         response.raise_for_status()
         return response.json()
 
     async def get_workflow(self, name: str) -> dict[str, Any] | None:
         """Get workflow by name with full source."""
-        client = await self._get_client()
-        response = await client.get(
-            f"{self.base_url}/api/workflows/{name}",
-            headers=self._headers(),
-        )
+        response = await self._send_session_request("GET", f"/api/workflows/{name}")
         response.raise_for_status()
         return response.json()
 
     async def create_workflow(self, name: str, source: str, description: str) -> dict[str, Any]:
         """Create a new workflow."""
-        client = await self._get_client()
-        response = await client.post(
-            f"{self.base_url}/api/workflows",
+        response = await self._send_session_request(
+            "POST",
+            "/api/workflows",
             json={"name": name, "source": source, "description": description},
-            headers=self._headers(),
         )
         if response.status_code != 200:
             data = response.json()
@@ -345,11 +421,7 @@ class SessionClient:
 
     async def delete_workflow(self, name: str) -> bool:
         """Delete a workflow."""
-        client = await self._get_client()
-        response = await client.delete(
-            f"{self.base_url}/api/workflows/{name}",
-            headers=self._headers(),
-        )
+        response = await self._send_session_request("DELETE", f"/api/workflows/{name}")
         response.raise_for_status()
         return response.json()
 
@@ -363,11 +435,7 @@ class SessionClient:
         Returns:
             List of artifact metadata dicts.
         """
-        client = await self._get_client()
-        response = await client.get(
-            f"{self.base_url}/api/artifacts",
-            headers=self._headers(),
-        )
+        response = await self._send_session_request("GET", "/api/artifacts")
         response.raise_for_status()
         return response.json()
 
@@ -383,11 +451,7 @@ class SessionClient:
         Raises:
             RuntimeError: If artifact not found.
         """
-        client = await self._get_client()
-        response = await client.get(
-            f"{self.base_url}/api/artifacts/{name}",
-            headers=self._headers(),
-        )
+        response = await self._send_session_request("GET", f"/api/artifacts/{name}")
         if response.status_code == 404:
             raise RuntimeError(f"Artifact '{name}' not found")
         response.raise_for_status()
@@ -411,16 +475,15 @@ class SessionClient:
         Returns:
             Artifact metadata dict.
         """
-        client = await self._get_client()
-        response = await client.post(
-            f"{self.base_url}/api/artifacts",
+        response = await self._send_session_request(
+            "POST",
+            "/api/artifacts",
             json={
                 "name": name,
                 "data": data,
                 "description": description,
                 "metadata": metadata,
             },
-            headers=self._headers(),
         )
         response.raise_for_status()
         return response.json()
@@ -434,11 +497,7 @@ class SessionClient:
         Raises:
             RuntimeError: If artifact not found.
         """
-        client = await self._get_client()
-        response = await client.delete(
-            f"{self.base_url}/api/artifacts/{name}",
-            headers=self._headers(),
-        )
+        response = await self._send_session_request("DELETE", f"/api/artifacts/{name}")
         if response.status_code == 404:
             raise RuntimeError(f"Artifact '{name}' not found")
         response.raise_for_status()

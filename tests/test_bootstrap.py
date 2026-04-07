@@ -4,9 +4,6 @@ This module tests the bootstrap architecture for SubprocessExecutor:
 1. `to_bootstrap_config()` method on storage classes - serializes to dict
 2. `bootstrap_namespaces(config)` function - reconstructs storage from config
 3. Lazy connections - storage only connects when actually used
-
-TDD RED phase: These tests are written before implementation.
-They will fail until the bootstrap module is implemented.
 """
 
 from __future__ import annotations
@@ -713,6 +710,67 @@ class TestFileStorageBootstrapConfig:
         assert workflow is not None
         assert workflow.name == "greet"
 
+    @pytest.mark.asyncio
+    async def test_config_roundtrip_preserves_workspace_scoping(self, tmp_path: Path) -> None:
+        """Scoped file storage roundtrip preserves scoped visibility."""
+        from py_code_mode.bootstrap import bootstrap_namespaces
+        from py_code_mode.errors import ArtifactNotFoundError
+        from py_code_mode.storage import FileStorage
+        from py_code_mode.workflows import PythonWorkflow
+
+        scoped_storage = FileStorage(tmp_path, workspace_id="client_a")
+        legacy_storage = FileStorage(tmp_path)
+
+        scoped_storage.get_artifact_store().save(
+            "scoped.json",
+            {"scope": "client_a"},
+            description="Scoped artifact",
+        )
+        legacy_storage.get_artifact_store().save(
+            "legacy.json",
+            {"scope": "legacy"},
+            description="Legacy artifact",
+        )
+
+        scoped_storage.get_workflow_store().save(
+            PythonWorkflow.from_source(
+                name="scoped_workflow",
+                source='async def run() -> str:\n    return "scoped"',
+                description="Workflow visible only in client_a workspace",
+            )
+        )
+        legacy_storage.get_workflow_store().save(
+            PythonWorkflow.from_source(
+                name="legacy_workflow",
+                source='async def run() -> str:\n    return "legacy"',
+                description="Workflow visible only in unscoped storage",
+            )
+        )
+
+        config = scoped_storage.to_bootstrap_config()
+        bundle = await bootstrap_namespaces(config)
+
+        assert bundle.artifacts.load("scoped.json") == {"scope": "client_a"}
+        with pytest.raises(ArtifactNotFoundError):
+            bundle.artifacts.load("legacy.json")
+
+        assert bundle.workflows.library.get("scoped_workflow") is not None
+        assert bundle.workflows.library.get("legacy_workflow") is None
+
+    @pytest.mark.asyncio
+    async def test_config_roundtrip_keeps_file_deps_unscoped(self, tmp_path: Path) -> None:
+        """Scoped file storage bootstrap keeps deps rooted at the unscoped base path."""
+        from py_code_mode.bootstrap import bootstrap_namespaces
+        from py_code_mode.storage import FileStorage
+
+        scoped_storage = FileStorage(tmp_path, workspace_id="client_a")
+
+        bundle = await bootstrap_namespaces(scoped_storage.to_bootstrap_config())
+        bundle.deps._store.add("requests>=2.0")
+
+        assert (tmp_path / "deps" / "requirements.txt").read_text() == "requests>=2.0\n"
+        assert not (tmp_path / "workspaces" / "client_a" / "deps").exists()
+
 
 # =============================================================================
 # RedisStorage.to_bootstrap_config() Tests
@@ -872,6 +930,75 @@ class TestRedisStorageBootstrapConfig:
         workflow = bundle.workflows.library.get("greet")
         assert workflow is not None
         assert workflow.name == "greet"
+
+    @pytest.mark.asyncio
+    async def test_config_roundtrip_preserves_workspace_scoping(
+        self, mock_redis: MockRedisClient
+    ) -> None:
+        """Scoped Redis storage roundtrip preserves scoped visibility."""
+        from py_code_mode.bootstrap import bootstrap_namespaces
+        from py_code_mode.errors import ArtifactNotFoundError
+        from py_code_mode.storage import RedisStorage
+        from py_code_mode.workflows import PythonWorkflow
+
+        scoped_storage = RedisStorage(redis=mock_redis, prefix="app", workspace_id="client_a")
+        legacy_storage = RedisStorage(redis=mock_redis, prefix="app")
+
+        scoped_storage.get_artifact_store().save(
+            "scoped.json",
+            {"scope": "client_a"},
+            description="Scoped artifact",
+        )
+        legacy_storage.get_artifact_store().save(
+            "legacy.json",
+            {"scope": "legacy"},
+            description="Legacy artifact",
+        )
+
+        scoped_storage.get_workflow_store().save(
+            PythonWorkflow.from_source(
+                name="scoped_workflow",
+                source='async def run() -> str:\n    return "scoped"',
+                description="Workflow visible only in client_a workspace",
+            )
+        )
+        legacy_storage.get_workflow_store().save(
+            PythonWorkflow.from_source(
+                name="legacy_workflow",
+                source='async def run() -> str:\n    return "legacy"',
+                description="Workflow visible only in unscoped storage",
+            )
+        )
+
+        config = scoped_storage.to_bootstrap_config()
+
+        with patch("redis.Redis.from_url", return_value=mock_redis):
+            bundle = await bootstrap_namespaces(config)
+
+        assert bundle.artifacts.load("scoped.json") == {"scope": "client_a"}
+        with pytest.raises(ArtifactNotFoundError):
+            bundle.artifacts.load("legacy.json")
+
+        assert bundle.workflows.library.get("scoped_workflow") is not None
+        assert bundle.workflows.library.get("legacy_workflow") is None
+
+    @pytest.mark.asyncio
+    async def test_config_roundtrip_keeps_redis_deps_unscoped(
+        self, mock_redis: MockRedisClient
+    ) -> None:
+        """Scoped Redis storage bootstrap keeps deps under the root Redis prefix."""
+        from py_code_mode.bootstrap import bootstrap_namespaces
+        from py_code_mode.storage import RedisStorage
+
+        scoped_storage = RedisStorage(redis=mock_redis, prefix="app", workspace_id="client_a")
+
+        with patch("redis.Redis.from_url", return_value=mock_redis):
+            bundle = await bootstrap_namespaces(scoped_storage.to_bootstrap_config())
+
+        bundle.deps._store.add("requests>=2.0")
+
+        assert "requests>=2.0" in mock_redis.smembers("app:deps")
+        assert mock_redis.smembers("app:ws:client_a:deps") == set()
 
 
 # =============================================================================

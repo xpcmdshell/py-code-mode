@@ -16,6 +16,22 @@ from unittest.mock import MagicMock
 
 import pytest
 
+
+def auth_headers(token: str, session_id: str | None = None) -> dict[str, str]:
+    """Build auth headers for container API requests."""
+    headers = {"Authorization": f"Bearer {token}"}
+    if session_id is not None:
+        headers["X-Session-ID"] = session_id
+    return headers
+
+
+def create_bound_session(client, token: str) -> str:
+    """Create a bound session for session-aware API tests."""
+    response = client.post("/sessions", json={}, headers=auth_headers(token))
+    assert response.status_code == 200
+    return response.json()["session_id"]
+
+
 # =============================================================================
 # SECTION 1: TOOLS API
 # =============================================================================
@@ -110,9 +126,10 @@ class TestWorkflowsAPI:
     def test_list_workflows_returns_empty_when_no_workflows(self, auth_client) -> None:
         """GET /api/workflows returns empty list when no workflows registered."""
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         response = client.get(
             "/api/workflows",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
         assert response.status_code == 200
         data = response.json()
@@ -127,10 +144,11 @@ class TestWorkflowsAPI:
     def test_search_workflows_returns_empty_when_no_workflows(self, auth_client) -> None:
         """GET /api/workflows/search returns empty list when no workflows registered."""
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         response = client.get(
             "/api/workflows/search",
             params={"query": "fetch"},
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
         assert response.status_code == 200
         data = response.json()
@@ -164,7 +182,7 @@ class TestWorkflowsAPI:
 
         app = create_app(config)
         with TestClient(app) as client:
-            headers = {"Authorization": "Bearer test-token"}
+            headers = auth_headers("test-token", create_bound_session(client, "test-token"))
 
             resp = client.get("/api/workflows", headers=headers)
             assert resp.status_code == 503
@@ -175,9 +193,10 @@ class TestWorkflowsAPI:
     def test_get_workflow_returns_none_when_not_found(self, auth_client) -> None:
         """GET /api/workflows/{name} returns null when workflow not found."""
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         response = client.get(
             "/api/workflows/nonexistent",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
         assert response.status_code == 200
         data = response.json()
@@ -192,6 +211,7 @@ class TestWorkflowsAPI:
     def test_create_workflow_success(self, auth_client) -> None:
         """POST /api/workflows creates a new workflow."""
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         response = client.post(
             "/api/workflows",
             json={
@@ -199,7 +219,7 @@ class TestWorkflowsAPI:
                 "source": "async def run(x: int) -> int:\n    return x * 2",
                 "description": "Doubles a number",
             },
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
         assert response.status_code == 200
         data = response.json()
@@ -212,6 +232,7 @@ class TestWorkflowsAPI:
         from py_code_mode.workflows import FileWorkflowStore, PythonWorkflow
 
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         store = FileWorkflowStore(tmp_path / "workflows")
         store.save(
             PythonWorkflow.from_source(
@@ -223,7 +244,7 @@ class TestWorkflowsAPI:
 
         response = client.get(
             "/api/workflows",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
 
         assert response.status_code == 200
@@ -234,6 +255,7 @@ class TestWorkflowsAPI:
         from py_code_mode.workflows import FileWorkflowStore, PythonWorkflow
 
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         store = FileWorkflowStore(tmp_path / "workflows")
         store.save(
             PythonWorkflow.from_source(
@@ -253,7 +275,7 @@ class TestWorkflowsAPI:
 
         response = client.get(
             "/api/workflows/editable",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
 
         assert response.status_code == 200
@@ -264,6 +286,7 @@ class TestWorkflowsAPI:
         from py_code_mode.workflows import FileWorkflowStore, PythonWorkflow
 
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         store = FileWorkflowStore(tmp_path / "workflows")
         store.save(
             PythonWorkflow.from_source(
@@ -275,7 +298,7 @@ class TestWorkflowsAPI:
 
         response = client.get(
             "/info",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
 
         assert response.status_code == 200
@@ -299,6 +322,7 @@ class TestWorkflowsAPI:
     def test_create_workflow_invalid_source_returns_400(self, auth_client) -> None:
         """POST /api/workflows returns 400 for invalid source code."""
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         response = client.post(
             "/api/workflows",
             json={
@@ -306,13 +330,14 @@ class TestWorkflowsAPI:
                 "source": "not valid python +++",
                 "description": "Invalid",
             },
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
         assert response.status_code == 400
 
     def test_create_workflow_no_run_returns_400(self, auth_client) -> None:
         """POST /api/workflows returns 400 when source has no run() function."""
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         response = client.post(
             "/api/workflows",
             json={
@@ -320,7 +345,7 @@ class TestWorkflowsAPI:
                 "source": "def other_func(): pass",
                 "description": "No run",
             },
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
         assert response.status_code == 400
 
@@ -333,9 +358,10 @@ class TestWorkflowsAPI:
     def test_delete_workflow_returns_false_when_not_found(self, auth_client) -> None:
         """DELETE /api/workflows/{name} returns false when workflow not found."""
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         response = client.delete(
             "/api/workflows/nonexistent",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
         assert response.status_code == 200
         assert response.json() is False
@@ -343,7 +369,7 @@ class TestWorkflowsAPI:
     def test_workflow_lifecycle_create_get_delete(self, auth_client) -> None:
         """Full workflow lifecycle: create, get, delete."""
         client, token = auth_client
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = auth_headers(token, create_bound_session(client, token))
 
         # Create
         workflow_source = (
@@ -409,9 +435,10 @@ class TestArtifactsAPI:
     def test_list_artifacts_returns_empty_when_no_artifacts(self, auth_client) -> None:
         """GET /api/artifacts returns empty list when no artifacts saved."""
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         response = client.get(
             "/api/artifacts",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
         assert response.status_code == 200
         data = response.json()
@@ -427,9 +454,10 @@ class TestArtifactsAPI:
     def test_load_artifact_returns_404_when_not_found(self, auth_client) -> None:
         """GET /api/artifacts/{name} returns 404 when artifact not found."""
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         response = client.get(
             "/api/artifacts/nonexistent",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
         assert response.status_code == 404
 
@@ -442,7 +470,7 @@ class TestArtifactsAPI:
     def test_list_artifacts_omits_externally_deleted_artifact(self, auth_client, tmp_path) -> None:
         """GET /api/artifacts prunes stale metadata after external file deletion."""
         client, token = auth_client
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = auth_headers(token, create_bound_session(client, token))
 
         response = client.post(
             "/api/artifacts",
@@ -466,7 +494,7 @@ class TestArtifactsAPI:
     ) -> None:
         """GET /api/artifacts/{name} returns 404 when a tracked file is deleted externally."""
         client, token = auth_client
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = auth_headers(token, create_bound_session(client, token))
 
         response = client.post(
             "/api/artifacts",
@@ -487,6 +515,7 @@ class TestArtifactsAPI:
     def test_save_artifact_success(self, auth_client) -> None:
         """POST /api/artifacts saves an artifact."""
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         response = client.post(
             "/api/artifacts",
             json={
@@ -494,7 +523,7 @@ class TestArtifactsAPI:
                 "data": {"key": "value", "number": 42},
                 "description": "Test artifact",
             },
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
         assert response.status_code == 200
         data = response.json()
@@ -519,16 +548,17 @@ class TestArtifactsAPI:
     def test_delete_artifact_returns_404_when_not_found(self, auth_client) -> None:
         """DELETE /api/artifacts/{name} returns 404 when artifact not found."""
         client, token = auth_client
+        session_id = create_bound_session(client, token)
         response = client.delete(
             "/api/artifacts/nonexistent",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_headers(token, session_id),
         )
         assert response.status_code == 404
 
     def test_artifact_lifecycle_save_load_delete(self, auth_client) -> None:
         """Full artifact lifecycle: save, load, delete."""
         client, token = auth_client
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = auth_headers(token, create_bound_session(client, token))
 
         # Save
         response = client.post(

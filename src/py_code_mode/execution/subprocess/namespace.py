@@ -102,8 +102,8 @@ def _build_file_storage_setup_code(
         repr(str(storage_access.workflows_path)) if storage_access.workflows_path else "None"
     )
     artifacts_path_str = repr(str(storage_access.artifacts_path))
-    # Base path is parent of artifacts for deps store
-    base_path_str = repr(str(storage_access.artifacts_path.parent))
+    base_path = storage_access.root_path or storage_access.artifacts_path.parent
+    base_path_str = repr(str(base_path))
     allow_deps_str = "True" if allow_runtime_deps else "False"
     vectors_path_str = (
         repr(str(storage_access.vectors_path)) if storage_access.vectors_path else "None"
@@ -416,7 +416,8 @@ def _build_redis_storage_setup_code(
     vectors_prefix_str = (
         repr(storage_access.vectors_prefix) if storage_access.vectors_prefix else "None"
     )
-    deps_prefix_str = repr(f"{storage_access.workflows_prefix.rsplit(':', 1)[0]}:deps")
+    deps_prefix = storage_access.root_prefix or storage_access.workflows_prefix.rsplit(":", 1)[0]
+    deps_prefix_str = repr(deps_prefix)
     allow_deps_str = "True" if allow_runtime_deps else "False"
 
     return f'''# Auto-generated namespace setup for SubprocessExecutor (Redis)
