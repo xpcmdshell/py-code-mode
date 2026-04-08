@@ -110,7 +110,7 @@ There are two main ways to use py-code-mode:
 Use the SDK when you are embedding py-code-mode directly into your own app or agent framework and want control over the runtime and how it is exposed.
 
 ```bash
-uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.18.0
+uv add git+https://github.com/xpcmdshell/py-code-mode.git@v0.18.1
 ```
 
 The SDK gives your app orchestration-side methods for tools, workflows, artifacts, and dependencies. These can be wrapped to expose to your agent as tools via your favorite agent framework.
@@ -197,7 +197,7 @@ For example, to expose py-code-mode to Claude Code agents, add it to your MCP co
 
 ```bash
 claude mcp add -s user py-code-mode \
-  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.18.0 \
+  -- uvx --from git+https://github.com/xpcmdshell/py-code-mode.git@v0.18.1 \
   py-code-mode-mcp --base ~/.code-mode
 ```
 
