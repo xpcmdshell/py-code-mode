@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
     "pyyaml>=6.0",
-    "numpy>=1.26",
+    "numpy>=2.4.4",
     "sentence-transformers>=3.0",
     "fastmcp>=2.0.0",
     "jupyter-client>=8.6",
