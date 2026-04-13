@@ -44,7 +44,7 @@ chromadb = [
     "chromadb>=0.5",
 ]
 redis = [
-    "redis>=5.0",
+    "redis>=7.4.0",
 ]
 mcp = [
     "mcp>=1.0",
@@ -57,7 +57,7 @@ container = [
     "uvicorn>=0.20",
     "httpx>=0.25",
     "docker>=7.0",
-    "redis>=5.0",
+    "redis>=7.4.0",
 ]
 
 [build-system]
