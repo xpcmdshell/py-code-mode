@@ -47,7 +47,7 @@ redis = [
     "redis>=5.0",
 ]
 mcp = [
-    "mcp>=1.0",
+    "mcp>=1.27.0",
 ]
 http = [
     "aiohttp>=3.9",
