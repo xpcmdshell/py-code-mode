@@ -56,7 +56,7 @@ container = [
     "fastapi>=0.100",
     "uvicorn>=0.20",
     "httpx>=0.25",
-    "docker>=7.0",
+    "docker>=7.1.0",
     "redis>=5.0",
 ]
 
