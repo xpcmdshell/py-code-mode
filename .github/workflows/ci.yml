@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
       - name: Cache HuggingFace models
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/huggingface
           key: huggingface-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
       - name: Cache HuggingFace models
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/huggingface
           key: huggingface-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
@@ -92,7 +92,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - uses: denoland/setup-deno@v2
       - name: Cache Deno modules
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/deno
           key: deno-${{ runner.os }}-${{ hashFiles('src/py_code_mode/execution/deno_sandbox/runner/**') }}
