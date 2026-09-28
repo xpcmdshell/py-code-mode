@@ -119,10 +119,10 @@ def _build_file_storage_setup_code(
 
 from pathlib import Path
 import asyncio
-import nest_asyncio
+import nest_asyncio2
 
 # Enable nested event loops (required for sync tool calls in Jupyter kernel)
-nest_asyncio.apply()
+nest_asyncio2.apply()
 
 # =============================================================================
 # Tools Namespace (with sync wrapper for subprocess context)
@@ -396,7 +396,7 @@ del FileArtifactStore
 del DepsNamespace, FileDepsStore, PackageInstaller
 
 # Note: Wrapper classes (_SyncToolsWrapper, _SyncToolProxy, _SyncCallableWrapper,
-# _SimpleArtifactStore, _ControlledDepsNamespace) and asyncio/nest_asyncio are kept for runtime use
+# _SimpleArtifactStore, _ControlledDepsNamespace) and asyncio/nest_asyncio2 are kept for runtime use
 '''
 
 
@@ -424,10 +424,10 @@ def _build_redis_storage_setup_code(
 # This code sets up full py-code-mode namespaces in the kernel
 
 import asyncio
-import nest_asyncio
+import nest_asyncio2
 
 # Enable nested event loops (required for sync tool calls in Jupyter kernel)
-nest_asyncio.apply()
+nest_asyncio2.apply()
 
 from redis import Redis
 
@@ -712,6 +712,6 @@ del RedisArtifactStore
 del DepsNamespace, RedisDepsStore, PackageInstaller
 del Redis
 # Note: Wrapper classes (_SyncToolsWrapper, _SyncToolProxy, _SyncCallableWrapper,
-# _SimpleArtifactStore, _ControlledDepsNamespace), asyncio/nest_asyncio, and
+# _SimpleArtifactStore, _ControlledDepsNamespace), asyncio/nest_asyncio2, and
 # _redis_client are kept for runtime use
 '''

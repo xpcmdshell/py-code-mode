@@ -152,6 +152,16 @@ class VenvManager:
                 if result.returncode != 0:
                     return False
 
+            # The kernel init and namespace code import nest_asyncio2 for
+            # re-entrant event loops; recreate venvs that predate it.
+            result = subprocess.run(
+                [str(python_path), "-c", "import nest_asyncio2"],
+                capture_output=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return False
+
             return True
 
         except (OSError, subprocess.SubprocessError):
@@ -298,11 +308,14 @@ class VenvManager:
             if install_py_code_mode:
                 await self._install_py_code_mode(python_path)
 
-                # Also install nest_asyncio for sync tool calls in Jupyter kernel
-                await self._run_uv(
-                    ["pip", "install", "--python", str(python_path), "nest_asyncio"],
-                    error_context="uv pip install nest_asyncio failed",
-                )
+            # Install re-entrant event loop shim for sync tool calls in the
+            # Jupyter kernel. ipykernel 7.3+ depends on the nest-asyncio2 fork
+            # instead of the original nest-asyncio package, so install it
+            # explicitly rather than relying on ipykernel's transitive deps.
+            await self._run_uv(
+                ["pip", "install", "--python", str(python_path), "nest-asyncio2"],
+                error_context="uv pip install nest-asyncio2 failed",
+            )
 
             # Install kernel spec
             await self._run_python(

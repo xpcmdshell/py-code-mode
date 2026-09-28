@@ -511,10 +511,10 @@ class WorkflowsProxy:
         result = run_func(**kwargs)
         if asyncio.iscoroutine(result):
             # ipykernel runs an event loop already, so asyncio.run() is not valid.
-            # Use nest_asyncio to allow re-entrant run_until_complete.
-            import nest_asyncio
+            # Use nest_asyncio2 to allow re-entrant run_until_complete.
+            import nest_asyncio2
 
-            nest_asyncio.apply()
+            nest_asyncio2.apply()
             loop = asyncio.get_event_loop()
             return loop.run_until_complete(result)
         return result
