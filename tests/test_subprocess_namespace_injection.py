@@ -1018,7 +1018,7 @@ class TestRedisCodeGenerationDetails:
         )
 
     def test_redis_code_handles_nest_asyncio(self) -> None:
-        """Generated code should apply nest_asyncio for sync wrappers.
+        """Generated code should apply nest_asyncio2 for sync wrappers.
 
         Breaks when: Code doesn't handle nested event loops, causing
         'This event loop is already running' errors in Jupyter kernel.
@@ -1033,8 +1033,8 @@ class TestRedisCodeGenerationDetails:
         )
         code = build_namespace_setup_code(storage_access)
         assert code, "Code must be generated first"
-        assert "nest_asyncio" in code, (
-            "Generated code should import and apply nest_asyncio for nested event loop support"
+        assert "nest_asyncio2" in code, (
+            "Generated code should import and apply nest_asyncio2 for nested event loop support"
         )
 
     def test_redis_code_imports_cli_adapter(self) -> None:
