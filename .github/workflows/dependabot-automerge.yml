@@ -54,15 +54,24 @@ jobs:
     name: Refresh stale Dependabot branches
     if: github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Request Dependabot rebases onto current main
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Dependabot rejects commands from GitHub App bots, including Actions.
+          GH_TOKEN: ${{ secrets.DEPENDABOT_COMMAND_TOKEN }}
           GH_REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::DEPENDABOT_COMMAND_TOKEN must authorize a user with repository push access."
+            exit 1
+          fi
+          command_author=$(gh api user --jq '.login')
           base_sha=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')
           gh api --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_page=100" \
             --jq '.[] | select(.user.login == "dependabot[bot]" and .head.repo.full_name == .base.repo.full_name and .draft == false) | [.number, .head.sha] | @tsv' |
@@ -76,7 +85,7 @@ jobs:
             # Direct GITHUB_TOKEN pushes do not start unattended PR workflows.
             marker="<!-- dependabot-rebase head:$head_sha base:$base_sha -->"
             existing=$(gh api --paginate "repos/$GH_REPO/issues/$pr_number/comments?per_page=100" \
-              --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .id")
+              --jq ".[] | select((.user.login == \"$command_author\" or .user.login == \"github-actions[bot]\") and (.body | contains(\"$marker\"))) | .id")
             if [ -n "$existing" ]; then
               if [ "$EVENT_NAME" != "schedule" ]; then
                 echo "Rebase already requested for #$pr_number at this head and base."
