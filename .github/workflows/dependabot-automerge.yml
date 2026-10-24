@@ -36,16 +36,14 @@ jobs:
       github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - name: Verify Dependabot metadata and commits
+      - name: Read verified Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Enable auto-merge after required CI passes
-        if: |
-          steps.metadata.outputs.maintainer-changes == 'false' &&
-          contains(fromJSON('["pip", "uv", "github-actions"]'), steps.metadata.outputs.package-ecosystem)
+        if: contains(fromJSON('["pip", "uv", "github-actions"]'), steps.metadata.outputs.package-ecosystem)
         run: gh pr merge --auto --merge --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -61,6 +59,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
@@ -79,8 +78,16 @@ jobs:
             existing=$(gh api --paginate "repos/$GH_REPO/issues/$pr_number/comments?per_page=100" \
               --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .id")
             if [ -n "$existing" ]; then
-              echo "Rebase already requested for #$pr_number at this head and base."
-              continue
+              if [ "$EVENT_NAME" != "schedule" ]; then
+                echo "Rebase already requested for #$pr_number at this head and base."
+                continue
+              fi
+
+              # Retry asynchronous rebases that did not advance the head.
+              # Replace our old command instead of accumulating hourly comments.
+              while read -r comment_id; do
+                gh api --method DELETE "repos/$GH_REPO/issues/comments/$comment_id"
+              done <<< "$existing"
             fi
 
             gh pr comment "$pr_number" --body "$(printf '@dependabot rebase\n\n%s' "$marker")"

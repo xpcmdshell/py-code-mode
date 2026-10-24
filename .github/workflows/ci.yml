@@ -11,6 +11,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  verify-dependabot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Verify every dependency-update commit
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_COMMIT_COUNT: ${{ github.event.pull_request.commits }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # fetch-metadata checks only the first commit. Gate the complete PR
+          # so later human edits cannot inherit a queued automatic merge.
+          # Dependabot normally uses GitHub's web-flow commit signer.
+          gh api --paginate --slurp "repos/$GH_REPO/pulls/$PR_NUMBER/commits?per_page=100" |
+            jq -e --argjson expected "$PR_COMMIT_COUNT" --arg head "$PR_HEAD_SHA" '
+              add | length == $expected and length > 0 and .[-1].sha == $head and
+              all(.[];
+                .author.login == "dependabot[bot]" and
+                (.committer.login == "web-flow" or .committer.login == "dependabot[bot]") and
+                .commit.verification.verified == true
+              )
+            '
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -170,6 +200,7 @@ jobs:
     name: ci-required
     if: ${{ always() }}
     needs:
+      - verify-dependabot
       - lint
       - test-core
       - test-subprocess-venv
@@ -181,6 +212,7 @@ jobs:
     steps:
       - name: Fail if any required CI job failed
         if: |
+          needs.verify-dependabot.result != 'success' ||
           needs.lint.result != 'success' ||
           needs.test-core.result != 'success' ||
           needs.test-subprocess-venv.result != 'success' ||
@@ -190,6 +222,7 @@ jobs:
           needs.test-docker-session-and-redis.result != 'success'
         run: |
           echo "At least one required CI job did not succeed."
+          echo "verify-dependabot=${{ needs.verify-dependabot.result }}"
           echo "lint=${{ needs.lint.result }}"
           echo "test-core=${{ needs.test-core.result }}"
           echo "test-subprocess-venv=${{ needs.test-subprocess-venv.result }}"
