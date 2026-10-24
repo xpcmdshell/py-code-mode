@@ -63,7 +63,6 @@ jobs:
           # Dependabot rejects commands from GitHub App bots, including Actions.
           GH_TOKEN: ${{ secrets.DEPENDABOT_COMMAND_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
@@ -71,7 +70,6 @@ jobs:
             echo "::error::DEPENDABOT_COMMAND_TOKEN must authorize a user with repository push access."
             exit 1
           fi
-          command_author=$(gh api user --jq '.login')
           base_sha=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')
           gh api --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_page=100" \
             --jq '.[] | select(.user.login == "dependabot[bot]" and .head.repo.full_name == .base.repo.full_name and .draft == false) | [.number, .head.sha] | @tsv' |
@@ -81,23 +79,7 @@ jobs:
               continue
             fi
 
-            # Ask Dependabot to update its own branch so its push triggers CI.
-            # Direct GITHUB_TOKEN pushes do not start unattended PR workflows.
-            marker="<!-- dependabot-rebase head:$head_sha base:$base_sha -->"
-            existing=$(gh api --paginate "repos/$GH_REPO/issues/$pr_number/comments?per_page=100" \
-              --jq ".[] | select((.user.login == \"$command_author\" or .user.login == \"github-actions[bot]\") and (.body | contains(\"$marker\"))) | .id")
-            if [ -n "$existing" ]; then
-              if [ "$EVENT_NAME" != "schedule" ]; then
-                echo "Rebase already requested for #$pr_number at this head and base."
-                continue
-              fi
-
-              # Retry asynchronous rebases that did not advance the head.
-              # Replace our old command instead of accumulating hourly comments.
-              while read -r comment_id; do
-                gh api --method DELETE "repos/$GH_REPO/issues/comments/$comment_id"
-              done <<< "$existing"
-            fi
-
-            gh pr comment "$pr_number" --body "$(printf '@dependabot rebase\n\n%s' "$marker")"
+            # Send only the documented command. Keep metadata out of its body.
+            # Dependabot performs the push so the refreshed branch triggers CI.
+            gh pr comment "$pr_number" --body '@dependabot rebase'
           done
