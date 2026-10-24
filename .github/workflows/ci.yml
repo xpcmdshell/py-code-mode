@@ -65,6 +65,9 @@ jobs:
             huggingface-${{ runner.os }}-
       - run: uv sync --all-extras
       - name: Run core tests (non-docker, non-deno, non-subprocess, non-venv)
+        # Keep test venvs on uv's cache filesystem so large wheels use hardlinks.
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: |
           uv run pytest tests/ -v \
             -m "not docker and not deno and not subprocess and not venv" \
@@ -96,6 +99,8 @@ jobs:
             huggingface-${{ runner.os }}-
       - run: uv sync --all-extras
       - name: Run subprocess + venv tests
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: |
           # Override default loadgroup scheduling for this lane.
           # loadscope allows subprocess-heavy classes/modules to run concurrently across workers.
