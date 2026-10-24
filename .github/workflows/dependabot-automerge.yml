@@ -1,93 +1,94 @@
 name: Dependabot Auto-Merge
 
 on:
-  pull_request:
+  # Use the trusted base workflow, never code from a dependency-update branch.
+  pull_request_target:
     branches:
       - main
     types:
       - opened
       - reopened
       - synchronize
+      - ready_for_review
+  push:
+    branches:
+      - main
+  # GITHUB_TOKEN merges do not trigger push workflows. Reconcile those here.
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: dependabot-automerge-${{ github.event.pull_request.number || 'maintenance' }}
+  cancel-in-progress: false
+
 jobs:
   enable-automerge:
-    name: Enable auto-merge for safe Dependabot bumps
+    name: Enable auto-merge for Dependabot updates
     if: |
-      github.event_name == 'pull_request' &&
+      github.event_name == 'pull_request_target' &&
       github.event.pull_request.user.login == 'dependabot[bot]' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch Dependabot metadata
+      - name: Read verified Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Classify update eligibility
-        id: classify
-        env:
-          MAINTAINER_CHANGES: ${{ steps.metadata.outputs.maintainer-changes }}
-          PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
-        run: |
-          python - <<'PY'
-          import os
-          import re
-
-
-          def parse_release(version: str) -> tuple[int, int, int] | None:
-              match = re.match(r"^v?(?P<num>\d+(?:\.\d+){0,2})", version.strip())
-              if not match:
-                  return None
-              parts = [int(part) for part in match.group("num").split(".")]
-              while len(parts) < 3:
-                  parts.append(0)
-              return tuple(parts[:3])
-
-
-          def classify_from_title(title: str) -> str:
-              match = re.search(r" from (?P<old>\S+) to (?P<new>\S+)", title)
-              if not match:
-                  return "unknown"
-              old = parse_release(match.group("old"))
-              new = parse_release(match.group("new"))
-              if old is None or new is None or new <= old:
-                  return "unknown"
-              if new[0] != old[0]:
-                  return "major"
-              if new[1] != old[1]:
-                  return "minor"
-              if new[2] != old[2]:
-                  return "patch"
-              return "unknown"
-
-
-          update_level = {
-              "version-update:semver-patch": "patch",
-              "version-update:semver-minor": "minor",
-              "version-update:semver-major": "major",
-          }.get(os.getenv("UPDATE_TYPE", ""), classify_from_title(os.getenv("PR_TITLE", "")))
-
-          should_enable = (
-              os.getenv("PACKAGE_ECOSYSTEM", "") in {"pip", "uv", "github-actions"}
-              and os.getenv("MAINTAINER_CHANGES", "") != "true"
-              and update_level in {"patch", "minor"}
-          )
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              print(f"should_enable={'true' if should_enable else 'false'}", file=output)
-              print(f"update_level={update_level}", file=output)
-          PY
-
-      - name: Enable auto-merge for patch and minor updates
-        if: steps.classify.outputs.should_enable == 'true'
-        run: gh pr merge --auto --merge "$PR_URL"
+      - name: Enable auto-merge after required CI passes
+        if: contains(fromJSON('["pip", "uv", "github-actions"]'), steps.metadata.outputs.package-ecosystem)
+        run: gh pr merge --auto --merge --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+  refresh-branches:
+    name: Refresh stale Dependabot branches
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request Dependabot rebases onto current main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          base_sha=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')
+          gh api --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_page=100" \
+            --jq '.[] | select(.user.login == "dependabot[bot]" and .head.repo.full_name == .base.repo.full_name and .draft == false) | [.number, .head.sha] | @tsv' |
+          while IFS=$'\t' read -r pr_number head_sha; do
+            behind=$(gh api "repos/$GH_REPO/compare/$base_sha...$head_sha" --jq '.behind_by')
+            if [ "$behind" -eq 0 ]; then
+              continue
+            fi
+
+            # Ask Dependabot to update its own branch so its push triggers CI.
+            # Direct GITHUB_TOKEN pushes do not start unattended PR workflows.
+            marker="<!-- dependabot-rebase head:$head_sha base:$base_sha -->"
+            existing=$(gh api --paginate "repos/$GH_REPO/issues/$pr_number/comments?per_page=100" \
+              --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .id")
+            if [ -n "$existing" ]; then
+              if [ "$EVENT_NAME" != "schedule" ]; then
+                echo "Rebase already requested for #$pr_number at this head and base."
+                continue
+              fi
+
+              # Retry asynchronous rebases that did not advance the head.
+              # Replace our old command instead of accumulating hourly comments.
+              while read -r comment_id; do
+                gh api --method DELETE "repos/$GH_REPO/issues/comments/$comment_id"
+              done <<< "$existing"
+            fi
+
+            gh pr comment "$pr_number" --body "$(printf '@dependabot rebase\n\n%s' "$marker")"
+          done
